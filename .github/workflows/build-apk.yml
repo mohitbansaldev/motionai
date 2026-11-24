@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,6 +32,16 @@ jobs:
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
       - run: flutter build apk --release
+      - run: cp build/app/outputs/flutter-apk/app-release.apk MotionAI.apk
+
+      # Publishes the APK on the Releases page: one-tap download on the phone.
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: MotionAI build ${{ github.run_number }}
+          body: Install MotionAI.apk on your Android phone.
+          files: MotionAI.apk
+          make_latest: true
 
       - uses: actions/upload-artifact@v4
         with:
