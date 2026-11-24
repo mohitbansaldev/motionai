@@ -43,15 +43,54 @@ class AiClient {
   }
 
   /// Responses API with the ChatGPT-plan OAuth token (streamed, not stored).
+  /// Tries the saved model first, then every model the account lists, and
+  /// remembers the first one the plan accepts.
   static Future<String> _chatgpt(AiSettings s, String system, List<AiMessage> msgs) async {
-    final token = await ChatGptAuth.accessToken();
-    var model = s.chatgptModel;
-    if (model.isEmpty) {
-      final list = await ChatGptAuth.models();
-      model = list.firstWhere((m) => m.contains('mini'), orElse: () => list.isEmpty ? 'gpt-5-mini' : list.first);
-      s.chatgptModel = model;
-      await ChatGptAuth.setModel(model);
+    final tried = <String>[];
+    final candidates = <String>[if (s.chatgptModel.isNotEmpty) s.chatgptModel];
+    List<String>? listed;
+    String? lastError;
+    for (int i = 0; i < 12; i++) {
+      if (i >= candidates.length) {
+        if (listed != null) break;
+        listed = await ChatGptAuth.models();
+        // Prefer general GPT models, newest-looking names first.
+        final ranked = [...listed]..sort((a, b) => _rank(b).compareTo(_rank(a)));
+        candidates.addAll(ranked.where((m) => !candidates.contains(m)));
+        if (i >= candidates.length) break;
+      }
+      final model = candidates[i];
+      tried.add(model);
+      try {
+        final out = await _chatgptOnce(model, system, msgs);
+        if (s.chatgptModel != model) {
+          s.chatgptModel = model;
+          await ChatGptAuth.setModel(model);
+        }
+        return out;
+      } on _ModelRejected catch (e) {
+        lastError = e.message;
+        continue;
+      }
     }
+    throw AiException('None of your ChatGPT plan models accepted the request '
+        '(tried: ${tried.join(', ')}). Last error: $lastError');
+  }
+
+  static int _rank(String m) {
+    var r = 0;
+    if (m.startsWith('gpt-')) r += 100;
+    if (m.contains('codex')) r += 20;
+    if (RegExp(r'(audio|realtime|tts|transcribe|image|embedding|search|moderation)').hasMatch(m)) r -= 500;
+    final v = RegExp(r'gpt-(\d+(?:\.\d+)?)').firstMatch(m);
+    if (v != null) r += (double.parse(v.group(1)!) * 10).round();
+    if (m.contains('mini')) r -= 5;
+    if (m.contains('nano')) r -= 8;
+    return r;
+  }
+
+  static Future<String> _chatgptOnce(String model, String system, List<AiMessage> msgs) async {
+    final token = await ChatGptAuth.accessToken();
     final body = {
       'model': model,
       'instructions': system,
@@ -77,7 +116,13 @@ class AiClient {
       ..body = jsonEncode(body);
     final streamed = await req.send().timeout(_timeout);
     if (streamed.statusCode != 200) {
-      _decode(await http.Response.fromStream(streamed));
+      final res = await http.Response.fromStream(streamed);
+      final text = utf8.decode(res.bodyBytes);
+      if ((res.statusCode == 400 || res.statusCode == 403 || res.statusCode == 404) &&
+          RegExp(r'model', caseSensitive: false).hasMatch(text)) {
+        throw _ModelRejected('$model: ${_errorText(text)}');
+      }
+      _decode(res);
     }
     final out = StringBuffer();
     String? failure;
@@ -101,84 +146,23 @@ class AiClient {
           failure = err is Map ? '${err['message'] ?? err}' : '$err';
       }
     }
-    if (failure != null) throw AiException('ChatGPT request failed: $failure');
+    if (failure != null) {
+      if (RegExp(r'model', caseSensitive: false).hasMatch(failure) && out.isEmpty) {
+        throw _ModelRejected('$model: $failure');
+      }
+      throw AiException('ChatGPT request failed: $failure');
+    }
     return out.toString();
   }
 
-  static String _mime(Uint8List b) =>
-      (b.length > 3 && b[0] == 0xFF && b[1] == 0xD8) ? 'image/jpeg' : 'image/png';
-
-  static Future<String> _openai(AiSettings s, String system, List<AiMessage> msgs, bool jsonMode) async {
-    final body = {
-      'model': s.openaiModel,
-      if (jsonMode) 'response_format': {'type': 'json_object'},
-      'messages': [
-        {'role': 'system', 'content': system},
-        for (final m in msgs)
-          {
-            'role': m.role,
-            'content': m.images.isEmpty
-                ? m.text
-                : [
-                    {'type': 'text', 'text': m.text},
-                    for (final img in m.images)
-                      {
-                        'type': 'image_url',
-                        'image_url': {'url': 'data:${_mime(img)};base64,${base64Encode(img)}', 'detail': 'low'},
-                      },
-                  ],
-          },
-      ],
-    };
-    final res = await http
-        .post(
-          Uri.parse('https://api.openai.com/v1/chat/completions'),
-          headers: {'Authorization': 'Bearer ${s.openaiKey.trim()}', 'Content-Type': 'application/json'},
-          body: jsonEncode(body),
-        )
-        .timeout(_timeout);
-    final j = _decode(res);
-    final content = (((j['choices'] as List).first as Map)['message'] as Map)['content'];
-    return content is String ? content : jsonEncode(content);
-  }
-
-  static Future<String> _anthropic(AiSettings s, String system, List<AiMessage> msgs) async {
-    final body = {
-      'model': s.anthropicModel,
-      'max_tokens': 8000,
-      'system': system,
-      'messages': [
-        for (final m in msgs)
-          {
-            'role': m.role,
-            'content': [
-              for (final img in m.images)
-                {
-                  'type': 'image',
-                  'source': {'type': 'base64', 'media_type': _mime(img), 'data': base64Encode(img)},
-                },
-              {'type': 'text', 'text': m.text},
-            ],
-          },
-      ],
-    };
-    final res = await http
-        .post(
-          Uri.parse('https://api.anthropic.com/v1/messages'),
-          headers: {
-            'x-api-key': s.anthropicKey.trim(),
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          body: jsonEncode(body),
-        )
-        .timeout(_timeout);
-    final j = _decode(res);
-    return (j['content'] as List)
-        .whereType<Map>()
-        .where((b) => b['type'] == 'text')
-        .map((b) => b['text'] as String)
-        .join();
+  static String _errorText(String body) {
+    try {
+      final j = jsonDecode(body);
+      final e = j is Map ? j['error'] : null;
+      if (e is Map) return '${e['message'] ?? e}';
+      if (e != null) return '$e';
+    } catch (_) {}
+    return body.length > 200 ? body.substring(0, 200) : body;
   }
 
   static Map<String, dynamic> _decode(http.Response res) {
@@ -218,4 +202,9 @@ class AiClient {
     final res = await http.Response.fromStream(streamed);
     return _decode(res);
   }
+}
+
+class _ModelRejected implements Exception {
+  final String message;
+  _ModelRejected(this.message);
 }
