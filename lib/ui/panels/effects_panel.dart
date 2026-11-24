@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/model/effects_catalog.dart';
+import '../../core/presets/motion_presets.dart';
+import '../common.dart';
 import '../../state/editor_controller.dart';
 import 'prop_row.dart';
 
@@ -15,12 +17,34 @@ class EffectsPanel extends StatelessWidget {
       animation: Listenable.merge([c, c.timeNotifier]),
       builder: (context, _) {
         final l = c.selectedLayer;
+        final looks = [
+          const SectionTitle('Looks (all photos & videos)'),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final st in MotionPresets.styles)
+              ActionChip(
+                avatar: const Icon(Icons.palette_outlined, size: 16),
+                label: Text(MotionPresets.styleLabel(st)),
+                onPressed: () {
+                  final e = c.tryRun({'op': 'apply_style', 'style': st});
+                  if (e != null) showSnack(context, e);
+                },
+              ),
+          ]),
+          const SectionTitle('Effects on selected layer'),
+        ];
         if (l == null) {
-          return const Center(child: Text('Select a layer to add effects', style: TextStyle(color: Colors.white54)));
+          return ListView(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), children: [
+            ...looks,
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Select a layer to add effects', style: TextStyle(color: Colors.white54)),
+            ),
+          ]);
         }
         return ListView(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           children: [
+            ...looks,
             Wrap(spacing: 6, runSpacing: 6, children: [
               for (final def in EffectsCatalog.all)
                 ActionChip(

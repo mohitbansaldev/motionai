@@ -19,10 +19,10 @@ class _AddPanelState extends State<AddPanel> {
   bool _busy = false;
   EditorController get c => widget.c;
 
-  Future<void> _importMedia(bool video) async {
+  Future<void> _importMedia(MediaType kind) async {
     setState(() => _busy = true);
     try {
-      final assets = await MediaImporter(c.storage).pick(video: video);
+      final assets = await MediaImporter(c.storage).pick(kind: kind);
       if (assets.isEmpty) return;
       for (final a in assets) {
         c.project.media[a.id] = a;
@@ -34,11 +34,12 @@ class _AddPanelState extends State<AddPanel> {
       for (final a in assets) {
         cmds.add({
           'op': 'add_layer',
-          'type': a.type == MediaType.video ? 'video' : 'image',
+          'type': a.type.name,
           'media': a.id,
           'start': t,
+          if (a.type == MediaType.audio) 'index': c.comp.layers.length + cmds.length,
         });
-        t += a.type == MediaType.video ? a.duration : 5;
+        t += a.type == MediaType.image ? 5 : a.duration;
       }
       final err = c.tryRun({'op': 'batch', 'commands': cmds});
       if (err != null && mounted) showSnack(context, err);
@@ -61,8 +62,9 @@ class _AddPanelState extends State<AddPanel> {
   @override
   Widget build(BuildContext context) {
     final tiles = <(IconData, String, VoidCallback)>[
-      (Icons.movie_outlined, 'Video', () => _importMedia(true)),
-      (Icons.image_outlined, 'Image', () => _importMedia(false)),
+      (Icons.movie_outlined, 'Video', () => _importMedia(MediaType.video)),
+      (Icons.image_outlined, 'Image', () => _importMedia(MediaType.image)),
+      (Icons.music_note_outlined, 'Music / VO', () => _importMedia(MediaType.audio)),
       (Icons.text_fields, 'Text', () => _add({'op': 'add_layer', 'type': 'text', 'text': 'Your Title'})),
       (Icons.square_outlined, 'Solid', () => _add({'op': 'add_layer', 'type': 'solid', 'color': '#1E2A44'})),
       (Icons.control_camera, 'Null', () => _add({'op': 'add_layer', 'type': 'null', 'name': 'Controller'})),
@@ -97,7 +99,7 @@ class _AddPanelState extends State<AddPanel> {
   }
 
   Future<void> _parallax(BuildContext context) async {
-    final candidates = c.comp.layers.where((l) => l.type != LayerType.nullObject).toList();
+    final candidates = c.comp.layers.where((l) => l.type != LayerType.nullObject && l.type != LayerType.audio).toList();
     if (candidates.isEmpty) {
       showSnack(context, 'Add a background and some foreground layers (PNG cut-outs, text) first.');
       return;

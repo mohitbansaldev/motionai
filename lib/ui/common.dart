@@ -18,6 +18,7 @@ IconData layerIcon(LayerType t) => switch (t) {
       LayerType.text => Icons.text_fields,
       LayerType.solid => Icons.square_outlined,
       LayerType.nullObject => Icons.control_camera,
+      LayerType.audio => Icons.music_note_outlined,
     };
 
 Color layerColor(LayerType t) => switch (t) {
@@ -26,6 +27,7 @@ Color layerColor(LayerType t) => switch (t) {
       LayerType.text => const Color(0xFFC9813A),
       LayerType.solid => const Color(0xFF8C5BD6),
       LayerType.nullObject => const Color(0xFF7A7F89),
+      LayerType.audio => const Color(0xFF1F9AA8),
     };
 
 String colorHex(int argb) => '#${(argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';

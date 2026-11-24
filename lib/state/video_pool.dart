@@ -37,7 +37,7 @@ class VideoPool extends ChangeNotifier {
     final comp = project.main;
     final alive = <String>{};
     for (final l in comp.layers) {
-      if (l.type != LayerType.video || l.mediaId == null) continue;
+      if ((l.type != LayerType.video && l.type != LayerType.audio) || l.mediaId == null) continue;
       final asset = project.media[l.mediaId];
       if (asset == null) continue;
       alive.add(l.id);
@@ -46,6 +46,8 @@ class VideoPool extends ChangeNotifier {
       if (!e.ready) continue;
       final active = l.isActiveAt(t);
       final target = l.sourceTimeAt(t).clamp(0.0, asset.duration);
+      final vol = (l.prop(Props.volume).scalarAt(t) / 100).clamp(0.0, 1.0);
+      if ((e.controller.value.volume - vol).abs() > 0.01) e.controller.setVolume(vol);
       if (playing && active) {
         final pos = e.controller.value.position.inMicroseconds / 1e6;
         if (!e.controller.value.isPlaying) {

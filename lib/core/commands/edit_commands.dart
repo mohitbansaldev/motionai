@@ -8,6 +8,7 @@ import '../model/effects_catalog.dart';
 import '../model/layer.dart';
 import '../model/project.dart';
 import '../presets/camera_presets.dart';
+import '../presets/motion_presets.dart';
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -53,6 +54,7 @@ class EditCommands {
     'trim_layer', 'split_layer', 'set_property', 'set_keyframe', 'remove_keyframe',
     'clear_keyframes', 'set_ease', 'add_effect', 'remove_effect', 'set_effect_param',
     'set_camera_mode', 'camera_move', 'parallax_rig', 'set_comp', 'batch',
+    'animate_in', 'animate_out', 'apply_style', 'add_mask', 'update_mask', 'remove_mask',
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -271,6 +273,43 @@ class EditCommands {
         );
         break;
 
+      case 'animate_in':
+      case 'animate_out':
+        final l = _layer(comp, c['layer']);
+        MotionPresets.animate(comp, l, c['preset'] as String? ?? 'fade',
+            isIn: op == 'animate_in', duration: _optNum(c, 'duration') ?? 0.6);
+        break;
+
+      case 'apply_style':
+        final ids = (c['layers'] as List?)?.map((e) => '$e').toList();
+        r.log.addAll(MotionPresets.applyStyle(comp, c['style'] as String? ?? '', layerIds: ids));
+        break;
+
+      case 'add_mask':
+        final l = _layer(comp, c['layer']);
+        final id = (c['id'] as String?) ?? Ids.next('mask');
+        final shape = c['shape'] as String? ?? 'ellipse';
+        if (shape != 'ellipse' && shape != 'rect') throw CommandError('Mask shape must be "ellipse" or "rect"');
+        final m = MotionPresets.newMask(l, id, shape: shape, invert: c['invert'] == true);
+        for (final k in ['center', 'size', 'feather']) {
+          if (c[k] != null) m.props[k]!.staticValue = _fitList(m.props[k]!, _values(c[k]));
+        }
+        l.masks.add(m);
+        r.createdIds.add(id);
+        break;
+
+      case 'update_mask':
+        final l = _layer(comp, c['layer']);
+        final m = _mask(l, c['mask']);
+        if (c['shape'] != null) m.shape = c['shape'] == 'rect' ? 'rect' : 'ellipse';
+        if (c['invert'] != null) m.invert = c['invert'] == true;
+        break;
+
+      case 'remove_mask':
+        final l = _layer(comp, c['layer']);
+        l.masks.remove(_mask(l, c['mask']));
+        break;
+
       case 'set_comp':
         if (c['name'] != null) comp.name = '${c['name']}';
         if (c['width'] != null) comp.width = _num(c, 'width');
@@ -300,17 +339,28 @@ class EditCommands {
     final start = _optNum(c, 'start') ?? now;
 
     MediaAsset? media;
-    if (type == LayerType.video || type == LayerType.image) {
+    if (type == LayerType.video || type == LayerType.image || type == LayerType.audio) {
       final mid = c['media'] as String?;
       media = mid == null ? null : project.media[mid];
       if (media == null) {
-        throw CommandError('add_layer $type needs "media" = an imported media id. '
-            'Available: ${project.media.keys.join(', ')}');
+        throw CommandError('add_layer ${type.name} needs "media" = an imported media id. '
+            'Available: ${project.media.values.map((m) => '${m.id} (${m.type.name})').join(', ')}');
+      }
+      final expected = switch (type) {
+        LayerType.video => MediaType.video,
+        LayerType.audio => MediaType.audio,
+        _ => MediaType.image,
+      };
+      if (media.type != expected && !(type == LayerType.audio && media.type == MediaType.video)) {
+        throw CommandError('Media "${media.id}" is ${media.type.name}, not ${expected.name}');
       }
     }
 
     double w, h;
-    if (media != null) {
+    if (type == LayerType.audio) {
+      w = 100;
+      h = 100;
+    } else if (media != null) {
       w = media.width;
       h = media.height;
     } else if (type == LayerType.text) {
@@ -328,7 +378,7 @@ class EditCommands {
     final sourceIn = _optNum(c, 'source_in') ?? 0;
     if (c['duration'] != null) {
       duration = _num(c, 'duration');
-    } else if (type == LayerType.video) {
+    } else if (type == LayerType.video || type == LayerType.audio) {
       duration = math.max(comp.frameDuration, media!.duration - sourceIn);
     } else {
       duration = 5;
@@ -351,7 +401,7 @@ class EditCommands {
     layer.prop(Props.position).staticValue = [comp.width / 2, comp.height / 2, 0];
 
     // Fit media into the frame (contain by default).
-    final fit = c['fit'] as String? ?? (media != null ? 'contain' : 'none');
+    final fit = c['fit'] as String? ?? (media != null && type != LayerType.audio ? 'contain' : 'none');
     if (fit != 'none') {
       final sx = comp.width / w, sy = comp.height / h;
       final s = (fit == 'cover' ? math.max(sx, sy) : math.min(sx, sy)) * 100;
@@ -432,6 +482,23 @@ class EditCommands {
     if (c['align'] != null) t.align = '${c['align']}';
     if (c['font_family'] != null) t.fontFamily = '${c['font_family']}';
     if (c['text_color'] != null) t.color = _color(c['text_color']);
+    if (c['animator'] != null) {
+      final a = '${c['animator']}';
+      if (!TextAnimators.all.contains(a)) {
+        throw CommandError('Unknown animator "$a". Available: ${TextAnimators.all.join(', ')}');
+      }
+      t.animator = a;
+    }
+    if (c['anim_duration'] != null) t.animDuration = _num(c, 'anim_duration').clamp(0.05, 30.0);
+    if (c['highlight_color'] != null) t.highlightColor = _color(c['highlight_color']);
+    if (c['box_color'] != null) t.boxColor = c['box_color'] == 'none' ? 0 : _color(c['box_color']);
+    if (c['shadow'] != null) t.shadow = c['shadow'] == true;
+    if (c['words'] is List) {
+      t.words = [
+        for (final w in c['words'] as List)
+          WordTiming('${(w as Map)['w']}', (w['s'] as num).toDouble(), (w['e'] as num).toDouble()),
+      ];
+    }
     if (l.type == LayerType.text && c['name'] == null && v != null && l.name == 'Text') {
       l.name = t.text.length > 24 ? '${t.text.substring(0, 24)}…' : t.text;
     }
@@ -443,6 +510,7 @@ class EditCommands {
         LayerType.text => 'Text',
         LayerType.solid => 'Solid',
         LayerType.nullObject => 'Null',
+        LayerType.audio => 'Audio',
       };
 
   static void _extendComp(Composition comp, double end) {
@@ -472,6 +540,14 @@ class EditCommands {
     return e;
   }
 
+  static Mask _mask(Layer l, dynamic id) {
+    final m = id is String ? l.maskById(id) : null;
+    if (m == null) {
+      throw CommandError('No mask "$id" on "${l.id}". Masks: ${l.masks.map((m) => m.id).join(', ')}');
+    }
+    return m;
+  }
+
   /// Resolves "target" (layer id or "camera") + "prop" (optionally "prop.x").
   static ({AnimProp prop, int? component}) _prop(Composition comp, Map<String, dynamic> c) {
     final target = c['target'] ?? c['layer'];
@@ -490,6 +566,8 @@ class EditCommands {
       props = comp.camera.props;
     } else if (c['effect'] != null) {
       props = _effect(_layer(comp, target), c['effect']).params;
+    } else if (c['mask'] != null) {
+      props = _mask(_layer(comp, target), c['mask']).props;
     } else {
       props = _layer(comp, target).props;
     }

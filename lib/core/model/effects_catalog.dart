@@ -17,7 +17,7 @@ class EffectDef {
   const EffectDef(this.type, this.label, this.params);
 }
 
-/// Effects available in milestone 1. Each one is implemented by the
+/// Effects available in the editor. Each one is implemented by the
 /// preview renderer (lib/ui/preview/layer_view.dart). The native engine
 /// (milestone 2) will add glow, light leaks, displacement, particles...
 class EffectsCatalog {
@@ -37,6 +37,25 @@ class EffectsCatalog {
     EffectDef('vignette', 'Vignette', [
       ParamDef('amount', 'Amount', [60], 0, 100),
       ParamDef('size', 'Size', [60], 0, 100),
+    ]),
+    EffectDef('glow', 'Glow', [
+      ParamDef('amount', 'Intensity', [50], 0, 100),
+      ParamDef('radius', 'Radius', [20], 1, 100),
+    ]),
+    EffectDef('grain', 'Film Grain', [
+      ParamDef('amount', 'Amount', [25], 0, 100),
+      ParamDef('size', 'Size', [2], 1, 8),
+    ]),
+    EffectDef('light_leak', 'Light Leak', [
+      ParamDef('amount', 'Amount', [45], 0, 100),
+      ParamDef('speed', 'Speed', [1], 0, 5),
+    ]),
+    EffectDef('gradient', 'Gradient Overlay', [
+      ParamDef('amount', 'Darken bottom', [60], 0, 100),
+      ParamDef('top', 'Darken top', [0], 0, 100),
+    ]),
+    EffectDef('letterbox', 'Letterbox', [
+      ParamDef('amount', 'Bar size %', [12], 0, 40),
     ]),
   ];
 

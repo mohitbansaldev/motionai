@@ -41,6 +41,7 @@ class EditorController extends ChangeNotifier {
   bool get playing => _playing;
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
+  int get undoDepth => _undo.length;
 
   Layer? get selectedLayer => selectedLayerId == null ? null : comp.layerById(selectedLayerId!);
 

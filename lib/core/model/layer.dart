@@ -1,6 +1,6 @@
 import 'anim_prop.dart';
 
-enum LayerType { video, image, text, solid, nullObject }
+enum LayerType { video, image, text, solid, nullObject, audio }
 
 LayerType layerTypeFromName(String name) {
   final n = name.replaceAll('_', '').toLowerCase();
@@ -18,8 +18,9 @@ class Props {
   static const scale = 'scale'; // [x%, y%, z%]
   static const rotation = 'rotation'; // [x°, y°, z°]
   static const opacity = 'opacity'; // [0..100]
+  static const volume = 'volume'; // [0..200] % for video/audio layers
 
-  static const all = [anchor, position, scale, rotation, opacity];
+  static const all = [anchor, position, scale, rotation, opacity, volume];
 }
 
 /// One effect instance on a layer (blur, color adjust, tint...).
@@ -56,6 +57,31 @@ class Effect {
 }
 
 /// Text styling for text layers.
+/// Timing of one spoken word (captions), in composition seconds.
+class WordTiming {
+  String word;
+  double start;
+  double end;
+  WordTiming(this.word, this.start, this.end);
+  Map<String, dynamic> toJson() => {'w': word, 's': start, 'e': end};
+  static WordTiming fromJson(Map<String, dynamic> j) =>
+      WordTiming(j['w'] as String, (j['s'] as num).toDouble(), (j['e'] as num).toDouble());
+}
+
+/// Text animators: how text appears when the layer starts.
+class TextAnimators {
+  static const all = ['none', 'typewriter', 'word_pop', 'fade_up', 'slide_up', 'karaoke'];
+  static String label(String a) => const {
+        'none': 'None',
+        'typewriter': 'Typewriter',
+        'word_pop': 'Word Pop',
+        'fade_up': 'Fade Up',
+        'slide_up': 'Slide Up',
+        'karaoke': 'Word Highlight',
+      }[a] ??
+      a;
+}
+
 class TextData {
   String text;
   double fontSize;
@@ -63,6 +89,12 @@ class TextData {
   int fontWeight; // 100..900
   String align; // left | center | right
   String? fontFamily;
+  String animator; // see TextAnimators
+  double animDuration; // seconds for the intro animation
+  int highlightColor; // karaoke highlight
+  int boxColor; // 0 = no background box
+  bool shadow;
+  List<WordTiming> words; // optional per-word timings (captions)
 
   TextData({
     this.text = 'Title',
@@ -71,10 +103,28 @@ class TextData {
     this.fontWeight = 700,
     this.align = 'center',
     this.fontFamily,
-  });
+    this.animator = 'none',
+    this.animDuration = 0.8,
+    this.highlightColor = 0xFFFFD54F,
+    this.boxColor = 0,
+    this.shadow = true,
+    List<WordTiming>? words,
+  }) : words = words ?? [];
 
   TextData copy() => TextData(
-      text: text, fontSize: fontSize, color: color, fontWeight: fontWeight, align: align, fontFamily: fontFamily);
+        text: text,
+        fontSize: fontSize,
+        color: color,
+        fontWeight: fontWeight,
+        align: align,
+        fontFamily: fontFamily,
+        animator: animator,
+        animDuration: animDuration,
+        highlightColor: highlightColor,
+        boxColor: boxColor,
+        shadow: shadow,
+        words: words.map((w) => WordTiming(w.word, w.start, w.end)).toList(),
+      );
 
   Map<String, dynamic> toJson() => {
         'text': text,
@@ -83,6 +133,12 @@ class TextData {
         'fontWeight': fontWeight,
         'align': align,
         if (fontFamily != null) 'fontFamily': fontFamily,
+        'animator': animator,
+        'animDuration': animDuration,
+        'highlightColor': highlightColor,
+        'boxColor': boxColor,
+        'shadow': shadow,
+        if (words.isNotEmpty) 'words': words.map((w) => w.toJson()).toList(),
       };
 
   static TextData fromJson(Map<String, dynamic> j) => TextData(
@@ -92,6 +148,40 @@ class TextData {
         fontWeight: j['fontWeight'] as int? ?? 700,
         align: j['align'] as String? ?? 'center',
         fontFamily: j['fontFamily'] as String?,
+        animator: j['animator'] as String? ?? 'none',
+        animDuration: (j['animDuration'] as num? ?? 0.8).toDouble(),
+        highlightColor: j['highlightColor'] as int? ?? 0xFFFFD54F,
+        boxColor: j['boxColor'] as int? ?? 0,
+        shadow: j['shadow'] as bool? ?? true,
+        words: (j['words'] as List? ?? []).map((e) => WordTiming.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+}
+
+/// A shape mask on a layer. Props (layer pixels): center [x,y], size [w,h], feather [px].
+class Mask {
+  String id;
+  String shape; // rect | ellipse
+  bool invert;
+  final Map<String, AnimProp> props;
+
+  Mask({required this.id, this.shape = 'ellipse', this.invert = false, Map<String, AnimProp>? props})
+      : props = props ?? {};
+
+  Mask copy() => Mask(id: id, shape: shape, invert: invert, props: props.map((k, v) => MapEntry(k, v.copy())));
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'shape': shape,
+        'invert': invert,
+        'props': props.map((k, v) => MapEntry(k, v.toJson())),
+      };
+
+  static Mask fromJson(Map<String, dynamic> j) => Mask(
+        id: j['id'] as String,
+        shape: j['shape'] as String? ?? 'ellipse',
+        invert: j['invert'] as bool? ?? false,
+        props: (j['props'] as Map<String, dynamic>? ?? {})
+            .map((k, v) => MapEntry(k, AnimProp.fromJson(v as Map<String, dynamic>))),
       );
 }
 
@@ -125,6 +215,7 @@ class Layer {
 
   final Map<String, AnimProp> props;
   final List<Effect> effects;
+  final List<Mask> masks;
 
   Layer({
     required this.id,
@@ -146,8 +237,10 @@ class Layer {
     this.color = 0xFF3D5AFE,
     Map<String, AnimProp>? props,
     List<Effect>? effects,
+    List<Mask>? masks,
   })  : props = props ?? {},
-        effects = effects ?? [] {
+        effects = effects ?? [],
+        masks = masks ?? [] {
     _ensureDefaults();
   }
 
@@ -157,6 +250,7 @@ class Layer {
     props.putIfAbsent(Props.scale, () => AnimProp([100, 100, 100]));
     props.putIfAbsent(Props.rotation, () => AnimProp([0, 0, 0]));
     props.putIfAbsent(Props.opacity, () => AnimProp([100]));
+    props.putIfAbsent(Props.volume, () => AnimProp([100]));
   }
 
   double get end => start + duration;
@@ -184,6 +278,15 @@ class Layer {
         p.shift(dt);
       }
     }
+    for (final m in masks) {
+      for (final p in m.props.values) {
+        p.shift(dt);
+      }
+    }
+    for (final w in text?.words ?? const <WordTiming>[]) {
+      w.start += dt;
+      w.end += dt;
+    }
   }
 
   /// Every keyframe time on this layer (for timeline diamonds).
@@ -203,6 +306,13 @@ class Layer {
     }
     final l = s.toList()..sort();
     return l;
+  }
+
+  Mask? maskById(String id) {
+    for (final m in masks) {
+      if (m.id == id) return m;
+    }
+    return null;
   }
 
   Effect? effectById(String id) {
@@ -232,6 +342,7 @@ class Layer {
         color: color,
         props: props.map((k, v) => MapEntry(k, v.copy())),
         effects: effects.map((e) => e.copy()).toList(),
+        masks: masks.map((m) => m.copy()).toList(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -254,6 +365,7 @@ class Layer {
         'height': height,
         'props': props.map((k, v) => MapEntry(k, v.toJson())),
         'effects': effects.map((e) => e.toJson()).toList(),
+        if (masks.isNotEmpty) 'masks': masks.map((m) => m.toJson()).toList(),
       };
 
   static Layer fromJson(Map<String, dynamic> j) => Layer(
@@ -277,5 +389,6 @@ class Layer {
         props: (j['props'] as Map<String, dynamic>? ?? {})
             .map((k, v) => MapEntry(k, AnimProp.fromJson(v as Map<String, dynamic>))),
         effects: (j['effects'] as List? ?? []).map((e) => Effect.fromJson(e as Map<String, dynamic>)).toList(),
+        masks: (j['masks'] as List? ?? []).map((e) => Mask.fromJson(e as Map<String, dynamic>)).toList(),
       );
 }

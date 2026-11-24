@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/model/layer.dart';
+import '../../core/presets/motion_presets.dart';
 import '../../state/editor_controller.dart';
 import '../common.dart';
 import 'prop_row.dart';
@@ -55,17 +56,41 @@ class LayerPanel extends StatelessWidget {
                   ),
               ]),
             ],
-            const SectionTitle('Transform'),
-            row(Props.position, 'Position X', -w, w * 2, comp: 0),
-            row(Props.position, 'Position Y', -h, h * 2, comp: 1),
-            if (l.is3D) row(Props.position, 'Position Z', -4000, 12000, comp: 2),
-            row(Props.scale, 'Scale', 0, 400),
-            if (l.is3D) row(Props.rotation, 'X Rotation', -180, 180, comp: 0),
-            if (l.is3D) row(Props.rotation, 'Y Rotation', -180, 180, comp: 1),
-            row(Props.rotation, l.is3D ? 'Z Rotation' : 'Rotation', -360, 360, comp: 2),
-            row(Props.opacity, 'Opacity', 0, 100, decimals: 0),
-            row(Props.anchor, 'Anchor X', 0, l.width, comp: 0, decimals: 0),
-            row(Props.anchor, 'Anchor Y', 0, l.height, comp: 1, decimals: 0),
+            if (l.type == LayerType.video || l.type == LayerType.audio) ...[
+              const SectionTitle('Audio'),
+              row(Props.volume, 'Volume', 0, 100, decimals: 0),
+            ],
+            if (l.type != LayerType.audio) ...[
+              const SectionTitle('Transform'),
+              row(Props.position, 'Position X', -w, w * 2, comp: 0),
+              row(Props.position, 'Position Y', -h, h * 2, comp: 1),
+              if (l.is3D) row(Props.position, 'Position Z', -4000, 12000, comp: 2),
+              row(Props.scale, 'Scale', 0, 400),
+              if (l.is3D) row(Props.rotation, 'X Rotation', -180, 180, comp: 0),
+              if (l.is3D) row(Props.rotation, 'Y Rotation', -180, 180, comp: 1),
+              row(Props.rotation, l.is3D ? 'Z Rotation' : 'Rotation', -360, 360, comp: 2),
+              row(Props.opacity, 'Opacity', 0, 100, decimals: 0),
+              row(Props.anchor, 'Anchor X', 0, l.width, comp: 0, decimals: 0),
+              row(Props.anchor, 'Anchor Y', 0, l.height, comp: 1, decimals: 0),
+              const SectionTitle('Animate in (at layer start)'),
+              _transitionChips(context, l, true),
+              const SectionTitle('Animate out (at layer end)'),
+              _transitionChips(context, l, false),
+              const SectionTitle('Masks'),
+              for (final m in l.masks) _maskCard(l, m),
+              Wrap(spacing: 8, children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.circle_outlined, size: 16),
+                  label: const Text('Ellipse mask'),
+                  onPressed: () => c.tryRun({'op': 'add_mask', 'layer': l.id, 'shape': 'ellipse'}),
+                ),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.crop_square, size: 16),
+                  label: const Text('Rectangle mask'),
+                  onPressed: () => c.tryRun({'op': 'add_mask', 'layer': l.id, 'shape': 'rect'}),
+                ),
+              ]),
+            ],
             const SectionTitle('Layer'),
             _parentPicker(l),
             const SizedBox(height: 8),
@@ -93,6 +118,56 @@ class LayerPanel extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Widget _transitionChips(BuildContext context, Layer l, bool isIn) {
+    return Wrap(spacing: 6, runSpacing: 6, children: [
+      for (final t in MotionPresets.transitions)
+        ActionChip(
+          label: Text(MotionPresets.transitionLabel(t), style: const TextStyle(fontSize: 12)),
+          onPressed: () {
+            final e = c.tryRun({'op': isIn ? 'animate_in' : 'animate_out', 'layer': l.id, 'preset': t});
+            if (e != null) showSnack(context, e);
+          },
+        ),
+    ]);
+  }
+
+  Widget _maskCard(Layer l, Mask m) {
+    PropRow mrow(String prop, String label, double max, {int? comp}) => PropRow(
+          c: c,
+          ref: PropRef(l.id, prop, maskId: m.id),
+          component: comp,
+          label: label,
+          min: 0,
+          max: max,
+          decimals: 0,
+        );
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 4, 6),
+        child: Column(children: [
+          Row(children: [
+            Expanded(child: Text(m.shape == 'rect' ? 'Rectangle mask' : 'Ellipse mask')),
+            const Text('Invert', style: TextStyle(fontSize: 12)),
+            Switch(
+              value: m.invert,
+              onChanged: (v) => c.tryRun({'op': 'update_mask', 'layer': l.id, 'mask': m.id, 'invert': v}),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 18),
+              onPressed: () => c.tryRun({'op': 'remove_mask', 'layer': l.id, 'mask': m.id}),
+            ),
+          ]),
+          mrow('center', 'Center X', l.width, comp: 0),
+          mrow('center', 'Center Y', l.height, comp: 1),
+          mrow('size', 'Width', l.width * 2, comp: 0),
+          mrow('size', 'Height', l.height * 2, comp: 1),
+          mrow('feather', 'Feather', 500),
+        ]),
+      ),
     );
   }
 
@@ -232,6 +307,42 @@ class _TextSectionState extends State<_TextSection> {
         selected: t.color,
         onPick: (v) => c.tryRun({'op': 'update_layer', 'layer': l.id, 'text_color': colorHex(v)}),
       ),
+      const SectionTitle('Text animation'),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        for (final a in TextAnimators.all)
+          ChoiceChip(
+            label: Text(TextAnimators.label(a), style: const TextStyle(fontSize: 12)),
+            selected: t.animator == a,
+            onSelected: (_) => c.tryRun({'op': 'update_layer', 'layer': l.id, 'animator': a}),
+          ),
+      ]),
+      Row(children: [
+        const SizedBox(width: 84, child: Text('Anim length', style: TextStyle(fontSize: 12.5, color: Colors.white70))),
+        Expanded(
+          child: Slider(
+            value: t.animDuration.clamp(0.1, 5.0),
+            min: 0.1,
+            max: 5,
+            onChangeStart: (_) => c.beginGesture(),
+            onChanged: (v) => c.tryRun({'op': 'update_layer', 'layer': l.id, 'anim_duration': v}, record: false),
+            onChangeEnd: (_) => c.endGesture(),
+          ),
+        ),
+        SizedBox(width: 40, child: Text('${t.animDuration.toStringAsFixed(1)}s', textAlign: TextAlign.right)),
+      ]),
+      Row(children: [
+        const Expanded(child: Text('Background box', style: TextStyle(fontSize: 12.5, color: Colors.white70))),
+        Switch(
+          value: t.boxColor != 0,
+          onChanged: (v) =>
+              c.tryRun({'op': 'update_layer', 'layer': l.id, 'box_color': v ? '#AA000000' : 'none'}),
+        ),
+        const Text('Shadow', style: TextStyle(fontSize: 12.5, color: Colors.white70)),
+        Switch(
+          value: t.shadow,
+          onChanged: (v) => c.tryRun({'op': 'update_layer', 'layer': l.id, 'shadow': v}),
+        ),
+      ]),
     ]);
   }
 }

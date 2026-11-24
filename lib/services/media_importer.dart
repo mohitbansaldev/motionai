@@ -15,10 +15,13 @@ class MediaImporter {
 
   static const _videoExt = ['mp4', 'mov', 'm4v', 'webm', 'mkv', '3gp'];
   static const _imageExt = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic'];
+  static const _audioExt = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac', 'opus'];
 
-  Future<List<MediaAsset>> pick({required bool video}) async {
+  Future<List<MediaAsset>> pick({required MediaType kind}) async {
     // file_picker 13: static API, multi-select by default, empty list on cancel.
-    final files = await FilePicker.pickFiles(type: video ? FileType.video : FileType.image);
+    final files = await FilePicker.pickFiles(
+      type: switch (kind) { MediaType.video => FileType.video, MediaType.image => FileType.image, MediaType.audio => FileType.audio },
+    );
     final out = <MediaAsset>[];
     for (final f in files) {
       final path = f.path;
@@ -33,18 +36,19 @@ class MediaImporter {
     final ext = path.split('.').last.toLowerCase();
     final isVideo = _videoExt.contains(ext);
     final isImage = _imageExt.contains(ext);
-    if (!isVideo && !isImage) return null;
-    final id = Ids.next(isVideo ? 'vid' : 'img');
+    final isAudio = _audioExt.contains(ext);
+    if (!isVideo && !isImage && !isAudio) return null;
+    final id = Ids.next(isVideo ? 'vid' : isAudio ? 'aud' : 'img');
     final stored = await storage.importFile(path, id);
     final display = name ?? path.split(Platform.pathSeparator).last;
-    if (isVideo) {
+    if (isVideo || isAudio) {
       final c = VideoPlayerController.file(File(stored));
       try {
         await c.initialize();
         final size = c.value.size;
         return MediaAsset(
           id: id,
-          type: MediaType.video,
+          type: isAudio ? MediaType.audio : MediaType.video,
           path: stored,
           name: display,
           width: size.width > 0 ? size.width : 1920,

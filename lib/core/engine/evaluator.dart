@@ -112,7 +112,7 @@ class Evaluator {
     // layers[0] is the top layer, so paint from the end.
     for (int i = comp.layers.length - 1; i >= 0; i--) {
       final layer = comp.layers[i];
-      if (!layer.isActiveAt(t) || layer.type == LayerType.nullObject) continue;
+      if (!layer.isActiveAt(t) || layer.type == LayerType.nullObject || layer.type == LayerType.audio) continue;
       final opacity = (layer.prop(Props.opacity).scalarAt(t) / 100).clamp(0.0, 1.0);
       if (opacity <= 0) continue;
       final world = worldMatrix(comp, layer, t, worldCache);

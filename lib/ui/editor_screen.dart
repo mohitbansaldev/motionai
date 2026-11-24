@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../ai/agent.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../services/project_storage.dart';
@@ -7,6 +8,7 @@ import '../state/editor_controller.dart';
 import 'command_console.dart';
 import 'common.dart';
 import 'panels/add_panel.dart';
+import 'panels/ai_panel.dart';
 import 'panels/camera_panel.dart';
 import 'panels/effects_panel.dart';
 import 'panels/layer_panel.dart';
@@ -24,7 +26,8 @@ class EditorScreen extends StatefulWidget {
 
 class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMixin {
   late final EditorController c = EditorController(widget.project, widget.storage);
-  late final TabController _tabs = TabController(length: 4, vsync: this);
+  late final TabController _tabs = TabController(length: 5, vsync: this);
+  late final EditAgent _agent = EditAgent(c);
   String? _lastSelection;
   bool _lastCamera = false;
 
@@ -153,6 +156,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
               Tab(height: 38, text: 'Layer'),
               Tab(height: 38, text: 'Camera'),
               Tab(height: 38, text: 'Effects'),
+              Tab(height: 38, text: 'AI ✨'),
             ],
           ),
           Expanded(
@@ -165,6 +169,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
                 LayerPanel(c: c),
                 CameraPanel(c: c),
                 EffectsPanel(c: c),
+                AiPanel(c: c, agent: _agent),
               ],
             ),
           ),

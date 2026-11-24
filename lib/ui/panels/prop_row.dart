@@ -10,9 +10,15 @@ class PropRef {
   final String target; // layer id or "camera"
   final String prop;
   final String? effectId;
-  const PropRef(this.target, this.prop, {this.effectId});
+  final String? maskId;
+  const PropRef(this.target, this.prop, {this.effectId, this.maskId});
 
-  Map<String, dynamic> base() => {'target': target, 'prop': prop, if (effectId != null) 'effect': effectId};
+  Map<String, dynamic> base() => {
+        'target': target,
+        'prop': prop,
+        if (effectId != null) 'effect': effectId,
+        if (maskId != null) 'mask': maskId,
+      };
 }
 
 /// A labelled slider for one component of an animatable property, with a
@@ -38,6 +44,9 @@ class PropRow extends StatelessWidget {
   });
 
   AnimProp? _resolve() {
+    if (ref.maskId != null) {
+      return c.comp.layerById(ref.target)?.maskById(ref.maskId!)?.props[ref.prop];
+    }
     if (ref.effectId != null) {
       final l = c.comp.layerById(ref.target);
       return l?.effectById(ref.effectId!)?.params[ref.prop];
@@ -48,7 +57,7 @@ class PropRow extends StatelessWidget {
   String get _propPath => component == null ? ref.prop : '${ref.prop}.${'xyz'[component!]}';
 
   void _set(double v, {bool record = false}) {
-    if (component != null && ref.effectId != null) {
+    if (component != null && (ref.effectId != null || ref.maskId != null)) {
       // Effects don't support .x paths; write the whole vector.
       final p = _resolve()!;
       final cur = p.valueAt(c.time);

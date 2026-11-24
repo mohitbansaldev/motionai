@@ -213,4 +213,81 @@ void main() {
       }
     });
   });
+
+  group('v2 commands', () {
+    Project withPhoto() {
+      final pr = newProject();
+      pr.media['img'] = MediaAsset(id: 'img', type: MediaType.image, path: '/a.jpg', name: 'a', width: 1920, height: 1080);
+      EditCommands.runAtomic(pr, {'op': 'add_layer', 'type': 'image', 'media': 'img', 'id': 'p', 'duration': 4});
+      return pr;
+    }
+
+    test('animate_in fade adds opacity keys at layer start', () {
+      final pr = withPhoto();
+      EditCommands.runAtomic(pr, {'op': 'animate_in', 'layer': 'p', 'preset': 'fade', 'duration': 1});
+      final o = pr.main.requireLayer('p').prop(Props.opacity);
+      expect(o.scalarAt(0), 0);
+      expect(o.scalarAt(1), 100);
+    });
+
+    test('every transition preset runs in and out', () {
+      for (final t in ['fade', 'zoom_in', 'zoom_out', 'slide_left', 'slide_right', 'slide_up', 'slide_down', 'blur', 'spin', 'pop', 'whip']) {
+        final pr = withPhoto();
+        EditCommands.runAtomic(pr, {'op': 'animate_in', 'layer': 'p', 'preset': t});
+        EditCommands.runAtomic(pr, {'op': 'animate_out', 'layer': 'p', 'preset': t});
+      }
+    });
+
+    test('styles replace each other', () {
+      final pr = withPhoto();
+      EditCommands.runAtomic(pr, {'op': 'apply_style', 'style': 'cinematic_doc'});
+      final n1 = pr.main.requireLayer('p').effects.length;
+      EditCommands.runAtomic(pr, {'op': 'apply_style', 'style': 'cinematic_doc'});
+      expect(pr.main.requireLayer('p').effects.length, n1);
+      EditCommands.runAtomic(pr, {'op': 'apply_style', 'style': 'shorts_punch'});
+      expect(pr.main.requireLayer('p').effects.length, lessThan(n1));
+    });
+
+    test('masks are keyframeable and survive json', () {
+      final pr = withPhoto();
+      EditCommands.runAtomic(pr, {
+        'op': 'batch',
+        'commands': [
+          {'op': 'add_mask', 'layer': 'p', 'shape': 'rect', 'id': 'm1', 'feather': 20},
+          {'op': 'set_keyframe', 'target': 'p', 'mask': 'm1', 'prop': 'size', 'time': 0, 'value': [100, 100]},
+          {'op': 'set_keyframe', 'target': 'p', 'mask': 'm1', 'prop': 'size', 'time': 2, 'value': [1920, 1080]},
+        ],
+      });
+      final copy = Project.fromJson(jsonDecode(jsonEncode(pr.toJson())) as Map<String, dynamic>);
+      expect(copy.main.requireLayer('p').maskById('m1')!.props['size']!.keyframes.length, 2);
+    });
+
+    test('text animator and caption words', () {
+      final pr = newProject();
+      EditCommands.runAtomic(pr, {
+        'op': 'add_layer',
+        'type': 'text',
+        'id': 't',
+        'text': 'hello world',
+        'animator': 'karaoke',
+        'words': [
+          {'w': 'hello', 's': 0, 'e': 0.5},
+          {'w': 'world', 's': 0.5, 'e': 1},
+        ],
+      });
+      final t = pr.main.requireLayer('t').text!;
+      expect(t.animator, 'karaoke');
+      expect(t.words.length, 2);
+      EditCommands.runAtomic(pr, {'op': 'update_layer', 'layer': 't', 'start': 2});
+      expect(pr.main.requireLayer('t').text!.words.first.start, 2);
+    });
+
+    test('audio layer from audio media', () {
+      final pr = newProject();
+      pr.media['a'] = MediaAsset(id: 'a', type: MediaType.audio, path: '/m.mp3', name: 'm', width: 0, height: 0, duration: 30);
+      EditCommands.runAtomic(pr, {'op': 'add_layer', 'type': 'audio', 'media': 'a', 'id': 'music'});
+      expect(pr.main.requireLayer('music').duration, 30);
+      expect(Evaluator.evaluate(pr.main, 1), isEmpty);
+    });
+  });
 }
