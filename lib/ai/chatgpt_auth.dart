@@ -187,13 +187,37 @@ class ChatGptAuth {
     return j['access_token'] as String;
   }
 
-  /// Models available to the signed-in account.
+  /// Models available to the signed-in account, in the server's order.
+  /// The plan-usage catalog returns {"models": [{slug, display_name, visibility}]};
+  /// only entries with visibility "list" are offered.
   static Future<List<String>> models() async {
     final res = await http.get(Uri.parse('$_resource/models'),
         headers: {'Authorization': 'Bearer ${await accessToken()}'});
     final j = _json(res, 'Model list');
-    return [for (final m in (j['data'] as List? ?? [])) '${(m as Map)['id']}'];
+    final out = <String>[];
+    final names = <String, String>{};
+    for (final m in (j['models'] as List? ?? const [])) {
+      if (m is! Map) continue;
+      final vis = m['visibility'];
+      final slug = m['slug'] ?? m['id'];
+      if (slug == null || (vis != null && vis != 'list')) continue;
+      out.add('$slug');
+      names['$slug'] = '${m['display_name'] ?? slug}';
+    }
+    // Standard API shape as a fallback.
+    for (final m in (j['data'] as List? ?? const [])) {
+      if (m is Map && m['id'] != null && !out.contains('${m['id']}')) out.add('${m['id']}');
+    }
+    _displayNames = names;
+    if (out.isEmpty) {
+      final body = utf8.decode(res.bodyBytes);
+      throw AiException('Your ChatGPT plan returned no models. Response: ${body.length > 300 ? body.substring(0, 300) : body}');
+    }
+    return out;
   }
+
+  static Map<String, String> _displayNames = {};
+  static String displayName(String slug) => _displayNames[slug] ?? slug;
 
   static Map<String, dynamic> _json(http.Response res, String what) {
     Map<String, dynamic>? j;

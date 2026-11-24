@@ -264,7 +264,9 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
     if (s!.chatgptConnected) {
       try {
         _cgModels = await ChatGptAuth.models();
-      } catch (_) {}
+      } catch (e) {
+        _cgError = '$e';
+      }
     }
     if (mounted) setState(() {});
   }
@@ -327,7 +329,7 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
               isExpanded: true,
               value: _cgModels.contains(v.chatgptModel) ? v.chatgptModel : null,
               hint: const Text('Model (auto)'),
-              items: [for (final m in _cgModels) DropdownMenuItem(value: m, child: Text(m))],
+              items: [for (final m in _cgModels) DropdownMenuItem(value: m, child: Text(ChatGptAuth.displayName(m)))],
               onChanged: (m) async {
                 if (m == null) return;
                 await ChatGptAuth.setModel(m);

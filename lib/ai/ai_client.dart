@@ -53,10 +53,7 @@ class AiClient {
   static Future<String> _chatgpt(AiSettings s, String system, List<AiMessage> msgs) async {
     final candidates = <String>[];
     if (s.chatgptModel.isNotEmpty) candidates.add(s.chatgptModel);
-    List<String> listed = const [];
-    try {
-      listed = await ChatGptAuth.models();
-    } catch (_) {}
+    final listed = await ChatGptAuth.models();
     for (final m in listed) {
       if (!candidates.contains(m) && !_nonChat.hasMatch(m)) candidates.add(m);
     }
@@ -135,6 +132,7 @@ class AiClient {
         case 'response.output_text.delta':
           out.write(ev['delta'] ?? '');
         case 'response.failed':
+        case 'response.incomplete':
         case 'error':
           final r = ev['response'];
           final err = (r is Map ? r['error'] : null) ?? ev['error'] ?? ev;
