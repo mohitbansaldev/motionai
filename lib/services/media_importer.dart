@@ -29,12 +29,16 @@ class MediaImporter {
     );
     final out = <MediaAsset>[];
     for (final f in files) {
-      final path = f.path;
-      if (path == null) {
-        errors.add('${f.name}: file could not be opened');
-        continue;
-      }
       try {
+        var path = f.path;
+        if (path == null || !await File(path).exists()) {
+          // Some pickers return the file contents without a usable path.
+          final tmp = '${await storage.mediaDir()}/pick_${DateTime.now().microsecondsSinceEpoch}_${f.name}';
+          final sink = File(tmp).openWrite();
+          await sink.addStream(f.readAsByteStream());
+          await sink.close();
+          path = tmp;
+        }
         final asset = await importPath(path, name: f.name, hint: kind);
         if (asset != null) out.add(asset);
       } catch (e) {

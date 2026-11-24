@@ -13,6 +13,11 @@ class AiException implements Exception {
   String toString() => message;
 }
 
+class _ModelUnsupported implements Exception {
+  final String message;
+  _ModelUnsupported(this.message);
+}
+
 class AiMessage {
   final String role; // user | assistant
   final String text;
@@ -43,51 +48,36 @@ class AiClient {
   }
 
   /// Responses API with the ChatGPT-plan OAuth token (streamed, not stored).
-  /// Tries the saved model first, then every model the account lists, and
-  /// remembers the first one the plan accepts.
+  /// If a model isn't available on the user's plan, the next one from the
+  /// account's model list is tried and the working one is remembered.
   static Future<String> _chatgpt(AiSettings s, String system, List<AiMessage> msgs) async {
-    final tried = <String>[];
-    final candidates = <String>[if (s.chatgptModel.isNotEmpty) s.chatgptModel];
-    List<String>? listed;
-    String? lastError;
-    for (int i = 0; i < 12; i++) {
-      if (i >= candidates.length) {
-        if (listed != null) break;
-        listed = await ChatGptAuth.models();
-        // Prefer general GPT models, newest-looking names first.
-        final ranked = [...listed]..sort((a, b) => _rank(b).compareTo(_rank(a)));
-        candidates.addAll(ranked.where((m) => !candidates.contains(m)));
-        if (i >= candidates.length) break;
-      }
-      final model = candidates[i];
-      tried.add(model);
+    final candidates = <String>[];
+    if (s.chatgptModel.isNotEmpty) candidates.add(s.chatgptModel);
+    List<String> listed = const [];
+    try {
+      listed = await ChatGptAuth.models();
+    } catch (_) {}
+    for (final m in listed) {
+      if (!candidates.contains(m) && !_nonChat.hasMatch(m)) candidates.add(m);
+    }
+    if (candidates.isEmpty) throw AiException('Your ChatGPT account returned no available models.');
+    AiException? last;
+    for (final model in candidates.take(6)) {
       try {
-        final out = await _chatgptOnce(model, system, msgs);
+        final text = await _chatgptOnce(model, system, msgs);
         if (s.chatgptModel != model) {
           s.chatgptModel = model;
           await ChatGptAuth.setModel(model);
         }
-        return out;
-      } on _ModelRejected catch (e) {
-        lastError = e.message;
-        continue;
+        return text;
+      } on _ModelUnsupported catch (e) {
+        last = AiException('Model $model: ${e.message}');
       }
     }
-    throw AiException('None of your ChatGPT plan models accepted the request '
-        '(tried: ${tried.join(', ')}). Last error: $lastError');
+    throw last ?? AiException('No model on your ChatGPT plan accepted the request.');
   }
 
-  static int _rank(String m) {
-    var r = 0;
-    if (m.startsWith('gpt-')) r += 100;
-    if (m.contains('codex')) r += 20;
-    if (RegExp(r'(audio|realtime|tts|transcribe|image|embedding|search|moderation)').hasMatch(m)) r -= 500;
-    final v = RegExp(r'gpt-(\d+(?:\.\d+)?)').firstMatch(m);
-    if (v != null) r += (double.parse(v.group(1)!) * 10).round();
-    if (m.contains('mini')) r -= 5;
-    if (m.contains('nano')) r -= 8;
-    return r;
-  }
+  static final _nonChat = RegExp(r'(embedding|tts|whisper|transcribe|dall-e|image|audio|realtime|moderation|search)', caseSensitive: false);
 
   static Future<String> _chatgptOnce(String model, String system, List<AiMessage> msgs) async {
     final token = await ChatGptAuth.accessToken();
@@ -119,8 +109,13 @@ class AiClient {
       final res = await http.Response.fromStream(streamed);
       final text = utf8.decode(res.bodyBytes);
       if ((res.statusCode == 400 || res.statusCode == 403 || res.statusCode == 404) &&
-          RegExp(r'model', caseSensitive: false).hasMatch(text)) {
-        throw _ModelRejected('$model: ${_errorText(text)}');
+          RegExp(r'model|not supported|unsupported', caseSensitive: false).hasMatch(text)) {
+        String msg = text;
+        try {
+          final e = (jsonDecode(text) as Map)['error'];
+          msg = e is Map ? '${e['message']}' : '$e';
+        } catch (_) {}
+        throw _ModelUnsupported(msg);
       }
       _decode(res);
     }
@@ -147,22 +142,12 @@ class AiClient {
       }
     }
     if (failure != null) {
-      if (RegExp(r'model', caseSensitive: false).hasMatch(failure) && out.isEmpty) {
-        throw _ModelRejected('$model: $failure');
+      if (RegExp(r'model.*(not supported|unsupported|not available)', caseSensitive: false).hasMatch(failure)) {
+        throw _ModelUnsupported(failure);
       }
       throw AiException('ChatGPT request failed: $failure');
     }
     return out.toString();
-  }
-
-  static String _errorText(String body) {
-    try {
-      final j = jsonDecode(body);
-      final e = j is Map ? j['error'] : null;
-      if (e is Map) return '${e['message'] ?? e}';
-      if (e != null) return '$e';
-    } catch (_) {}
-    return body.length > 200 ? body.substring(0, 200) : body;
   }
 
   static Map<String, dynamic> _decode(http.Response res) {

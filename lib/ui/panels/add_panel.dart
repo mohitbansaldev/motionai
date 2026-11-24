@@ -49,8 +49,10 @@ class _AddPanelState extends State<AddPanel> {
       final err = c.tryRun({'op': 'batch', 'commands': cmds});
       if (err != null && mounted) showSnack(context, err);
       if (err == null) {
-        final r = c.comp.layers.first;
-        c.select(r.id);
+        c.select(c.comp.layers.first.id);
+        if (mounted) {
+          showSnack(context, 'Added ${assets.length} ${kind == MediaType.image ? 'photo' : kind == MediaType.video ? 'video' : 'audio file'}${assets.length == 1 ? '' : 's'}');
+        }
       }
     } catch (e) {
       if (mounted) showSnack(context, 'Import failed: $e');
