@@ -4,6 +4,12 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.segmentation.subject.SubjectSegmentation
+import com.google.mlkit.vision.segmentation.subject.SubjectSegmenterOptions
+import java.io.FileOutputStream
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaExtractor
@@ -65,6 +71,11 @@ class MediaBridge(private val context: Context, messenger: BinaryMessenger) : Me
                         readers.clear()
                         null
                     }
+                    "cutout" -> cutout(
+                        call.argument<String>("path")!!,
+                        call.argument<String>("fg")!!,
+                        call.argument<String>("bg")!!,
+                    )
                     "thumbnailJpeg" -> thumbnail(call.argument<String>("path")!!, call.long("timeUs"), call.argument<Int>("maxSize") ?: 512)
                     "extractAudio" -> extractAudio(call.argument<String>("path")!!, call.argument<String>("out")!!)
                     "encoderStart" -> {
@@ -153,6 +164,58 @@ class MediaBridge(private val context: Context, messenger: BinaryMessenger) : Me
         val out = ByteArrayOutputStream()
         bmp.compress(Bitmap.CompressFormat.JPEG, 80, out)
         return out.toByteArray()
+    }
+
+    // ----------------------------------------------------- subject cut-out
+
+    /** Splits a photo into a transparent foreground subject and a background plate. */
+    private fun cutout(path: String, fgPath: String, bgPath: String): Map<String, Any> {
+        val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+        var src = BitmapFactory.decodeFile(path, opts) ?: throw IllegalStateException("Cannot read image")
+        val maxSide = 2048
+        if (max(src.width, src.height) > maxSide) {
+            val k = maxSide.toDouble() / max(src.width, src.height)
+            src = Bitmap.createScaledBitmap(src, (src.width * k).roundToInt(), (src.height * k).roundToInt(), true)
+        }
+        val segmenter = SubjectSegmentation.getClient(
+            SubjectSegmenterOptions.Builder().enableForegroundBitmap().build()
+        )
+        val result = Tasks.await(segmenter.process(InputImage.fromBitmap(src, 0)))
+        val fg = result.foregroundBitmap ?: throw IllegalStateException("No subject found in this photo")
+        segmenter.close()
+        FileOutputStream(fgPath).use { fg.compress(Bitmap.CompressFormat.PNG, 100, it) }
+
+        // Background plate: subject area filled with a heavy blur of the photo,
+        // so parallax doesn't reveal a sharp duplicate of the subject.
+        val w = src.width
+        val h = src.height
+        val small = Bitmap.createScaledBitmap(src, max(1, w / 24), max(1, h / 24), true)
+        val blurred = Bitmap.createScaledBitmap(small, w, h, true)
+        val srcPx = IntArray(w * h).also { src.getPixels(it, 0, w, 0, 0, w, h) }
+        val blurPx = IntArray(w * h).also { blurred.getPixels(it, 0, w, 0, 0, w, h) }
+        val fgScaled = if (fg.width != w || fg.height != h) Bitmap.createScaledBitmap(fg, w, h, true) else fg
+        val fgPx = IntArray(w * h).also { fgScaled.getPixels(it, 0, w, 0, 0, w, h) }
+        // Dilate the subject mask a little (cheap: 3 passes of 4-neighbour max on a coarse grid).
+        val mask = BooleanArray(w * h) { (fgPx[it] ushr 24) > 20 }
+        val r = max(2, max(w, h) / 120)
+        val grown = BooleanArray(w * h)
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                if (!mask[y * w + x]) continue
+                for (dy in -r..r step max(1, r / 2)) {
+                    val yy = y + dy
+                    if (yy < 0 || yy >= h) continue
+                    for (dx in -r..r step max(1, r / 2)) {
+                        val xx = x + dx
+                        if (xx in 0 until w) grown[yy * w + xx] = true
+                    }
+                }
+            }
+        }
+        for (i in 0 until w * h) if (grown[i]) srcPx[i] = blurPx[i]
+        val bg = Bitmap.createBitmap(srcPx, w, h, Bitmap.Config.ARGB_8888)
+        FileOutputStream(bgPath).use { bg.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+        return mapOf("width" to w, "height" to h)
     }
 
     // ------------------------------------------------------------- audio

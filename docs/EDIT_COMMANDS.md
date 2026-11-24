@@ -78,6 +78,24 @@ Presets: `push_in`, `pull_out`, `orbit` (amount = degrees), `dolly_zoom`,
 `rotate_2d`, `shake` (amount = pixels). Each move starts from wherever the
 camera is at `start`, so you can chain moves.
 
+## V2: transitions, looks, masks, text animation
+
+| op | fields |
+|---|---|
+| `animate_in` / `animate_out` | `layer`, `preset` (fade, zoom_in, zoom_out, slide_left, slide_right, slide_up, slide_down, blur, spin, pop, whip), `duration`? (0.6) |
+| `apply_style` | `style` (cinematic_doc, shorts_punch, retro_film, noir, warm_travel, clean_minimal), `layers`? |
+| `add_mask` | `layer`, `shape` (ellipse, rect), `center`? [x,y], `size`? [w,h], `feather`?, `invert`?, `id`? |
+| `update_mask` | `layer`, `mask`, `shape`?, `invert`? |
+| `remove_mask` | `layer`, `mask` |
+
+Mask props are keyframeable: `{"op":"set_keyframe","target":"L1","mask":"m1","prop":"size","time":1,"value":[800,800]}`.
+
+Text fields on `add_layer` / `update_layer`: `animator` (none, typewriter, word_pop, fade_up, slide_up, karaoke), `anim_duration`, `highlight_color`, `box_color` (or "none"), `shadow`, `words` [{w, s, e}] (per-word timings for karaoke).
+
+New effects: glow {amount, radius}, grain {amount, size}, light_leak {amount, speed}, gradient {amount, top}, letterbox {amount}.
+
+Audio: `add_layer` with `type: "audio"` and an audio media id. Every layer has a `volume` property (0–200).
+
 ## Composition
 
 | op | fields |

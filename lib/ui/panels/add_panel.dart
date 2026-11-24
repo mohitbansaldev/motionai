@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/model/layer.dart';
 import '../../core/model/project.dart';
+import '../../services/media_bridge.dart';
 import '../../services/media_importer.dart';
 import '../../state/editor_controller.dart';
 import '../common.dart';
@@ -50,6 +51,41 @@ class _AddPanelState extends State<AddPanel> {
     }
   }
 
+  /// Pick a photo, cut out the subject with on-device AI and build a
+  /// parallax shot: blurred-subject background + subject in front.
+  Future<void> _photo3d() async {
+    setState(() => _busy = true);
+    try {
+      final picked = await MediaImporter(c.storage).pick(kind: MediaType.image);
+      if (picked.isEmpty) return;
+      final src = picked.first;
+      final base = src.path.substring(0, src.path.lastIndexOf('.'));
+      final fgPath = '${base}_subject.png', bgPath = '${base}_plate.jpg';
+      final (w, h) = await MediaBridge.cutout(src.path, fgPath, bgPath);
+      final fg = MediaAsset(id: Ids.next('img'), type: MediaType.image, path: fgPath, name: '${src.name} subject', width: w.toDouble(), height: h.toDouble());
+      final bg = MediaAsset(id: Ids.next('img'), type: MediaType.image, path: bgPath, name: '${src.name} background', width: w.toDouble(), height: h.toDouble());
+      c.project.media[fg.id] = fg;
+      c.project.media[bg.id] = bg;
+      c.mediaChanged();
+      final stamp = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
+      final bgId = 'bg_$stamp', fgId = 'fg_$stamp';
+      final err = c.tryRun({
+        'op': 'batch',
+        'commands': [
+          {'op': 'add_layer', 'type': 'image', 'media': bg.id, 'id': bgId, 'start': c.time, 'duration': 5, 'fit': 'cover'},
+          {'op': 'add_layer', 'type': 'image', 'media': fg.id, 'id': fgId, 'start': c.time, 'duration': 5, 'fit': 'cover'},
+          {'op': 'parallax_rig', 'layers': [bgId, fgId], 'depth': 700, 'push': 450, 'start': c.time, 'duration': 5},
+        ],
+      });
+      if (err != null && mounted) showSnack(context, err);
+      if (err == null && mounted) showSnack(context, '3D photo created. Press play.');
+    } catch (e) {
+      if (mounted) showSnack(context, '3D photo failed: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _add(Map<String, dynamic> cmd) {
     try {
       final r = c.run(cmd);
@@ -69,6 +105,7 @@ class _AddPanelState extends State<AddPanel> {
       (Icons.square_outlined, 'Solid', () => _add({'op': 'add_layer', 'type': 'solid', 'color': '#1E2A44'})),
       (Icons.control_camera, 'Null', () => _add({'op': 'add_layer', 'type': 'null', 'name': 'Controller'})),
       (Icons.layers_outlined, 'Parallax', () => _parallax(context)),
+      (Icons.view_in_ar_outlined, '3D Photo (AI)', () => _photo3d()),
     ];
     return Stack(children: [
       GridView.count(

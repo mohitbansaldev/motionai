@@ -5,7 +5,11 @@ Data model, keyframes, 2D/3D camera, parallax rig, timeline, preview,
 4 effects, undo/redo, JSON edit commands. Preview renders on the GPU
 through Flutter (Impeller).
 
-## Milestone 2 — native render engine + export
+## V2 — done
+AI assistant, captions, MP4 export (Android), 3D photo cut-out, text animators, transitions, looks, masks, audio layers, graph editor.
+
+## V3 — native render engine
+(previously milestone 2; export now works via Flutter rendering + MediaCodec, the GPU engine makes it faster and adds the items below)
 Why it's separate: a frame-exact export needs frame-accurate decoding and
 GPU compositing that Flutter widgets and `video_player` can't provide.
 

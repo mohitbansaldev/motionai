@@ -1,4 +1,17 @@
-# MotionAI — Milestone 1 (core editor)
+# MotionAI
+
+**Install on your phone:** open the latest build on the
+[Releases page](https://github.com/mohitbansaldev/motionai/releases) and
+download `MotionAI.apk`. Every push to `main` builds a new APK on GitHub.
+
+## What's new in V2
+- **AI edit assistant** (AI ✨ tab): describe an edit; it edits the timeline. Uses your OpenAI or Claude API key (AI tab → ⚙).
+- **Auto captions** (AI tab → Captions): Hindi, Hinglish (Roman), English; word highlight / word pop / plain box. Needs an OpenAI key.
+- **Export MP4** (share icon): 720p / 1080p / 4K, audio from clips and music, saved to Gallery → Movies/MotionAI.
+- **3D Photo (AI)**: on-device subject cut-out → parallax shot from a single photo.
+- **Text animations**, **Animate in/out** transitions, **Looks** (one-tap styles), **masks**, **music/voiceover layers** with volume, new effects (glow, grain, light leak, gradient, letterbox), **custom easing curves** (long-press a keyframe ◆ → Custom curve).
+
+# Milestone 1 (core editor)
 
 A mobile motion-graphics video editor (Flutter, Android + iOS) in the
 spirit of After Effects / Alight Motion, built so an AI agent can edit

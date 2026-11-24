@@ -39,6 +39,13 @@ class MediaBridge {
 
   static Future<void> readerReleaseAll() => _ch.invokeMethod('readerReleaseAll');
 
+  /// On-device AI subject cut-out (ML Kit). Writes a transparent PNG of the
+  /// subject to [fgPath] and a background plate to [bgPath].
+  static Future<(int, int)> cutout(String path, String fgPath, String bgPath) async {
+    final r = await _ch.invokeMapMethod<String, dynamic>('cutout', {'path': path, 'fg': fgPath, 'bg': bgPath});
+    return (r!['width'] as int, r['height'] as int);
+  }
+
   /// JPEG thumbnail for sending to the AI.
   static Future<Uint8List?> thumbnailJpeg(String path, double seconds, {int maxSize = 512}) async {
     try {

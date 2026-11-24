@@ -3,6 +3,7 @@ import 'package:flutter/material.dart' hide Easing;
 import '../../core/model/anim_prop.dart';
 import '../../core/model/easing.dart';
 import '../../state/editor_controller.dart';
+import '../graph_editor.dart';
 
 /// Addresses one animatable property through the edit-command system.
 /// [effectId] is set for effect parameters.
@@ -132,7 +133,7 @@ class PropRow extends StatelessWidget {
   }
 
   Future<void> _pickEase(BuildContext context) async {
-    final picked = await showModalBottomSheet<Easing>(
+    final picked = await showModalBottomSheet<Object>(
       context: context,
       builder: (ctx) => SafeArea(
         child: ListView(
@@ -150,12 +151,22 @@ class PropRow extends StatelessWidget {
               Easing.back,
             ])
               ListTile(title: Text(e.label), onTap: () => Navigator.pop(ctx, e)),
+            ListTile(
+              leading: const Icon(Icons.show_chart),
+              title: const Text('Custom curve…'),
+              onTap: () => Navigator.pop(ctx, 'custom'),
+            ),
           ],
         ),
       ),
     );
-    if (picked != null) {
-      c.tryRun({'op': 'set_ease', ...ref.base(), 'time': c.time, 'ease': picked.toJson()});
+    Easing? ease = picked is Easing ? picked : null;
+    if (picked == 'custom' && context.mounted) {
+      final current = _resolve()?.keyframeAt(c.time)?.easing ?? Easing.easyEase;
+      ease = await GraphEditorSheet.open(context, current);
+    }
+    if (ease != null) {
+      c.tryRun({'op': 'set_ease', ...ref.base(), 'time': c.time, 'ease': ease.toJson()});
     }
   }
 
