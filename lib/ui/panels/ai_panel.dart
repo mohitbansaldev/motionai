@@ -32,7 +32,9 @@ class _AiPanelState extends State<AiPanel> {
   @override
   void initState() {
     super.initState();
-    AiSettings.load().then((s) => mounted ? setState(() => _settings = s) : null);
+    AiSettings.load().then((s) {
+      if (mounted) setState(() => _settings = s);
+    });
   }
 
   @override

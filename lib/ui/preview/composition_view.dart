@@ -6,7 +6,7 @@ import 'package:vector_math/vector_math_64.dart' show Vector2;
 import '../../core/engine/evaluator.dart';
 import '../../core/model/layer.dart';
 import '../../state/editor_controller.dart';
-import 'layer_view.dart';
+import 'composition_canvas.dart';
 
 /// Live preview of the composition. Tap a layer to select it, drag to move
 /// it, pinch with two fingers to scale and rotate it.
@@ -53,31 +53,14 @@ class _CompositionViewState extends State<CompositionView> {
                 final selected = _items.where((i) => i.layer.id == c.selectedLayerId).firstOrNull;
                 return FittedBox(
                   fit: BoxFit.contain,
-                  child: SizedBox(
-                    width: comp.width,
-                    height: comp.height,
-                    child: ClipRect(
-                      child: Stack(
-                        clipBehavior: Clip.hardEdge,
-                        children: [
-                          Positioned.fill(child: ColoredBox(color: Color(comp.background))),
-                          for (final item in _items)
-                            LayerView(
-                              key: ValueKey(item.layer.id),
-                              item: item,
-                              project: c.project,
-                              videos: c.videos,
-                              time: t,
-                            ),
-                          if (selected != null && !c.playing)
-                            Positioned.fill(
-                              child: IgnorePointer(
-                                child: CustomPaint(painter: _SelectionPainter(selected, 1 / _viewScale)),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+                  child: CompositionCanvas(
+                    project: c.project,
+                    time: t,
+                    videos: c.videos,
+                    items: _items,
+                    overlay: selected != null && !c.playing
+                        ? CustomPaint(painter: _SelectionPainter(selected, 1 / _viewScale))
+                        : null,
                   ),
                 );
               },

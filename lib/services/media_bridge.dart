@@ -24,6 +24,21 @@ class MediaBridge {
     }
   }
 
+  /// Frame-exact sequential decoding for export. [key] identifies the
+  /// reader (use the layer id) so each layer keeps its own decoder.
+  static Future<(int, int, Uint8List)?> readerFrame(String key, String path, double seconds, {int maxSize = 1920}) async {
+    final r = await _ch.invokeMapMethod<String, dynamic>('readerFrame', {
+      'key': key,
+      'path': path,
+      'timeUs': (seconds * 1e6).round(),
+      'maxSize': maxSize,
+    });
+    if (r == null) return null;
+    return (r['width'] as int, r['height'] as int, r['rgba'] as Uint8List);
+  }
+
+  static Future<void> readerReleaseAll() => _ch.invokeMethod('readerReleaseAll');
+
   /// JPEG thumbnail for sending to the AI.
   static Future<Uint8List?> thumbnailJpeg(String path, double seconds, {int maxSize = 512}) async {
     try {

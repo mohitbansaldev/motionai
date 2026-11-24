@@ -5,7 +5,9 @@ import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../services/project_storage.dart';
 import '../state/editor_controller.dart';
+import 'captions_sheet.dart';
 import 'command_console.dart';
+import 'export_screen.dart';
 import 'common.dart';
 import 'panels/add_panel.dart';
 import 'panels/ai_panel.dart';
@@ -139,7 +141,12 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
           IconButton(
             tooltip: 'Export',
             icon: const Icon(Icons.ios_share),
-            onPressed: () => showSnack(context, 'Export arrives with the native render engine (milestone 2).'),
+            onPressed: () async {
+              c.pause();
+              await c.save();
+              if (!context.mounted) return;
+              await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ExportScreen(project: c.project)));
+            },
           ),
         ],
       ),
@@ -169,7 +176,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
                 LayerPanel(c: c),
                 CameraPanel(c: c),
                 EffectsPanel(c: c),
-                AiPanel(c: c, agent: _agent),
+                AiPanel(c: c, agent: _agent, onCaptions: () => CaptionsSheet.open(context, c)),
               ],
             ),
           ),
