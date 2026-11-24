@@ -1,0 +1,564 @@
+import 'dart:convert';
+import 'dart:math' as math;
+
+import '../model/anim_prop.dart';
+import '../model/camera.dart';
+import '../model/easing.dart';
+import '../model/effects_catalog.dart';
+import '../model/layer.dart';
+import '../model/project.dart';
+import '../presets/camera_presets.dart';
+
+/// Thrown when a command is invalid. The message is written so an AI agent
+/// can read it and correct its next command.
+class CommandError implements Exception {
+  final String message;
+  CommandError(this.message);
+  @override
+  String toString() => 'CommandError: $message';
+}
+
+class CommandResult {
+  final List<String> createdIds = [];
+  final List<String> log = [];
+
+  Map<String, dynamic> toJson() => {'ok': true, 'created': createdIds, 'log': log};
+}
+
+/// Saves/restores a whole project as JSON. Used for undo and for making
+/// command batches atomic (all-or-nothing).
+class ProjectSnapshot {
+  static String take(Project p) => jsonEncode(p.toJson());
+
+  static void restore(Project p, String snapshot) {
+    final r = Project.fromJson(jsonDecode(snapshot) as Map<String, dynamic>);
+    p.name = r.name;
+    p.media
+      ..clear()
+      ..addAll(r.media);
+    p.main = r.main;
+  }
+}
+
+/// The edit-command layer. Every change to a project — from the UI or from
+/// the AI agent — is a JSON command like:
+///
+///   {"op": "set_keyframe", "target": "L1", "prop": "position",
+///    "time": 2.0, "value": [960, 540, 0], "ease": "easy_ease"}
+///
+/// See docs/EDIT_COMMANDS.md for the full list.
+class EditCommands {
+  static const ops = [
+    'add_layer', 'remove_layer', 'duplicate_layer', 'update_layer', 'reorder_layer',
+    'trim_layer', 'split_layer', 'set_property', 'set_keyframe', 'remove_keyframe',
+    'clear_keyframes', 'set_ease', 'add_effect', 'remove_effect', 'set_effect_param',
+    'set_camera_mode', 'camera_move', 'parallax_rig', 'set_comp', 'batch',
+  ];
+
+  /// Runs one command (or a batch). If anything fails the project is
+  /// restored to exactly how it was before, and a [CommandError] is thrown.
+  static CommandResult runAtomic(Project project, Map<String, dynamic> cmd, {double now = 0}) {
+    final snap = ProjectSnapshot.take(project);
+    try {
+      final r = CommandResult();
+      _run(project, cmd, now, r);
+      return r;
+    } catch (e) {
+      ProjectSnapshot.restore(project, snap);
+      if (e is CommandError) rethrow;
+      throw CommandError(e is ArgumentError ? '${e.message}' : e.toString());
+    }
+  }
+
+  /// Parses JSON text: a single command object, a list, or {"commands": [...]}.
+  static Map<String, dynamic> parse(String text) {
+    final decoded = jsonDecode(text);
+    if (decoded is List) return {'op': 'batch', 'commands': decoded};
+    if (decoded is Map<String, dynamic>) {
+      if (!decoded.containsKey('op') && decoded['commands'] is List) {
+        return {'op': 'batch', 'commands': decoded['commands']};
+      }
+      return decoded;
+    }
+    throw CommandError('Expected a JSON object or list of commands');
+  }
+
+  static void _run(Project project, Map<String, dynamic> c, double now, CommandResult r) {
+    final op = c['op'];
+    if (op is! String) throw CommandError('Missing "op". Valid ops: ${ops.join(', ')}');
+    final comp = project.main;
+    switch (op) {
+      case 'batch':
+        final list = c['commands'];
+        if (list is! List) throw CommandError('batch needs "commands": [...]');
+        for (int i = 0; i < list.length; i++) {
+          try {
+            _run(project, Map<String, dynamic>.from(list[i] as Map), now, r);
+          } on CommandError catch (e) {
+            throw CommandError('commands[$i] (${(list[i] as Map)['op']}): ${e.message}');
+          }
+        }
+        break;
+
+      case 'add_layer':
+        _addLayer(project, c, now, r);
+        break;
+
+      case 'remove_layer':
+        final l = _layer(comp, c['layer']);
+        comp.layers.remove(l);
+        for (final o in comp.layers) {
+          if (o.parentId == l.id) o.parentId = null;
+        }
+        r.log.add('Removed ${l.name}');
+        break;
+
+      case 'duplicate_layer':
+        final l = _layer(comp, c['layer']);
+        final id = (c['new_id'] as String?) ?? Ids.next('L');
+        _checkNewId(comp, id);
+        final d = l.copy(newId: id)..name = '${l.name} copy';
+        comp.layers.insert(comp.indexOf(l.id), d);
+        r.createdIds.add(id);
+        break;
+
+      case 'update_layer':
+        _updateLayer(project, _layer(comp, c['layer']), c);
+        break;
+
+      case 'reorder_layer':
+        final l = _layer(comp, c['layer']);
+        final idx = _int(c, 'index');
+        comp.layers.remove(l);
+        comp.layers.insert(idx.clamp(0, comp.layers.length), l);
+        break;
+
+      case 'trim_layer':
+        final l = _layer(comp, c['layer']);
+        final newIn = _optNum(c, 'in');
+        final newOut = _optNum(c, 'out');
+        final end = newOut ?? l.end;
+        if (newIn != null) {
+          final dt = newIn - l.start;
+          l.sourceIn += dt * l.speed;
+          l.start = newIn; // keyframes stay where they are in comp time
+        }
+        final dur = end - l.start;
+        if (dur < comp.frameDuration) throw CommandError('trim leaves layer "${l.id}" with no duration');
+        l.duration = dur;
+        if (l.sourceIn < -1e-6) {
+          if (l.type == LayerType.video) throw CommandError('trim goes before the start of the source media');
+          l.sourceIn = 0;
+        }
+        break;
+
+      case 'split_layer':
+        final l = _layer(comp, c['layer']);
+        final t = _optNum(c, 'time') ?? now;
+        if (t <= l.start + 1e-6 || t >= l.end - 1e-6) {
+          throw CommandError('split time $t is outside layer "${l.id}" (${l.start}..${l.end})');
+        }
+        final id = (c['new_id'] as String?) ?? Ids.next('L');
+        _checkNewId(comp, id);
+        final b = l.copy(newId: id)..name = '${l.name} (2)';
+        b.sourceIn = l.sourceTimeAt(t);
+        b.start = t;
+        b.duration = l.end - t;
+        l.duration = t - l.start;
+        comp.layers.insert(comp.indexOf(l.id), b);
+        r.createdIds.add(id);
+        break;
+
+      case 'set_property':
+        final p = _prop(comp, c);
+        _write(p.prop, p.component, now, c['value'], keyframe: false, ease: null);
+        break;
+
+      case 'set_keyframe':
+        final p = _prop(comp, c);
+        final t = _optNum(c, 'time') ?? now;
+        _write(p.prop, p.component, t, c['value'], keyframe: true, ease: _ease(c['ease']));
+        break;
+
+      case 'remove_keyframe':
+        final p = _prop(comp, c);
+        final t = _optNum(c, 'time') ?? now;
+        if (!p.prop.removeKeyframe(t)) throw CommandError('No keyframe on "${c['prop']}" at $t');
+        break;
+
+      case 'clear_keyframes':
+        final p = _prop(comp, c);
+        p.prop.clearKeyframes(_optNum(c, 'time') ?? now);
+        break;
+
+      case 'set_ease':
+        final p = _prop(comp, c);
+        final t = _optNum(c, 'time') ?? now;
+        final k = p.prop.keyframeAt(t);
+        if (k == null) throw CommandError('No keyframe on "${c['prop']}" at $t');
+        k.easing = _ease(c['ease']) ?? Easing.easyEase;
+        break;
+
+      case 'add_effect':
+        final l = _layer(comp, c['layer']);
+        final type = c['effect'] as String? ?? '';
+        final id = (c['id'] as String?) ?? Ids.next('fx');
+        final e = EffectsCatalog.create(type, id);
+        final params = c['params'];
+        if (params is Map) {
+          params.forEach((k, v) {
+            final ap = e.params[k];
+            if (ap == null) throw CommandError('Effect "$type" has no param "$k". Params: ${e.params.keys.join(', ')}');
+            ap.staticValue = _fitList(ap, _values(v));
+          });
+        }
+        l.effects.add(e);
+        r.createdIds.add(id);
+        break;
+
+      case 'remove_effect':
+        final l = _layer(comp, c['layer']);
+        final e = _effect(l, c['effect']);
+        l.effects.remove(e);
+        break;
+
+      case 'set_effect_param':
+        final l = _layer(comp, c['layer']);
+        final e = _effect(l, c['effect']);
+        final key = c['param'] as String? ?? '';
+        final ap = e.params[key];
+        if (ap == null) throw CommandError('Effect "${e.type}" has no param "$key". Params: ${e.params.keys.join(', ')}');
+        final t = _optNum(c, 'time');
+        _write(ap, null, t ?? now, c['value'], keyframe: t != null, ease: _ease(c['ease']));
+        break;
+
+      case 'set_camera_mode':
+        try {
+          comp.camera.mode = cameraModeFromName('${c['mode']}');
+        } on FormatException catch (e) {
+          throw CommandError('${e.message}. Use "off", "2d" or "3d"');
+        }
+        break;
+
+      case 'camera_move':
+        final preset = c['preset'] as String? ?? '';
+        CameraPresets.apply(
+          comp,
+          preset,
+          start: _optNum(c, 'start') ?? now,
+          duration: _optNum(c, 'duration') ?? 3,
+          amount: _optNum(c, 'amount'),
+          ease: _ease(c['ease']) ?? Easing.easyEase,
+          direction: c['direction'] as String? ?? 'left',
+        );
+        _extendComp(comp, (_optNum(c, 'start') ?? now) + (_optNum(c, 'duration') ?? 3));
+        break;
+
+      case 'parallax_rig':
+        final ids = (c['layers'] as List?)?.map((e) => '$e').toList();
+        if (ids == null || ids.isEmpty) throw CommandError('parallax_rig needs "layers": [backId, ..., frontId]');
+        for (final id in ids) {
+          _layer(comp, id);
+        }
+        CameraPresets.parallaxRig(
+          comp,
+          ids,
+          depthStep: _optNum(c, 'depth') ?? 500,
+          push: _optNum(c, 'push') ?? 350,
+          start: _optNum(c, 'start') ?? now,
+          duration: _optNum(c, 'duration') ?? 4,
+          ease: _ease(c['ease']) ?? Easing.easyEase,
+        );
+        break;
+
+      case 'set_comp':
+        if (c['name'] != null) comp.name = '${c['name']}';
+        if (c['width'] != null) comp.width = _num(c, 'width');
+        if (c['height'] != null) comp.height = _num(c, 'height');
+        if (c['fps'] != null) comp.fps = _num(c, 'fps').clamp(1, 120).toDouble();
+        if (c['duration'] != null) comp.duration = math.max(comp.frameDuration, _num(c, 'duration'));
+        if (c['background'] != null) comp.background = _color(c['background']);
+        break;
+
+      default:
+        throw CommandError('Unknown op "$op". Valid ops: ${ops.join(', ')}');
+    }
+  }
+
+  // ---------------------------------------------------------------- layers
+
+  static void _addLayer(Project project, Map<String, dynamic> c, double now, CommandResult r) {
+    final comp = project.main;
+    final LayerType type;
+    try {
+      type = layerTypeFromName('${c['type']}');
+    } on FormatException catch (e) {
+      throw CommandError('${e.message}. Use video, image, text, solid or null');
+    }
+    final id = (c['id'] as String?) ?? Ids.next('L');
+    _checkNewId(comp, id);
+    final start = _optNum(c, 'start') ?? now;
+
+    MediaAsset? media;
+    if (type == LayerType.video || type == LayerType.image) {
+      final mid = c['media'] as String?;
+      media = mid == null ? null : project.media[mid];
+      if (media == null) {
+        throw CommandError('add_layer $type needs "media" = an imported media id. '
+            'Available: ${project.media.keys.join(', ')}');
+      }
+    }
+
+    double w, h;
+    if (media != null) {
+      w = media.width;
+      h = media.height;
+    } else if (type == LayerType.text) {
+      w = _optNum(c, 'width') ?? comp.width * 0.8;
+      h = _optNum(c, 'height') ?? 220;
+    } else if (type == LayerType.nullObject) {
+      w = 100;
+      h = 100;
+    } else {
+      w = _optNum(c, 'width') ?? comp.width;
+      h = _optNum(c, 'height') ?? comp.height;
+    }
+
+    double duration;
+    final sourceIn = _optNum(c, 'source_in') ?? 0;
+    if (c['duration'] != null) {
+      duration = _num(c, 'duration');
+    } else if (type == LayerType.video) {
+      duration = math.max(comp.frameDuration, media!.duration - sourceIn);
+    } else {
+      duration = 5;
+    }
+
+    final layer = Layer(
+      id: id,
+      name: c['name'] as String? ?? media?.name ?? _defaultName(type),
+      type: type,
+      start: start,
+      duration: duration,
+      width: w,
+      height: h,
+      sourceIn: sourceIn,
+      is3D: c['is3d'] == true,
+      mediaId: media?.id,
+      color: c['color'] != null ? _color(c['color']) : 0xFF3D5AFE,
+      text: type == LayerType.text ? TextData() : null,
+    );
+    layer.prop(Props.position).staticValue = [comp.width / 2, comp.height / 2, 0];
+
+    // Fit media into the frame (contain by default).
+    final fit = c['fit'] as String? ?? (media != null ? 'contain' : 'none');
+    if (fit != 'none') {
+      final sx = comp.width / w, sy = comp.height / h;
+      final s = (fit == 'cover' ? math.max(sx, sy) : math.min(sx, sy)) * 100;
+      layer.prop(Props.scale).staticValue = [s, s, 100];
+    }
+    if (type == LayerType.text) _applyText(layer, c);
+    if (c['position'] != null) {
+      final p = layer.prop(Props.position);
+      p.staticValue = _fitList(p, _values(c['position']));
+    }
+    if (c['scale'] != null) {
+      final p = layer.prop(Props.scale);
+      p.staticValue = _fitList(p, _values(c['scale']));
+    }
+
+    final index = c['index'] is num ? (c['index'] as num).toInt().clamp(0, comp.layers.length) : 0;
+    comp.layers.insert(index, layer);
+    _extendComp(comp, layer.end);
+    r.createdIds.add(id);
+    r.log.add('Added ${layer.name} ($id)');
+  }
+
+  static void _updateLayer(Project project, Layer l, Map<String, dynamic> c) {
+    final comp = project.main;
+    if (c['name'] != null) l.name = '${c['name']}';
+    if (c['start'] != null) l.moveTo(_num(c, 'start'));
+    if (c['duration'] != null) l.duration = math.max(comp.frameDuration, _num(c, 'duration'));
+    if (c['source_in'] != null) l.sourceIn = math.max(0.0, _num(c, 'source_in'));
+    if (c['speed'] != null) {
+      final s = _num(c, 'speed');
+      if (s <= 0 || s > 16) throw CommandError('speed must be between 0 and 16');
+      l.speed = s;
+    }
+    if (c['is3d'] != null) l.is3D = c['is3d'] == true;
+    if (c['visible'] != null) l.visible = c['visible'] == true;
+    if (c['locked'] != null) l.locked = c['locked'] == true;
+    if (c.containsKey('parent')) {
+      final pid = c['parent'] as String?;
+      if (pid != null) {
+        final p = _layer(comp, pid);
+        // Prevent parent loops.
+        var cur = p;
+        for (int i = 0; i < 32; i++) {
+          if (cur.id == l.id) throw CommandError('Parenting "${l.id}" to "$pid" would create a loop');
+          final next = cur.parentId == null ? null : comp.layerById(cur.parentId!);
+          if (next == null) break;
+          cur = next;
+        }
+      }
+      l.parentId = pid;
+    }
+    if (c['blend'] != null) l.blendMode = '${c['blend']}';
+    if (c['color'] != null) {
+      if (l.type == LayerType.text) {
+        l.text!.color = _color(c['color']);
+      } else {
+        l.color = _color(c['color']);
+      }
+    }
+    if (c['width'] != null) l.width = _num(c, 'width');
+    if (c['height'] != null) l.height = _num(c, 'height');
+    if (l.type == LayerType.text) _applyText(l, c);
+    _extendComp(comp, l.end);
+  }
+
+  static void _applyText(Layer l, Map<String, dynamic> c) {
+    final t = l.text ??= TextData();
+    final v = c['text'];
+    if (v is String) t.text = v;
+    if (v is Map) {
+      final m = Map<String, dynamic>.from(v);
+      if (m['text'] != null) t.text = '${m['text']}';
+      if (m['font_size'] != null) t.fontSize = _num(m, 'font_size');
+      if (m['color'] != null) t.color = _color(m['color']);
+    }
+    if (c['font_size'] != null) t.fontSize = _num(c, 'font_size');
+    if (c['font_weight'] != null) t.fontWeight = _int(c, 'font_weight').clamp(100, 900);
+    if (c['align'] != null) t.align = '${c['align']}';
+    if (c['font_family'] != null) t.fontFamily = '${c['font_family']}';
+    if (c['text_color'] != null) t.color = _color(c['text_color']);
+    if (l.type == LayerType.text && c['name'] == null && v != null && l.name == 'Text') {
+      l.name = t.text.length > 24 ? '${t.text.substring(0, 24)}…' : t.text;
+    }
+  }
+
+  static String _defaultName(LayerType t) => switch (t) {
+        LayerType.video => 'Video',
+        LayerType.image => 'Image',
+        LayerType.text => 'Text',
+        LayerType.solid => 'Solid',
+        LayerType.nullObject => 'Null',
+      };
+
+  static void _extendComp(Composition comp, double end) {
+    if (end > comp.duration) comp.duration = end;
+  }
+
+  // --------------------------------------------------------------- helpers
+
+  static Layer _layer(Composition comp, dynamic id) {
+    if (id is! String) throw CommandError('Missing "layer" id');
+    final l = comp.layerById(id);
+    if (l == null) {
+      throw CommandError('No layer "$id". Layers: ${comp.layers.map((l) => '${l.id} (${l.name})').join(', ')}');
+    }
+    return l;
+  }
+
+  static void _checkNewId(Composition comp, String id) {
+    if (comp.layerById(id) != null) throw CommandError('Layer id "$id" already exists');
+  }
+
+  static Effect _effect(Layer l, dynamic id) {
+    final e = id is String ? l.effectById(id) : null;
+    if (e == null) {
+      throw CommandError('No effect "$id" on "${l.id}". Effects: ${l.effects.map((e) => '${e.id} (${e.type})').join(', ')}');
+    }
+    return e;
+  }
+
+  /// Resolves "target" (layer id or "camera") + "prop" (optionally "prop.x").
+  static ({AnimProp prop, int? component}) _prop(Composition comp, Map<String, dynamic> c) {
+    final target = c['target'] ?? c['layer'];
+    final raw = c['prop'];
+    if (raw is! String) throw CommandError('Missing "prop"');
+    String key = raw;
+    int? component;
+    final dot = raw.indexOf('.');
+    if (dot > 0) {
+      key = raw.substring(0, dot);
+      component = const {'x': 0, 'y': 1, 'z': 2}[raw.substring(dot + 1)];
+      if (component == null) throw CommandError('Bad component in "$raw" (use .x, .y or .z)');
+    }
+    final Map<String, AnimProp> props;
+    if (target == 'camera') {
+      props = comp.camera.props;
+    } else if (c['effect'] != null) {
+      props = _effect(_layer(comp, target), c['effect']).params;
+    } else {
+      props = _layer(comp, target).props;
+    }
+    final p = props[key];
+    if (p == null) throw CommandError('No property "$key" on $target. Properties: ${props.keys.join(', ')}');
+    if (component != null && component >= p.dims) throw CommandError('"$key" has only ${p.dims} dimension(s)');
+    return (prop: p, component: component);
+  }
+
+  static void _write(AnimProp p, int? component, double t, dynamic value,
+      {required bool keyframe, required Easing? ease}) {
+    if (value == null) throw CommandError('Missing "value"');
+    List<double> v;
+    if (component != null) {
+      v = p.valueAt(t);
+      v[component] = _values(value).first;
+    } else {
+      v = _fitList(p, _values(value));
+    }
+    if (keyframe) {
+      p.setKeyframe(t, v, easing: ease);
+    } else {
+      p.setValue(t, v);
+    }
+  }
+
+  static List<double> _fitList(AnimProp p, List<double> v) {
+    if (v.length == p.dims) return v;
+    if (v.length == 1) return List.filled(p.dims, v[0]);
+    if (v.length > p.dims) return v.sublist(0, p.dims);
+    return [...v, ...p.staticValue.sublist(v.length)];
+  }
+
+  static List<double> _values(dynamic v) {
+    if (v is num) return [v.toDouble()];
+    if (v is List && v.isNotEmpty && v.every((e) => e is num)) {
+      return v.map((e) => (e as num).toDouble()).toList();
+    }
+    throw CommandError('Value must be a number or list of numbers, got ${jsonEncode(v)}');
+  }
+
+  static Easing? _ease(dynamic e) {
+    if (e == null) return null;
+    try {
+      return Easing.fromJson(e);
+    } on FormatException catch (ex) {
+      throw CommandError('${ex.message}. Use linear, hold, ease_in, ease_out, easy_ease, bounce, elastic, back '
+          'or {"type":"bezier","x1":..,"y1":..,"x2":..,"y2":..}');
+    }
+  }
+
+  static double _num(Map<String, dynamic> c, String k) {
+    final v = c[k];
+    if (v is num) return v.toDouble();
+    throw CommandError('"$k" must be a number');
+  }
+
+  static double? _optNum(Map<String, dynamic> c, String k) => c[k] == null ? null : _num(c, k);
+
+  static int _int(Map<String, dynamic> c, String k) => _num(c, k).round();
+
+  static int _color(dynamic v) {
+    if (v is int) return v;
+    if (v is String) {
+      var s = v.trim().replaceFirst('#', '').replaceFirst('0x', '');
+      if (s.length == 6) s = 'FF$s';
+      final n = int.tryParse(s, radix: 16);
+      if (n != null && s.length == 8) return n;
+    }
+    throw CommandError('Bad color ${jsonEncode(v)} (use "#RRGGBB")');
+  }
+}

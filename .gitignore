@@ -1,0 +1,22 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.iml
+.idea/
+.metadata
+pubspec.lock
+
+# Android local files
+android/local.properties
+android/.gradle/
+android/app/release/
+
+# Local tool output
+analyze-output.txt
+test-output.txt
+setup-log.txt
+devices.txt
+run-output.txt
