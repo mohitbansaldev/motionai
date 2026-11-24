@@ -1,14 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
-
-import 'package:path_provider/path_provider.dart';
 
 import '../ai/ai_client.dart';
 import '../ai/ai_settings.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
-import 'media_bridge.dart';
+import 'speech.dart';
 
 class CaptionOptions {
   String? language; // 'hi', 'en' or null (auto)
@@ -18,7 +15,7 @@ class CaptionOptions {
   CaptionOptions({this.language = 'hi', this.roman = false, this.maxWords = 4, this.style = 'karaoke'});
 }
 
-/// Speech-to-text captions: audio → OpenAI Whisper (word timestamps) →
+/// Speech-to-text captions: audio → Whisper (on the phone, or OpenAI) →
 /// caption text layers with per-word highlight.
 class CaptionMaker {
   static Future<List<Map<String, dynamic>>> buildCommands(
@@ -31,38 +28,15 @@ class CaptionMaker {
     final media = project.media[source.mediaId];
     if (media == null) throw AiException('This layer has no media.');
 
-    // 1. Audio file
-    String audioPath = media.path;
-    if (media.type == MediaType.video) {
-      onStatus?.call('Extracting audio…');
-      final dir = await getTemporaryDirectory();
-      audioPath = '${dir.path}/captions_${source.id}.m4a';
-      final ok = await MediaBridge.extractAudio(media.path, audioPath);
-      if (!ok) throw AiException('This video has no audio track that can be read.');
-    }
-    final size = await File(audioPath).length();
-    if (size > 25 * 1024 * 1024) {
-      throw AiException('The audio is ${(size / 1048576).toStringAsFixed(0)} MB; speech-to-text accepts up to 25 MB. '
-          'Split the clip into shorter parts first.');
-    }
-
-    // 2. Transcribe
-    onStatus?.call('Transcribing speech…');
-    final res = await AiClient.transcribe(
-      s: s,
-      audioPath: audioPath,
+    // 1-2. Speech → words (on the phone by default).
+    var words = await Speech.words(
+      media.path,
       language: o.roman ? null : o.language,
-      prompt: o.roman ? 'Hinglish conversation written in Roman script, like: "aaj hum baat karenge"' : null,
+      roman: o.roman,
+      sourceIn: source.sourceIn,
+      duration: source.duration * source.speed,
+      onStatus: onStatus,
     );
-    var words = <WordTiming>[];
-    for (final w in (res['words'] as List? ?? [])) {
-      final m = w as Map<String, dynamic>;
-      words.add(WordTiming(
-        (m['word'] as String).trim(),
-        (m['start'] as num).toDouble(),
-        (m['end'] as num).toDouble(),
-      ));
-    }
     if (words.isEmpty) throw AiException('No speech was found in this clip.');
 
     // 3. Romanize if needed (Devanagari → Hinglish)
@@ -99,7 +73,12 @@ class CaptionMaker {
     ];
     if (words.isEmpty) throw AiException('No speech falls inside the trimmed part of this clip.');
 
-    // 5. Group into captions.
+    return fromWords(project, words, o);
+  }
+
+  /// Caption text layers (with per-word timing) from composition-time words.
+  static List<Map<String, dynamic>> fromWords(Project project, List<WordTiming> words, CaptionOptions o) {
+    // Group into captions.
     final groups = <List<WordTiming>>[];
     var cur = <WordTiming>[];
     for (final w in words) {
@@ -113,7 +92,7 @@ class CaptionMaker {
     }
     if (cur.isNotEmpty) groups.add(cur);
 
-    // 6. Commands
+    // Commands
     final comp = project.main;
     final short = math.min(comp.width, comp.height);
     final fontSize = (short * 0.065).roundToDouble();

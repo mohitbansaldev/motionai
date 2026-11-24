@@ -36,6 +36,8 @@ jobs:
           grep -q 'android:scheme="https"' $f || sed -i 's#<application#<queries><intent><action android:name="android.intent.action.VIEW"/><data android:scheme="https"/></intent></queries>\n    <application#' $f
           g=android/app/build.gradle.kts
           grep -q 'mlkit-subject-segmentation' $g || printf '\ndependencies {\n    implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")\n}\n' >> $g
+          # On-device Whisper and ML Kit need Android 7.0+ (API 24).
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24/' $g
           grep -n "minSdk" $g || true
           cat $f
       - run: flutter pub get

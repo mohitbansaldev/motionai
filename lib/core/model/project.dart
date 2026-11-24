@@ -12,6 +12,7 @@ class MediaAsset {
   double width;
   double height;
   double duration; // seconds (0 for images)
+  String description; // AI-written description of what's in it (Director mode)
 
   MediaAsset({
     required this.id,
@@ -21,6 +22,7 @@ class MediaAsset {
     required this.width,
     required this.height,
     this.duration = 0,
+    this.description = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -31,6 +33,7 @@ class MediaAsset {
         'width': width,
         'height': height,
         'duration': duration,
+        if (description.isNotEmpty) 'desc': description,
       };
 
   static MediaAsset fromJson(Map<String, dynamic> j) => MediaAsset(
@@ -41,6 +44,7 @@ class MediaAsset {
         width: (j['width'] as num).toDouble(),
         height: (j['height'] as num).toDouble(),
         duration: (j['duration'] as num? ?? 0).toDouble(),
+        description: j['desc'] as String? ?? '',
       );
 }
 

@@ -2,14 +2,13 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../ai/ai_client.dart';
 import '../ai/ai_settings.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../core/presets/components.dart';
-import '../services/media_bridge.dart';
+import '../services/speech.dart';
 import '../state/editor_controller.dart';
 import 'common.dart';
 import 'theme.dart';
@@ -133,19 +132,18 @@ Rules: never invent media ids; vary visuals; keep text short and factual; only u
 
   Future<List<(double, double, String)>> _transcribe(Layer l, AiSettings s) async {
     final m = c.project.media[l.mediaId]!;
-    setState(() => _status = 'Extracting audio…');
-    final dir = await getTemporaryDirectory();
-    final audio = '${dir.path}/script_${l.id}.m4a';
-    if (!await MediaBridge.extractAudio(m.path, audio)) throw AiException('This video has no readable audio.');
-    setState(() => _status = 'Transcribing your talking-head clip…');
-    final res = await AiClient.transcribe(s: s, audioPath: audio);
+    final words = await Speech.words(
+      m.path,
+      language: s.captionLanguage,
+      sourceIn: l.sourceIn,
+      duration: l.duration * l.speed,
+      onStatus: (msg) {
+        if (mounted) setState(() => _status = msg);
+      },
+    );
     return [
-      for (final seg in (res['segments'] as List? ?? []))
-        (
-          l.start + ((seg as Map)['start'] as num).toDouble() - l.sourceIn,
-          l.start + (seg['end'] as num).toDouble() - l.sourceIn,
-          '${seg['text']}'.trim(),
-        ),
+      for (final (a, b, t) in Speech.lines(words))
+        (l.start + (a - l.sourceIn) / l.speed, l.start + (b - l.sourceIn) / l.speed, t),
     ].where((e) => e.$1 >= l.start && e.$1 < l.end).toList();
   }
 
@@ -245,7 +243,7 @@ Rules: never invent media ids; vary visuals; keep text short and factual; only u
       appBar: AppBar(title: const Text('Script → Video')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         const Text('Paste your script, or pick your talking-head clip and leave the script empty to transcribe it '
-            '(transcribing needs an OpenAI key). The AI plans a visual for every line.',
+            '(transcribed on your phone). The AI plans a visual for every line. For a full documentary, use Director in the AI tab.',
             style: TextStyle(color: MA.textDim, fontSize: 12.5)),
         const SizedBox(height: 12),
         if (videos.isNotEmpty)

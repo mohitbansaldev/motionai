@@ -130,6 +130,7 @@ class _ExportScreenState extends State<ExportScreen> {
               'duration': math.min(l.duration, duration - l.start),
               'speed': l.speed,
               'volume': l.prop(Props.volume).valueAt(l.start + l.duration / 2)[0] / 100,
+              if (l.prop(Props.volume).isAnimated) 'envelope': _envelope(l, duration),
             },
       ];
       await MediaBridge.encoderFinish(finalPath: finalPath, duration: duration, audio: audio);
@@ -158,6 +159,18 @@ class _ExportScreenState extends State<ExportScreen> {
       }
       _videoFrames = {};
     }
+  }
+
+  /// Volume keyframes → (time, gain) points for the audio mixer.
+  static List<List<double>> _envelope(Layer l, double duration) {
+    final v = l.prop(Props.volume);
+    final end = math.min(l.start + l.duration, duration);
+    final pts = <List<double>>[];
+    for (var t = l.start; t < end; t += 0.1) {
+      pts.add([t, v.scalarAt(t) / 100]);
+    }
+    pts.add([end, v.scalarAt(end) / 100]);
+    return pts;
   }
 
   @override

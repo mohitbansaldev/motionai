@@ -76,7 +76,7 @@ class _CaptionsSheetState extends State<CaptionsSheet> {
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Auto captions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        const Text('Uses OpenAI speech-to-text with your OpenAI key.', style: TextStyle(fontSize: 12, color: Colors.white60)),
+        const Text('Speech is transcribed on your phone (the model downloads once). You can switch to OpenAI in AI settings.', style: TextStyle(fontSize: 12, color: Colors.white60)),
         const SizedBox(height: 12),
         if (sources.isEmpty)
           const Text('Add a video or voiceover first.', style: TextStyle(color: Colors.white54))

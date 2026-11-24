@@ -7,6 +7,9 @@ import '../../ai/chatgpt_auth.dart';
 import '../../state/editor_controller.dart';
 import '../common.dart';
 import '../script_sheet.dart';
+import '../director_screen.dart';
+import '../theme.dart';
+import '../../services/speech.dart';
 
 /// Chat with the AI edit assistant.
 class AiPanel extends StatefulWidget {
@@ -106,15 +109,20 @@ class _AiPanelState extends State<AiPanel> {
             ),
           ),
           TextButton.icon(
+            onPressed: () => DirectorScreen.open(context, widget.c),
+            icon: const Icon(Icons.movie_filter_outlined, size: 18, color: MA.gold),
+            label: const Text('Director'),
+          ),
+          IconButton(
+            tooltip: 'Script → Video',
             onPressed: () => ScriptSheet.open(context, widget.c),
-            icon: const Icon(Icons.description_outlined, size: 18),
-            label: const Text('Script'),
+            icon: const Icon(Icons.description_outlined, size: 20),
           ),
           if (widget.onCaptions != null)
-            TextButton.icon(
+            IconButton(
+              tooltip: 'Captions',
               onPressed: widget.onCaptions,
-              icon: const Icon(Icons.closed_caption_outlined, size: 18),
-              label: const Text('Captions'),
+              icon: const Icon(Icons.closed_caption_outlined, size: 20),
             ),
           IconButton(icon: const Icon(Icons.settings_outlined, size: 20), onPressed: _openSettings),
         ]),
@@ -376,7 +384,7 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
                 const SizedBox(height: 4),
                 const Text(
                   'Use your ChatGPT Plus/Pro plan, or your own API key. Credentials are stored encrypted on this phone only. '
-                  'Captions need an OpenAI API key.',
+                  'Speech-to-text (captions, transcripts) runs on your phone for free.',
                   style: TextStyle(fontSize: 12, color: Colors.white60),
                 ),
                 const SizedBox(height: 12),
@@ -419,6 +427,30 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
                   value: v.shareMedia,
                   onChanged: (b) => setState(() => v.shareMedia = b),
                 ),
+                const SizedBox(height: 4),
+                const Text('Speech-to-text', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'device', label: Text('On this phone (free)')),
+                    ButtonSegment(value: 'openai', label: Text('OpenAI key')),
+                  ],
+                  selected: {v.speechEngine},
+                  onSelectionChanged: (sel) => setState(() => v.speechEngine = sel.first),
+                ),
+                if (v.speechEngine == 'device') ...[
+                  const SizedBox(height: 6),
+                  Wrap(spacing: 8, children: [
+                    for (final m in const ['tiny', 'base', 'small'])
+                      ChoiceChip(
+                        label: Text(Speech.modelLabel(m)),
+                        selected: v.whisperModel == m,
+                        onSelected: (_) => setState(() => v.whisperModel = m),
+                      ),
+                  ]),
+                  const Text('The model downloads once on first use. "Accurate" is best for Hindi but slower.',
+                      style: TextStyle(fontSize: 11.5, color: Colors.white54)),
+                ],
                 const SizedBox(height: 8),
                 SizedBox(width: double.infinity, child: FilledButton(onPressed: _save, child: const Text('Save'))),
               ]),

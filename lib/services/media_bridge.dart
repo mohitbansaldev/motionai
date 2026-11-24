@@ -84,6 +84,21 @@ class MediaBridge {
     return ok ?? false;
   }
 
+  /// Decodes audio (from a video or audio file) to 16 kHz mono WAV for
+  /// speech-to-text. Returns the seconds written.
+  static Future<double> wav16k(String path, String outPath, {double sourceIn = 0, double duration = 0}) async {
+    final r = await _ch.invokeMethod<num>('wav16k', {'path': path, 'out': outPath, 'sourceIn': sourceIn, 'duration': duration});
+    return (r ?? 0).toDouble();
+  }
+
+  /// Reads each line with the phone's text-to-speech voice. Returns
+  /// (wav path, seconds) per line.
+  static Future<List<(String, double)>> tts(List<String> texts, String dir,
+      {String lang = 'hi-IN', double rate = 1.0, double pitch = 1.0}) async {
+    final r = await _ch.invokeMethod<List>('tts', {'texts': texts, 'lang': lang, 'rate': rate, 'pitch': pitch, 'dir': dir});
+    return [for (final e in r ?? const []) ('${(e as Map)['path']}', (e['duration'] as num).toDouble())];
+  }
+
   static Future<void> encoderStart({
     required String outPath,
     required int width,

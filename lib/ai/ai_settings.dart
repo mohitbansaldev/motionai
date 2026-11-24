@@ -16,6 +16,9 @@ class AiSettings {
   String captionLanguage = 'hi';
   bool captionsRoman = false;
   String imageModel = 'gpt-image-1';
+  String speechEngine = 'device'; // device | openai
+  String whisperModel = 'base'; // tiny | base | small
+  String styleNotes = ''; // Director: the channel's editing style, in the user's words
 
   static const defaultOpenaiModel = 'gpt-5-mini';
   static const defaultAnthropicModel = 'claude-sonnet-5-5';
@@ -53,6 +56,9 @@ class AiSettings {
       s.shareMedia = all['shareMedia'] != 'false';
       s.captionLanguage = all['captionLanguage'] ?? 'hi';
       s.captionsRoman = all['captionsRoman'] == 'true';
+      s.speechEngine = all['speechEngine'] ?? 'device';
+      s.whisperModel = all['whisperModel'] ?? 'base';
+      s.styleNotes = all['styleNotes'] ?? '';
     } catch (_) {
       // First run or storage unavailable: defaults.
     }
@@ -70,5 +76,8 @@ class AiSettings {
     await _store.write(key: 'shareMedia', value: '$shareMedia');
     await _store.write(key: 'captionLanguage', value: captionLanguage);
     await _store.write(key: 'captionsRoman', value: '$captionsRoman');
+    await _store.write(key: 'speechEngine', value: speechEngine);
+    await _store.write(key: 'whisperModel', value: whisperModel);
+    await _store.write(key: 'styleNotes', value: styleNotes);
   }
 }

@@ -22,6 +22,11 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -80,6 +85,12 @@ class MediaBridge(private val context: Context, messenger: BinaryMessenger) : Me
                     "normalizeImage" -> normalizeImage(call.argument<String>("path")!!, call.argument<String>("out")!!)
                     "thumbnailJpeg" -> thumbnail(call.argument<String>("path")!!, call.long("timeUs"), call.argument<Int>("maxSize") ?: 512)
                     "extractAudio" -> extractAudio(call.argument<String>("path")!!, call.argument<String>("out")!!)
+                    "wav16k" -> AudioMixer.wav16k(
+                        call.argument<String>("path")!!,
+                        call.argument<String>("out")!!,
+                        (call.argument<Any>("sourceIn") as? Number)?.toDouble() ?: 0.0,
+                        (call.argument<Any>("duration") as? Number)?.toDouble() ?: 0.0,
+                    )
                     "encoderStart" -> {
                         encoder?.cancel()
                         encoder = VideoEncoder(
@@ -113,6 +124,13 @@ class MediaBridge(private val context: Context, messenger: BinaryMessenger) : Me
                         encoder = null
                         null
                     }
+                    "tts" -> tts(
+                        call.argument<List<String>>("texts")!!,
+                        call.argument<String>("lang") ?: "hi-IN",
+                        (call.argument<Any>("rate") as? Number)?.toFloat() ?: 1.0f,
+                        (call.argument<Any>("pitch") as? Number)?.toFloat() ?: 1.0f,
+                        call.argument<String>("dir")!!,
+                    )
                     "saveToGallery" -> saveToGallery(call.argument<String>("path")!!, call.argument<String>("name")!!)
                     "share" -> {
                         share(call.argument<String>("path")!!)
@@ -127,6 +145,59 @@ class MediaBridge(private val context: Context, messenger: BinaryMessenger) : Me
             } catch (e: Throwable) {
                 main.post { result.error("media", e.message ?: e.toString(), null) }
             }
+        }
+    }
+
+    /** The phone's own text-to-speech voice, one WAV per line. */
+    private fun tts(texts: List<String>, lang: String, rate: Float, pitch: Float, dir: String): List<Map<String, Any>> {
+        val ready = CountDownLatch(1)
+        var status = TextToSpeech.ERROR
+        var engine: TextToSpeech? = null
+        main.post { engine = TextToSpeech(context) { s -> status = s; ready.countDown() } }
+        if (!ready.await(20, TimeUnit.SECONDS) || status != TextToSpeech.SUCCESS) {
+            engine?.shutdown()
+            throw IllegalStateException("This phone's text-to-speech engine didn't start. Install or enable Google Speech Services.")
+        }
+        val tts = engine!!
+        try {
+            val locale = Locale.forLanguageTag(lang)
+            val avail = tts.isLanguageAvailable(locale)
+            if (avail < TextToSpeech.LANG_AVAILABLE) {
+                throw IllegalStateException("No ${locale.displayLanguage} voice is installed. Add it in Settings → Text-to-speech.")
+            }
+            tts.setLanguage(locale)
+            tts.setSpeechRate(rate)
+            tts.setPitch(pitch)
+            val out = ArrayList<Map<String, Any>>()
+            for ((i, text) in texts.withIndex()) {
+                val file = File(dir, "voice_${System.currentTimeMillis()}_$i.wav")
+                val done = CountDownLatch(1)
+                var ok = false
+                tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {}
+                    override fun onDone(utteranceId: String?) { ok = true; done.countDown() }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) { done.countDown() }
+                    override fun onError(utteranceId: String?, errorCode: Int) { done.countDown() }
+                })
+                tts.synthesizeToFile(text, android.os.Bundle(), file, "line$i")
+                done.await(90, TimeUnit.SECONDS)
+                if (!ok || !file.exists()) throw IllegalStateException("The voice could not read line ${i + 1}.")
+                var dur = 0.0
+                val ex = MediaExtractor()
+                try {
+                    ex.setDataSource(file.path)
+                    val f = ex.getTrackFormat(0)
+                    if (f.containsKey(MediaFormat.KEY_DURATION)) dur = f.getLong(MediaFormat.KEY_DURATION) / 1e6
+                } finally {
+                    ex.release()
+                }
+                if (dur <= 0) dur = (file.length() - 44).coerceAtLeast(0L) / 48000.0
+                out.add(mapOf("path" to file.path, "duration" to dur))
+            }
+            return out
+        } finally {
+            tts.shutdown()
         }
     }
 
@@ -689,14 +760,78 @@ object AudioMixer {
 
     private fun num(v: Any?, d: Double): Double = (v as? Number)?.toDouble() ?: d
 
-    private fun decodeInto(mix: FloatArray, total: Int, clip: Map<String, Any?>): Boolean {
+    /**
+     * Decodes one clip to 16 kHz mono 16-bit WAV (for on-device speech-to-text).
+     * [duration] 0 means the whole file. Returns the number of seconds written.
+     */
+    fun wav16k(path: String, outPath: String, sourceIn: Double, duration: Double): Double {
+        val rate = 16000
+        val probe = MediaExtractor().apply { setDataSource(path) }
+        var fileDur = 0.0
+        for (i in 0 until probe.trackCount) {
+            val f = probe.getTrackFormat(i)
+            if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true && f.containsKey(MediaFormat.KEY_DURATION)) {
+                fileDur = f.getLong(MediaFormat.KEY_DURATION) / 1e6
+            }
+        }
+        probe.release()
+        val dur = if (duration > 0) duration else (fileDur - sourceIn).coerceAtLeast(0.5)
+        val total = (dur * rate).toInt() + 1
+        val mix = FloatArray(total * 2)
+        val ok = decodeInto(mix, total, mapOf("path" to path, "start" to 0.0, "sourceIn" to sourceIn, "duration" to dur, "speed" to 1.0, "volume" to 1.0), rate)
+        if (!ok) throw IllegalStateException("No readable audio in this file")
+        val pcm = ByteBuffer.allocate(total * 2).order(ByteOrder.LITTLE_ENDIAN)
+        for (j in 0 until total) {
+            val v = ((mix[j * 2] + mix[j * 2 + 1]) * 0.5f).coerceIn(-1f, 1f)
+            pcm.putShort((v * 32767f).toInt().toShort())
+        }
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+        header.put("RIFF".toByteArray()).putInt(36 + total * 2).put("WAVE".toByteArray())
+        header.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putInt(rate).putInt(rate * 2).putShort(2).putShort(16)
+        header.put("data".toByteArray()).putInt(total * 2)
+        File(outPath).outputStream().use {
+            it.write(header.array())
+            it.write(pcm.array())
+        }
+        return dur
+    }
+
+    /** Piecewise-linear gain from [[time, gain], ...] in composition seconds. */
+    private fun envelope(raw: Any?): ((Double) -> Float)? {
+        val pts = (raw as? List<*>)?.mapNotNull { p ->
+            val l = p as? List<*> ?: return@mapNotNull null
+            val t = (l.getOrNull(0) as? Number)?.toDouble() ?: return@mapNotNull null
+            val g = (l.getOrNull(1) as? Number)?.toFloat() ?: return@mapNotNull null
+            Pair(t, g)
+        }?.sortedBy { it.first } ?: return null
+        if (pts.isEmpty()) return null
+        val ts = DoubleArray(pts.size) { pts[it].first }
+        val gs = FloatArray(pts.size) { pts[it].second }
+        return { t ->
+            if (t <= ts[0]) gs[0]
+            else if (t >= ts[ts.size - 1]) gs[gs.size - 1]
+            else {
+                var lo = 0
+                var hi = ts.size - 1
+                while (hi - lo > 1) {
+                    val mid = (lo + hi) / 2
+                    if (ts[mid] <= t) lo = mid else hi = mid
+                }
+                val k = ((t - ts[lo]) / (ts[hi] - ts[lo])).toFloat()
+                gs[lo] + (gs[hi] - gs[lo]) * k
+            }
+        }
+    }
+
+    private fun decodeInto(mix: FloatArray, total: Int, clip: Map<String, Any?>, outRate: Int = SR): Boolean {
         val path = clip["path"] as? String ?: return false
         val start = num(clip["start"], 0.0)
         val sourceIn = num(clip["sourceIn"], 0.0)
         val dur = num(clip["duration"], 0.0)
         val speed = num(clip["speed"], 1.0).coerceIn(0.05, 16.0)
         val volume = num(clip["volume"], 1.0).toFloat()
-        if (volume <= 0f || dur <= 0) return false
+        val env = envelope(clip["envelope"])
+        if ((volume <= 0f && env == null) || dur <= 0) return false
 
         val ex = MediaExtractor()
         ex.setDataSource(path)
@@ -766,14 +901,15 @@ object AudioMixer {
                         val compT = start + (ts - sourceIn) / speed
                         if (!prevT.isNaN()) {
                             // Linear resampling between the previous and this input frame.
-                            var j = kotlin.math.ceil(prevT * SR).toInt()
-                            val jEnd = kotlin.math.floor(compT * SR).toInt()
+                            var j = kotlin.math.ceil(prevT * outRate).toInt()
+                            val jEnd = kotlin.math.floor(compT * outRate).toInt()
                             val span = compT - prevT
                             while (j <= jEnd) {
                                 if (j in 0 until total) {
-                                    val k = if (span <= 0) 1f else ((j.toDouble() / SR - prevT) / span).toFloat()
-                                    mix[j * CH] += (prevL + (l - prevL) * k) * volume
-                                    mix[j * CH + 1] += (prevR + (r - prevR) * k) * volume
+                                    val k = if (span <= 0) 1f else ((j.toDouble() / outRate - prevT) / span).toFloat()
+                                    val g = if (env != null) env(j.toDouble() / outRate) else volume
+                                    mix[j * CH] += (prevL + (l - prevL) * k) * g
+                                    mix[j * CH + 1] += (prevR + (r - prevR) * k) * g
                                     wrote = true
                                 }
                                 j++

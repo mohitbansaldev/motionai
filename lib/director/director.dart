@@ -1,0 +1,527 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import '../ai/agent.dart';
+import '../ai/ai_client.dart';
+import '../ai/ai_settings.dart';
+import '../ai/command_spec.dart';
+import '../core/model/layer.dart';
+import '../core/model/project.dart';
+import '../core/commands/edit_commands.dart';
+import '../services/captions.dart';
+import '../services/media_bridge.dart';
+import '../services/speech.dart';
+import '../state/editor_controller.dart';
+import 'sfx.dart';
+import 'story_builder.dart';
+
+/// Where the voice of the video comes from.
+enum Narration {
+  aroll, // a talking-head video (the presenter on camera)
+  voiceover, // a recorded voice-over audio file
+  phoneVoice, // the script, read by the phone's text-to-speech voice
+  silent, // the script as on-screen text timing only
+}
+
+class DirectorInput {
+  String brief = ''; // topic / instructions, in the user's words
+  String script = ''; // narration; empty + brief = the AI writes it
+  Narration narration = Narration.aroll;
+  String? arollMedia; // video media id
+  String? voiceMedia; // audio media id
+  String? musicMedia; // audio media id
+  String language = 'hi'; // hi | en | auto
+  bool roman = false; // Hinglish captions in Roman script
+  bool captions = true;
+  bool sfx = true;
+  bool depth = true; // AI cut-outs for depth shots
+  bool review = true; // look at rendered frames and fix problems
+  String look = 'auto';
+  int minutes = 3; // length when the AI writes the script
+}
+
+class NarrationResult {
+  final List<(double, double, String)> lines; // composition seconds
+  final List<WordTiming> words; // composition seconds
+  final String? arollLayer;
+  NarrationResult(this.lines, this.words, this.arollLayer);
+}
+
+/// Director mode: turns a pile of photos, clips, a voice and a brief into a
+/// finished documentary timeline.
+///
+/// understand media → narration (speech-to-text / phone voice / script) →
+/// storyboard (AI, in chunks) → tools (cut-outs, sound effects) → build
+/// (one Undo) → review rendered frames and fix.
+class Director {
+  final EditorController c;
+  final void Function(String status) status;
+  Director(this.c, this.status);
+
+  Project get p => c.project;
+
+  // ------------------------------------------------------------ 1. understand
+
+  /// Writes an AI description for every photo/video that has none, so the
+  /// storyboard is planned from what is actually in each picture.
+  Future<int> understandMedia({bool force = false}) async {
+    final s = await AiSettings.load();
+    final todo = [
+      for (final m in p.media.values)
+        if (m.type != MediaType.audio && (force || m.description.isEmpty) && !m.name.startsWith('SFX ')) m,
+    ];
+    var done = 0;
+    for (int i = 0; i < todo.length; i += 6) {
+      final batch = todo.sublist(i, math.min(todo.length, i + 6));
+      status('Looking at your media… ${math.min(todo.length, i + 6)}/${todo.length}');
+      final images = <Uint8List>[];
+      final ids = <String>[];
+      for (final m in batch) {
+        final b = await thumbnail(m);
+        if (b == null) continue;
+        images.add(b);
+        ids.add(m.id);
+      }
+      if (images.isEmpty) continue;
+      final raw = await AiClient.complete(
+        s: s,
+        system: _describePrompt,
+        messages: [
+          AiMessage('user', jsonEncode({
+            'images': [
+              for (final id in ids) {'id': id, 'type': p.media[id]!.type.name, 'file': p.media[id]!.name, if (p.media[id]!.duration > 0) 'seconds': p.media[id]!.duration.round()},
+            ],
+          }), images: images),
+        ],
+      );
+      final j = _json(raw);
+      for (final it in (j['items'] as List? ?? const [])) {
+        final m = p.media['${(it as Map)['id']}'];
+        if (m == null) continue;
+        final kind = '${it['kind'] ?? 'photo'}';
+        final subj = it['subject'] == true ? ' · clear subject' : '';
+        final text = (it['text'] ?? '').toString().trim();
+        m.description = '[$kind$subj] ${it['desc'] ?? ''}${text.isEmpty ? '' : ' · text: "$text"'}'.trim();
+        done++;
+      }
+    }
+    if (done > 0) c.mediaChanged();
+    return done;
+  }
+
+  static const _describePrompt = '''
+You label media for a documentary editor. For each attached image (in order, matching "images"), return ONLY JSON:
+{"items":[{"id":"<id>","kind":"portrait|group|crowd|place|building|map|document|newspaper|screenshot|logo|object|chart|footage|presenter|graphic","subject":<true if ONE clear foreground subject (person/object) that could be cut out>,"desc":"<max 22 words: who/what, where, era, mood, colours>","text":"<important visible text, or empty>"}]}
+Do not guess names of private people. Name famous people, places or logos only when you are confident.''';
+
+  static Future<Uint8List?> thumbnail(MediaAsset m, {int size = 512}) async {
+    try {
+      if (m.type == MediaType.video) return await MediaBridge.thumbnailJpeg(m.path, m.duration / 3, maxSize: size);
+      if (m.type != MediaType.image) return null;
+      final codec = await ui.instantiateImageCodec(await File(m.path).readAsBytes(), targetWidth: size);
+      final frame = await codec.getNextFrame();
+      final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      frame.image.dispose();
+      return data?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ------------------------------------------------------------ 2. narration
+
+  Future<NarrationResult> narrate(DirectorInput o) async {
+    final s = await AiSettings.load();
+    final lang = o.language == 'auto' ? null : o.language;
+    switch (o.narration) {
+      case Narration.aroll:
+      case Narration.voiceover:
+        final media = p.media[o.narration == Narration.aroll ? o.arollMedia : o.voiceMedia];
+        if (media == null) {
+          throw AiException(o.narration == Narration.aroll ? 'Choose your talking-head video.' : 'Choose your voice-over audio.');
+        }
+        final layerId = await _placeNarration(media, o.narration == Narration.aroll);
+        final words = await Speech.words(media.path, language: lang, roman: o.roman, onStatus: status);
+        if (o.roman && words.any((w) => RegExp(r'[ऀ-ॿ]').hasMatch(w.word))) await _romanize(s, words);
+        return NarrationResult(Speech.lines(words), words, o.narration == Narration.aroll ? layerId : null);
+
+      case Narration.phoneVoice:
+      case Narration.silent:
+        var script = o.script.trim();
+        if (script.isEmpty) script = await writeScript(o);
+        final parts = splitScript(script);
+        if (parts.isEmpty) throw AiException('Paste a script, or write a brief so the AI can write one.');
+        if (o.narration == Narration.silent) {
+          final lines = estimateTimings(parts, 0);
+          return NarrationResult(lines, _spreadWords(lines), null);
+        }
+        status('Recording the voice-over with your phone\'s voice…');
+        final dir = await c.storage.mediaDir();
+        final clips = await MediaBridge.tts(parts, dir, lang: o.language == 'en' ? 'en-IN' : 'hi-IN', rate: 1.05);
+        final lines = <(double, double, String)>[];
+        final cmds = <Map<String, dynamic>>[];
+        var t = 0.4;
+        for (int i = 0; i < clips.length; i++) {
+          final (path, dur) = clips[i];
+          final a = MediaAsset(id: Ids.next('voice'), type: MediaType.audio, path: path, name: 'Voice ${i + 1}', width: 0, height: 0, duration: dur);
+          p.media[a.id] = a;
+          cmds.add({'op': 'add_layer', 'type': 'audio', 'media': a.id, 'id': '${a.id}_l', 'name': 'Voice ${i + 1}', 'start': t, 'duration': dur, 'index': 9999});
+          lines.add((t, t + dur, parts[i]));
+          t += dur + 0.3;
+        }
+        c.mediaChanged();
+        final err = c.tryRun({'op': 'batch', 'commands': cmds}, record: false);
+        if (err != null) throw AiException('Could not place the voice-over: $err');
+        return NarrationResult(lines, _spreadWords(lines), null);
+    }
+  }
+
+  Future<String> _placeNarration(MediaAsset m, bool video) async {
+    final existing = c.comp.layers.where((l) => l.mediaId == m.id).toList();
+    if (existing.isNotEmpty) return existing.first.id;
+    final id = Ids.next(video ? 'aroll' : 'vo');
+    final err = c.tryRun({
+      'op': 'batch',
+      'commands': [
+        {'op': 'add_layer', 'type': video ? 'video' : 'audio', 'media': m.id, 'id': id, 'name': video ? 'Presenter' : 'Voice-over', 'start': 0, if (video) 'fit': 'cover', 'index': 9999},
+        if (m.duration > c.comp.duration) {'op': 'set_comp', 'duration': m.duration},
+      ],
+    }, record: false);
+    if (err != null) throw AiException('Could not place the clip: $err');
+    return id;
+  }
+
+  Future<void> _romanize(AiSettings s, List<WordTiming> words) async {
+    status('Converting to Roman script…');
+    for (int i = 0; i < words.length; i += 300) {
+      final chunk = words.sublist(i, math.min(words.length, i + 300));
+      try {
+        final raw = await AiClient.complete(
+          s: s,
+          system: 'Transliterate Hindi words to casual Roman-script Hinglish. Return JSON {"words": [...]} with exactly the same number of items, in order.',
+          messages: [AiMessage('user', jsonEncode({'words': chunk.map((w) => w.word).toList()}))],
+        );
+        final out = (_json(raw)['words'] as List? ?? const []).map((e) => '$e').toList();
+        if (out.length == chunk.length) {
+          for (int k = 0; k < chunk.length; k++) {
+            chunk[k].word = out[k];
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<String> writeScript(DirectorInput o) async {
+    if (o.brief.trim().isEmpty) throw AiException('Write a brief (what the video is about) or paste a script.');
+    status('Writing the script…');
+    final s = await AiSettings.load();
+    final media = _mediaList();
+    final raw = await AiClient.complete(
+      s: s,
+      system: '''
+You are a scriptwriter for a ${o.language == 'en' ? 'English' : 'Hindi/Hinglish'} documentary YouTube channel. Write narration for about ${o.minutes} minute(s) (~${o.minutes * 150} words).
+Structure: a 2-3 sentence hook with a question or surprising fact, then the story in clear short sentences, then a one-line ending that invites a comment.
+Use ONLY facts given in the brief or visible in the media descriptions; if a fact is uncertain, phrase it carefully. ${o.language == 'en' ? '' : 'Write in Devanagari Hindi with common English words where natural.'}
+Return ONLY JSON: {"title":"...","lines":["sentence", ...]}''',
+      messages: [AiMessage('user', jsonEncode({'brief': o.brief, 'media': media, 'style_notes': s.styleNotes}))],
+    );
+    final j = _json(raw);
+    final lines = (j['lines'] as List? ?? const []).map((e) => '$e'.trim()).where((e) => e.isNotEmpty).toList();
+    if (lines.isEmpty) throw AiException('The AI did not return a script. Try again or paste your own.');
+    final title = j['title'];
+    if (title is String && title.trim().isNotEmpty && p.name.startsWith('Untitled')) p.name = title.trim();
+    return lines.join('\n');
+  }
+
+  static List<String> splitScript(String text) => text
+      .split(RegExp(r'(?<=[.!?।])\s+|\n+'))
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList();
+
+  /// ~2.6 words a second, at least 1.6 s a line.
+  static List<(double, double, String)> estimateTimings(List<String> parts, double t0) {
+    var t = t0;
+    return [
+      for (final p in parts)
+        () {
+          final d = math.max(1.6, p.split(RegExp(r'\s+')).length / 2.6);
+          final r = (t, t + d, p);
+          t += d + 0.2;
+          return r;
+        }(),
+    ];
+  }
+
+  static List<WordTiming> _spreadWords(List<(double, double, String)> lines) {
+    final out = <WordTiming>[];
+    for (final (a, b, text) in lines) {
+      final ws = text.split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
+      final total = ws.fold<int>(0, (s, w) => s + w.length + 1);
+      var t = a;
+      for (final w in ws) {
+        final d = (b - a) * (w.length + 1) / math.max(1, total);
+        out.add(WordTiming(w, t, t + d));
+        t += d;
+      }
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------ 3. storyboard
+
+  List<Map<String, dynamic>> _mediaList() => [
+        for (final m in p.media.values)
+          if (m.type != MediaType.audio && !m.name.endsWith('(subject)') && !m.name.endsWith('(background)'))
+            {
+              'id': m.id,
+              'type': m.type.name,
+              if (m.duration > 0) 'seconds': double.parse(m.duration.toStringAsFixed(1)),
+              'about': m.description.isEmpty ? m.name : m.description,
+            },
+      ];
+
+  Future<(List<Beat>, String)> plan(DirectorInput o, NarrationResult n) async {
+    final s = await AiSettings.load();
+    final beats = <Beat>[];
+    var look = o.look;
+    final used = <String, int>{};
+    const chunk = 30;
+    for (int i = 0; i < n.lines.length; i += chunk) {
+      final end = math.min(n.lines.length, i + chunk);
+      status('Planning shots ${i + 1}–$end of ${n.lines.length}…');
+      final payload = {
+        'frame': [c.comp.width, c.comp.height],
+        'presenter_on_camera': n.arollLayer != null,
+        'brief': o.brief,
+        'style_notes': s.styleNotes,
+        'media': _mediaList(),
+        'media_used_so_far': used,
+        if (i > 0) 'previous_visuals': [for (final b in beats.skip(math.max(0, beats.length - 4))) b.visual],
+        'lines': [for (int k = i; k < end; k++) {'i': k, 'start': _r(n.lines[k].$1), 'end': _r(n.lines[k].$2), 'text': n.lines[k].$3}],
+      };
+      final raw = await AiClient.complete(s: s, system: directorPrompt(cutouts: o.depth), messages: [AiMessage('user', jsonEncode(payload))]);
+      final j = _json(raw);
+      if (i == 0 && look == 'auto' && j['look'] is String) look = '${j['look']}';
+      for (final b in (j['beats'] as List? ?? const [])) {
+        final m = b as Map;
+        final k = (m['i'] as num?)?.toInt() ?? -1;
+        if (k < 0 || k >= n.lines.length) continue;
+        final v = Map<String, dynamic>.from(m['visual'] as Map? ?? {'aroll': true});
+        if (v['media'] is String) used['${v['media']}'] = (used['${v['media']}'] ?? 0) + 1;
+        beats.add(Beat(n.lines[k].$1, n.lines[k].$2, n.lines[k].$3, v));
+      }
+    }
+    // Lines the AI skipped stay on the presenter (or get the previous visual's look).
+    final have = beats.map((b) => b.start).toSet();
+    for (final l in n.lines) {
+      if (!have.contains(l.$1)) beats.add(Beat(l.$1, l.$2, l.$3, {'aroll': true}));
+    }
+    beats.sort((a, b) => a.start.compareTo(b.start));
+    if (n.arollLayer == null) _fillGaps(beats);
+    return (beats, look == 'auto' ? 'cinematic_doc' : look);
+  }
+
+  /// Without a presenter, a beat on "aroll" would be a black frame: reuse
+  /// the previous visual or put up a glowing key word.
+  void _fillGaps(List<Beat> beats) {
+    Map<String, dynamic>? last;
+    for (final b in beats) {
+      if (b.visual['aroll'] == true) {
+        if (last != null && last['media'] != null && last['component'] == null) {
+          b.visual = {...last, 'move': 'pull_out', 'transition': 'fade', 'sfx': 'none'};
+        } else {
+          final word = b.line.split(RegExp(r'\s+')).reduce((a, x) => x.length > a.length ? x : a);
+          b.visual = {'component': 'glow_word', 'text': word.replaceAll(RegExp(r'[^\wऀ-ॿ]'), '')};
+        }
+      } else {
+        last = b.visual;
+      }
+    }
+  }
+
+  static double _r(double v) => double.parse(v.toStringAsFixed(2));
+
+  static String directorPrompt({bool cutouts = true}) => '''
+You are the DIRECTOR and EDITOR of a Hindi/English documentary explainer channel. You turn narration lines into a storyboard: one visual per line, timed to the words.
+Return ONLY JSON: {"look":"cinematic_doc|retro_film|noir|warm_travel|clean_minimal|shorts_punch","beats":[{"i":<line index>,"visual":{...}}]}
+
+VISUALS (pick ONE per line):
+- {"aroll":true,"punch":<true for emphasis — a hard zoom on the presenter>}  — only if presenter_on_camera; ~25-35% of lines (opinions, jokes, questions to the viewer, transitions)
+- {"media":"<media id>","move":"ken_burns|push_in|pull_out|pan_left|pan_right|parallax${cutouts ? '|depth' : ''}","transition":"fade|zoom_in|zoom_out|slide_left|slide_right|whip|blur|pop|shatter"${cutouts ? ',"behind_text":"<optional ONE dramatic word shown BETWEEN the subject and background>"' : ''}}
+${cutouts ? '  "depth" cuts the subject out and moves it separately from the background (3D parallax). Use it ONLY on photos whose "about" says "clear subject" — great for people introduced, hooks and dramatic moments, at most ~1 in 6 lines.\n' : ''}- {"component":"source_card","source":"Source: <site>","headline":"...","body":"<the cited claim, 1-3 sentences>","highlights":["<key phrase from body>"],"circle":"<date or number from body>"}  — when a line cites a report, article, book or "according to"
+- {"component":"lower_third","source":"Source: <site>","text":"...","highlights":["..."],"over_aroll":true}
+- {"component":"map","countries":["<English country names>"],"focus":"<country>","style":"dark|paper|blue"}  — places/countries/borders
+- {"component":"badge","label":"<ORGANISATION / PARTY / AGENCY>","media":"<optional logo/photo media id>"}
+- {"component":"counter","from":0,"to":<number>,"prefix":"\$ or ₹ or ''","suffix":" CRORE / % / BARRELS …"}  — when a big number is spoken
+- {"component":"timeline","from":<decade start>,"to":<decade end>,"marker":<year>,"label":"<MON YYYY>"}  — when a year/date matters
+- {"component":"glow_word","text":"<ONE KEY WORD>"}  — a dramatic single word
+- {"component":"speech_bubble","text":"\\"<short quote>\\""}  — a quoted statement
+- {"component":"photo_card","media":"<image id>","caption":"<name>"}  — a person or object introduced
+- {"component":"cta","text":"<Subscribe / Comment …>","over_aroll":true}  — once, near the end
+Optional on any visual: "sfx":"whoosh|hit|riser|pop|tick|none" (defaults are chosen for you; use "riser" before the big reveal of the hook, "none" to keep a moment quiet).
+
+DIRECTING RULES
+- Plan from "about" (what is IN each picture), not the file name. A visual must match what the line says. Never invent media ids.
+- Hook (first 3-4 lines): the strongest visuals — depth shot, counter, map or glow word; fast cuts.
+- Keep the eye moving: never the same component type or same media on two lines in a row; use each media at most twice (see media_used_so_far).
+- Text on screen must be short, factual and ONLY from the narration line — never add facts.
+- Use transitions with intent: "fade" by default, "whip"/"slide" for change of place or time, "zoom_in" into details, "shatter" at most once for a dramatic break.
+- If there's no presenter, every line needs a real visual.
+- Follow style_notes from the channel owner when given; they override these defaults.''';
+
+  // ------------------------------------------------------------ 4. tools
+
+  /// Cut-outs for depth shots and synthesised sound effects, registered as
+  /// project media.
+  Future<BuildOptions> prepare(List<Beat> beats, DirectorInput o, NarrationResult n, String look) async {
+    final dir = await c.storage.mediaDir();
+    final cutouts = <String, (String, String)>{};
+    if (o.depth) {
+      final want = {
+        for (final b in beats)
+          if (b.keep && b.visual['move'] == 'depth' && b.visual['media'] is String && p.media[b.visual['media']]?.type == MediaType.image)
+            '${b.visual['media']}',
+      };
+      var k = 0;
+      for (final id in want) {
+        k++;
+        status('Cutting out subjects for depth shots… $k/${want.length}');
+        final m = p.media[id]!;
+        try {
+          final stamp = DateTime.now().millisecondsSinceEpoch;
+          final fgPath = '$dir/cut_${stamp}_fg.png', bgPath = '$dir/cut_${stamp}_bg.jpg';
+          final (w, h) = await MediaBridge.cutout(m.path, fgPath, bgPath);
+          final fg = MediaAsset(id: Ids.next('img'), type: MediaType.image, path: fgPath, name: '${m.name} (subject)', width: w.toDouble(), height: h.toDouble());
+          final bg = MediaAsset(id: Ids.next('img'), type: MediaType.image, path: bgPath, name: '${m.name} (background)', width: w.toDouble(), height: h.toDouble());
+          p.media[fg.id] = fg;
+          p.media[bg.id] = bg;
+          cutouts[id] = (fg.id, bg.id);
+        } catch (_) {
+          // No clear subject: the builder falls back to a push-in.
+        }
+      }
+    }
+    final sfx = <String, String>{};
+    if (o.sfx) {
+      status('Making sound effects…');
+      for (final kind in Sfx.kinds) {
+        final existing = p.media.values.where((m) => m.name == 'SFX $kind' && File(m.path).existsSync()).toList();
+        if (existing.isNotEmpty) {
+          sfx[kind] = existing.first.id;
+          continue;
+        }
+        final path = '$dir/sfx_$kind.wav';
+        await File(path).writeAsBytes(Sfx.wav(kind));
+        final a = MediaAsset(id: Ids.next('sfx'), type: MediaType.audio, path: path, name: 'SFX $kind', width: 0, height: 0, duration: Sfx.length(kind));
+        p.media[a.id] = a;
+        sfx[kind] = a.id;
+      }
+    }
+    c.mediaChanged();
+    return BuildOptions(
+      arollLayer: n.arollLayer,
+      musicMedia: o.musicMedia,
+      speech: StoryBuilder.speechFromWords(n.words),
+      sfxMedia: sfx,
+      cutouts: cutouts,
+      captionWords: o.captions ? n.words : null,
+      captions: CaptionOptions(language: o.language == 'auto' ? null : o.language, roman: o.roman, style: 'karaoke'),
+      look: look,
+    );
+  }
+
+  // ------------------------------------------------------------ 5. build
+
+  /// Applies the storyboard. Beats whose commands fail are dropped instead
+  /// of failing the whole video. Returns the number of dropped beats.
+  int build(List<Beat> beats, BuildOptions o) {
+    final full = StoryBuilder.build(p, beats, o);
+    if (c.tryRun({'op': 'batch', 'commands': full}, record: false) == null) return 0;
+    // Find the beats that fail, one by one, on a snapshot.
+    status('Fixing a few shots that didn\'t fit…');
+    final snap = ProjectSnapshot.take(p);
+    final bad = <Beat>{};
+    var k = 0;
+    for (final b in beats.where((b) => b.keep)) {
+      final one = StoryBuilder.build(p, [b], BuildOptions(arollLayer: o.arollLayer, cutouts: o.cutouts, tag: '${o.tag}t${k++}'));
+      try {
+        EditCommands.runAtomic(p, {'op': 'batch', 'commands': one});
+      } on CommandError {
+        bad.add(b);
+      }
+    }
+    ProjectSnapshot.restore(p, snap);
+    for (final b in bad) {
+      b.keep = false;
+    }
+    final err = c.tryRun({'op': 'batch', 'commands': StoryBuilder.build(p, beats, o)}, record: false);
+    if (err != null) throw AiException('Build failed: $err');
+    return bad.length;
+  }
+
+  // ------------------------------------------------------------ 6. review
+
+  /// Shows the AI rendered frames and lets it fix what looks wrong
+  /// (unreadable text, overlaps, black frames, a picture that doesn't match).
+  Future<String> review(List<Beat> beats, Future<List<(double, Uint8List)>> Function(List<double> times) render,
+      {int rounds = 1}) async {
+    final s = await AiSettings.load();
+    final kept = beats.where((b) => b.keep).toList();
+    if (kept.isEmpty) return '';
+    final pick = <Beat>[];
+    final step = math.max(1, kept.length ~/ 8);
+    for (int i = 0; i < kept.length && pick.length < 8; i += step) {
+      pick.add(kept[i]);
+    }
+    var notes = '';
+    for (int r = 0; r < rounds; r++) {
+      status('Watching the edit…');
+      final times = [for (final b in pick) b.start + math.min(1.2, (b.end - b.start) * 0.6)];
+      final frames = await render(times);
+      if (frames.isEmpty) return notes;
+      status('Reviewing frames…');
+      final state = jsonEncode(EditAgent.projectSummary(c));
+      final convo = [
+        AiMessage(
+          'user',
+          'DIRECTOR REVIEW. The attached images are rendered frames of the edit at times '
+          '${frames.map((f) => f.$1.toStringAsFixed(1)).join(', ')} s. Narration at those times: '
+          '${jsonEncode([for (final b in pick) {'t': _r(b.start), 'line': b.line}])}.\n'
+          'Check each frame like a senior editor: text cut off or outside the frame, text overlapping captions or other text, '
+          'unreadable text (too small, low contrast), black or empty frames, a picture that obviously does not match its line, '
+          'a subject\'s face covered by graphics. Fix only real problems with edit commands (move/resize/recolor/retime layers, '
+          'swap media with replace_media). If everything is fine return "commands": []. Put a 1-2 sentence verdict in "reply".\n\n'
+          'CURRENT PROJECT (JSON):\n$state',
+          images: [for (final f in frames) f.$2],
+        ),
+      ];
+      for (int attempt = 0; attempt < 2; attempt++) {
+        final raw = await AiClient.complete(s: s, system: commandSpec, messages: convo);
+        final j = _json(raw);
+        notes = '${j['reply'] ?? ''}'.trim();
+        final cmds = (j['commands'] as List?) ?? const [];
+        if (cmds.isEmpty) return notes;
+        final err = c.tryRun({'op': 'batch', 'commands': cmds}, record: false);
+        if (err == null) break;
+        convo
+          ..add(AiMessage('assistant', raw))
+          ..add(AiMessage('user', 'Rejected, nothing changed: $err\nReturn the corrected JSON.'));
+      }
+    }
+    return notes;
+  }
+
+  static Map<String, dynamic> _json(String raw) {
+    final a = raw.indexOf('{'), b = raw.lastIndexOf('}');
+    if (a < 0 || b <= a) throw AiException('The AI answered without JSON. Try again.');
+    try {
+      return jsonDecode(raw.substring(a, b + 1)) as Map<String, dynamic>;
+    } catch (_) {
+      throw AiException('The AI\'s answer was cut off or malformed. Try again.');
+    }
+  }
+}
