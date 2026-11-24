@@ -55,6 +55,13 @@ jobs:
           else
             echo "No SIGNING_KEYSTORE_B64 secret yet: random key (uninstall needed between builds)"
           fi
+      # On-device Whisper is native C++ and needs this NDK version.
+      - name: Android NDK for Whisper
+        run: |
+          SDKM=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
+          yes | $SDKM --licenses > /dev/null || true
+          $SDKM --install "ndk;29.0.13113456" > /dev/null
+          ls $ANDROID_HOME/ndk
       - run: flutter build apk --release --split-per-abi --build-number=${{ github.run_number }} --dart-define=BUILD_NUMBER=${{ github.run_number }}
       - run: |
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk MotionAI.apk
