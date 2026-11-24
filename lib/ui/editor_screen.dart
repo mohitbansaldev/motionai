@@ -194,7 +194,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
           borderRadius: BorderRadius.circular(14),
           child: Container(
             color: const Color(0xFF050608),
-            child: Stack(children: [
+            child: Stack(fit: StackFit.expand, children: [
               Positioned.fill(child: CompositionView(controller: c)),
               AnimatedBuilder(
                 animation: c,
