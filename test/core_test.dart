@@ -8,6 +8,7 @@ import 'package:motionai/core/model/camera.dart';
 import 'package:motionai/core/model/easing.dart';
 import 'package:motionai/core/model/layer.dart';
 import 'package:motionai/core/model/project.dart';
+import 'package:motionai/core/presets/templates.dart';
 
 Project newProject() => Project(
       id: 'p1',
@@ -289,5 +290,20 @@ void main() {
       expect(pr.main.requireLayer('music').duration, 30);
       expect(Evaluator.evaluate(pr.main, 1), isEmpty);
     });
+  });
+
+  test('all templates build without errors', () {
+    for (final t in Templates.all) {
+      final pr = Project(
+        id: 't',
+        name: t.name,
+        main: Composition(id: 'main', name: 'Main', width: t.width, height: t.height, duration: t.duration),
+      );
+      EditCommands.runAtomic(pr, {'op': 'batch', 'commands': t.commands(t.width, t.height)});
+      expect(pr.main.layers, isNotEmpty, reason: t.name);
+      for (double time = 0; time < t.duration; time += 0.5) {
+        Evaluator.evaluate(pr.main, time);
+      }
+    }
   });
 }

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import 'ai_settings.dart';
+import 'chatgpt_auth.dart';
 
 class AiException implements Exception {
   final String message;
@@ -29,10 +30,79 @@ class AiClient {
     required List<AiMessage> messages,
     bool jsonMode = true,
   }) async {
-    if (!s.isConfigured) throw AiException('Add your API key in AI settings first.');
-    return s.provider == AiProvider.openai
-        ? _openai(s, system, messages, jsonMode)
-        : _anthropic(s, system, messages);
+    if (!s.isConfigured) {
+      throw AiException(s.provider == AiProvider.chatgpt
+          ? 'Connect your ChatGPT account in AI settings first.'
+          : 'Add your API key in AI settings first.');
+    }
+    return switch (s.provider) {
+      AiProvider.chatgpt => _chatgpt(s, system, messages),
+      AiProvider.openai => _openai(s, system, messages, jsonMode),
+      AiProvider.anthropic => _anthropic(s, system, messages),
+    };
+  }
+
+  /// Responses API with the ChatGPT-plan OAuth token (streamed, not stored).
+  static Future<String> _chatgpt(AiSettings s, String system, List<AiMessage> msgs) async {
+    final token = await ChatGptAuth.accessToken();
+    var model = s.chatgptModel;
+    if (model.isEmpty) {
+      final list = await ChatGptAuth.models();
+      model = list.firstWhere((m) => m.contains('mini'), orElse: () => list.isEmpty ? 'gpt-5-mini' : list.first);
+      s.chatgptModel = model;
+      await ChatGptAuth.setModel(model);
+    }
+    final body = {
+      'model': model,
+      'instructions': system,
+      'store': false,
+      'stream': true,
+      'input': [
+        for (final m in msgs)
+          {
+            'role': m.role,
+            'content': [
+              {'type': m.role == 'assistant' ? 'output_text' : 'input_text', 'text': m.text},
+              if (m.role == 'user')
+                for (final img in m.images)
+                  {'type': 'input_image', 'image_url': 'data:${_mime(img)};base64,${base64Encode(img)}', 'detail': 'low'},
+            ],
+          },
+      ],
+    };
+    final req = http.Request('POST', Uri.parse('https://api.openai.com/v1/responses'))
+      ..headers['Authorization'] = 'Bearer $token'
+      ..headers['Content-Type'] = 'application/json'
+      ..headers['Accept'] = 'text/event-stream'
+      ..body = jsonEncode(body);
+    final streamed = await req.send().timeout(_timeout);
+    if (streamed.statusCode != 200) {
+      _decode(await http.Response.fromStream(streamed));
+    }
+    final out = StringBuffer();
+    String? failure;
+    await for (final line in streamed.stream.transform(utf8.decoder).transform(const LineSplitter()).timeout(_timeout)) {
+      if (!line.startsWith('data:')) continue;
+      final data = line.substring(5).trim();
+      if (data.isEmpty || data == '[DONE]') continue;
+      Map<String, dynamic> ev;
+      try {
+        ev = jsonDecode(data) as Map<String, dynamic>;
+      } catch (_) {
+        continue;
+      }
+      switch (ev['type']) {
+        case 'response.output_text.delta':
+          out.write(ev['delta'] ?? '');
+        case 'response.failed':
+        case 'error':
+          final r = ev['response'];
+          final err = (r is Map ? r['error'] : null) ?? ev['error'] ?? ev;
+          failure = err is Map ? '${err['message'] ?? err}' : '$err';
+      }
+    }
+    if (failure != null) throw AiException('ChatGPT request failed: $failure');
+    return out.toString();
   }
 
   static String _mime(Uint8List b) =>

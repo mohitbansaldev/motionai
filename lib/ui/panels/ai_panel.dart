@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../ai/agent.dart';
+import '../../ai/ai_client.dart';
 import '../../ai/ai_settings.dart';
+import '../../ai/chatgpt_auth.dart';
 import '../../state/editor_controller.dart';
 import '../common.dart';
 
@@ -96,8 +98,8 @@ class _AiPanelState extends State<AiPanel> {
               s == null
                   ? 'AI assistant'
                   : s.isConfigured
-                      ? 'AI · ${s.provider == AiProvider.openai ? 'OpenAI' : 'Claude'} · ${s.model}'
-                      : 'AI · add your API key to start',
+                      ? 'AI · ${s.providerLabel} · ${s.model}'
+                      : 'AI · connect ChatGPT or add an API key',
               style: const TextStyle(fontSize: 12.5, color: Colors.white70),
               overflow: TextOverflow.ellipsis,
             ),
@@ -240,6 +242,7 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
         _openaiModel.text = v.openaiModel;
         _anthropicModel.text = v.anthropicModel;
       });
+      _loadChatgpt();
     });
   }
 
@@ -249,6 +252,96 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
       c.dispose();
     }
     super.dispose();
+  }
+
+  bool _connecting = false;
+  String? _cgError;
+  String? _cgEmail;
+  List<String> _cgModels = const [];
+
+  Future<void> _loadChatgpt() async {
+    _cgEmail = await ChatGptAuth.email;
+    if (s!.chatgptConnected) {
+      try {
+        _cgModels = await ChatGptAuth.models();
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _connect() async {
+    setState(() {
+      _connecting = true;
+      _cgError = null;
+    });
+    try {
+      await ChatGptAuth.signIn();
+      s!.chatgptConnected = true;
+      await _loadChatgpt();
+    } on AiException catch (e) {
+      _cgError = e.message;
+    } catch (e) {
+      _cgError = '$e';
+    } finally {
+      if (mounted) setState(() => _connecting = false);
+    }
+  }
+
+  Widget _chatgptBox(AiSettings v) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(color: const Color(0xFF1C1F27), borderRadius: BorderRadius.circular(12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (!v.chatgptConnected) ...[
+          const Text('Use your ChatGPT Plus or Pro plan — no API key needed. '
+              'You sign in on OpenAI\'s page and choose how much of your plan MotionAI may use.',
+              style: TextStyle(fontSize: 12.5, color: Colors.white70)),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+              onPressed: _connecting ? null : _connect,
+              icon: _connecting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.bolt),
+              label: const Text('Continue with ChatGPT'),
+            ),
+          ),
+        ] else ...[
+          Row(children: [
+            const Icon(Icons.check_circle, color: Colors.greenAccent, size: 18),
+            const SizedBox(width: 6),
+            Expanded(child: Text('Connected${_cgEmail == null ? '' : ' as $_cgEmail'}')),
+            TextButton(
+              onPressed: () async {
+                await ChatGptAuth.signOut();
+                setState(() => v.chatgptConnected = false);
+              },
+              child: const Text('Disconnect'),
+            ),
+          ]),
+          if (_cgModels.isNotEmpty)
+            DropdownButton<String>(
+              isExpanded: true,
+              value: _cgModels.contains(v.chatgptModel) ? v.chatgptModel : null,
+              hint: const Text('Model (auto)'),
+              items: [for (final m in _cgModels) DropdownMenuItem(value: m, child: Text(m))],
+              onChanged: (m) async {
+                if (m == null) return;
+                await ChatGptAuth.setModel(m);
+                setState(() => v.chatgptModel = m);
+              },
+            ),
+        ],
+        if (_cgError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_cgError!, style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
+          ),
+      ]),
+    );
   }
 
   Future<void> _save() async {
@@ -274,20 +367,22 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
                 const Text('AI settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 const Text(
-                  'Uses your own API key (pay-as-you-go). Keys are stored encrypted on this phone only. '
-                  'Get one at platform.openai.com or console.anthropic.com. Captions need an OpenAI key.',
+                  'Use your ChatGPT Plus/Pro plan, or your own API key. Credentials are stored encrypted on this phone only. '
+                  'Captions need an OpenAI API key.',
                   style: TextStyle(fontSize: 12, color: Colors.white60),
                 ),
                 const SizedBox(height: 12),
                 SegmentedButton<AiProvider>(
                   segments: const [
-                    ButtonSegment(value: AiProvider.openai, label: Text('OpenAI')),
-                    ButtonSegment(value: AiProvider.anthropic, label: Text('Claude')),
+                    ButtonSegment(value: AiProvider.chatgpt, label: Text('ChatGPT plan')),
+                    ButtonSegment(value: AiProvider.openai, label: Text('OpenAI key')),
+                    ButtonSegment(value: AiProvider.anthropic, label: Text('Claude key')),
                   ],
                   selected: {v.provider},
                   onSelectionChanged: (sel) => setState(() => v.provider = sel.first),
                 ),
                 const SizedBox(height: 12),
+                if (v.provider == AiProvider.chatgpt) _chatgptBox(v),
                 TextField(
                   controller: _openaiKey,
                   obscureText: true,
