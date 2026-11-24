@@ -102,3 +102,6 @@ lib/
 test/core_test.dart      unit tests for easing, keyframes, 3D math, parallax, commands
 docs/                    EDIT_COMMANDS.md, ROADMAP.md
 ```
+
+## Third-party data
+Country outlines: [Natural Earth](https://www.naturalearthdata.com/) (public domain), India point-of-view boundaries, simplified.

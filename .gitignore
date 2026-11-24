@@ -20,3 +20,10 @@ test-output.txt
 setup-log.txt
 devices.txt
 run-output.txt
+
+# Never commit signing keys or secrets
+signing/
+*.keystore
+*.jks
+key.properties
+*.env
