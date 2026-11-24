@@ -6,6 +6,7 @@ import '../../ai/ai_settings.dart';
 import '../../ai/chatgpt_auth.dart';
 import '../../state/editor_controller.dart';
 import '../common.dart';
+import '../script_sheet.dart';
 
 /// Chat with the AI edit assistant.
 class AiPanel extends StatefulWidget {
@@ -103,6 +104,11 @@ class _AiPanelState extends State<AiPanel> {
               style: const TextStyle(fontSize: 12.5, color: Colors.white70),
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          TextButton.icon(
+            onPressed: () => ScriptSheet.open(context, widget.c),
+            icon: const Icon(Icons.description_outlined, size: 18),
+            label: const Text('Script'),
           ),
           if (widget.onCaptions != null)
             TextButton.icon(

@@ -8,6 +8,7 @@ import '../model/effects_catalog.dart';
 import '../model/layer.dart';
 import '../model/project.dart';
 import '../presets/camera_presets.dart';
+import '../presets/components.dart';
 import '../presets/motion_presets.dart';
 
 /// Thrown when a command is invalid. The message is written so an AI agent
@@ -55,6 +56,7 @@ class EditCommands {
     'clear_keyframes', 'set_ease', 'add_effect', 'remove_effect', 'set_effect_param',
     'set_camera_mode', 'camera_move', 'parallax_rig', 'set_comp', 'batch',
     'animate_in', 'animate_out', 'apply_style', 'add_mask', 'update_mask', 'remove_mask',
+    'add_component', 'replace_media',
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -310,6 +312,43 @@ class EditCommands {
         l.masks.remove(_mask(l, c['mask']));
         break;
 
+      case 'replace_media':
+        // Swap a layer's photo/video, keeping its on-screen size and position.
+        final l = _layer(comp, c['layer']);
+        final m = project.media['${c['media']}'];
+        if (m == null) throw CommandError('No media "${c['media']}"');
+        if (l.width > 0 && m.width > 0) {
+          final k = l.width / m.width;
+          final sc = l.prop(Props.scale);
+          List<double> scaled(List<double> v) => [v[0] * k, v[1] * k, v[2]];
+          sc.staticValue = scaled(sc.staticValue);
+          for (final kf in sc.keyframes) {
+            kf.value = scaled(kf.value);
+          }
+          final an = l.prop(Props.anchor);
+          List<double> anc(List<double> v) => [v[0] / k, v[1] / k, v[2]];
+          an.staticValue = anc(an.staticValue);
+          for (final kf in an.keyframes) {
+            kf.value = anc(kf.value);
+          }
+        }
+        l.mediaId = m.id;
+        l.width = m.width;
+        l.height = m.height;
+        if (m.type == MediaType.image && l.type == LayerType.video) l.type = LayerType.image;
+        break;
+
+      case 'add_component':
+        final cmds = Components.build(project, c, now);
+        for (int i = 0; i < cmds.length; i++) {
+          try {
+            _run(project, cmds[i], now, r);
+          } on CommandError catch (e) {
+            throw CommandError('component ${c['type']}: ${e.message}');
+          }
+        }
+        break;
+
       case 'set_comp':
         if (c['name'] != null) comp.name = '${c['name']}';
         if (c['width'] != null) comp.width = _num(c, 'width');
@@ -369,6 +408,9 @@ class EditCommands {
     } else if (type == LayerType.nullObject) {
       w = 100;
       h = 100;
+    } else if (type == LayerType.shape) {
+      w = _optNum(c, 'width') ?? 400;
+      h = _optNum(c, 'height') ?? 400;
     } else {
       w = _optNum(c, 'width') ?? comp.width;
       h = _optNum(c, 'height') ?? comp.height;
@@ -408,6 +450,15 @@ class EditCommands {
       layer.prop(Props.scale).staticValue = [s, s, 100];
     }
     if (type == LayerType.text) _applyText(layer, c);
+    if (type == LayerType.shape) {
+      layer.shape = ShapeData();
+      _applyShape(layer, c, placeFromPoints: c['position'] == null);
+    }
+    if (c['parent'] != null) {
+      final pid = '${c['parent']}';
+      if (comp.layerById(pid) == null) throw CommandError('Parent "$pid" does not exist');
+      layer.parentId = pid;
+    }
     if (c['position'] != null) {
       final p = layer.prop(Props.position);
       p.staticValue = _fitList(p, _values(c['position']));
@@ -464,7 +515,71 @@ class EditCommands {
     if (c['width'] != null) l.width = _num(c, 'width');
     if (c['height'] != null) l.height = _num(c, 'height');
     if (l.type == LayerType.text) _applyText(l, c);
+    if (l.type == LayerType.shape) _applyShape(l, c, placeFromPoints: false);
     _extendComp(comp, l.end);
+  }
+
+  /// Shape params: kind, points [[x,y]...] (composition px), rings, closed, smooth,
+  /// sides, inner, corner, fill, fill2, stroke, stroke_width, dash [on,off],
+  /// arrow_start, arrow_end.
+  static void _applyShape(Layer l, Map<String, dynamic> c, {required bool placeFromPoints}) {
+    final sh = l.shape ??= ShapeData();
+    if (c['kind'] != null) {
+      final k = '${c['kind']}';
+      const kinds = ['rect', 'ellipse', 'polygon', 'star', 'path', 'line'];
+      if (!kinds.contains(k)) throw CommandError('Unknown shape kind "$k". Use ${kinds.join(', ')}');
+      sh.kind = k == 'line' ? 'path' : k;
+      if (k == 'line') sh.closed = false;
+    }
+    if (c['closed'] != null) sh.closed = c['closed'] == true;
+    if (c['smooth'] != null) sh.smooth = c['smooth'] == true;
+    if (c['sides'] != null) sh.sides = _int(c, 'sides').clamp(3, 64);
+    if (c['inner'] != null) sh.inner = _num(c, 'inner').clamp(0.05, 1.0);
+    if (c['corner'] != null) sh.corner = math.max(0.0, _num(c, 'corner'));
+    if (c['fill'] != null) sh.fill = c['fill'] == 'none' ? 0 : _color(c['fill']);
+    if (c['fill2'] != null) sh.fill2 = c['fill2'] == 'none' ? 0 : _color(c['fill2']);
+    if (c['stroke'] != null) sh.stroke = c['stroke'] == 'none' ? 0 : _color(c['stroke']);
+    if (c['stroke_width'] != null) sh.strokeWidth = math.max(0.0, _num(c, 'stroke_width'));
+    if (c['dash'] != null) sh.dash = c['dash'] == 'none' ? [] : _values(c['dash']);
+    if (c['arrow_start'] != null) sh.arrowStart = c['arrow_start'] == true;
+    if (c['arrow_end'] != null) sh.arrowEnd = c['arrow_end'] == true;
+    List<List<double>>? rings;
+    if (c['points'] is List) {
+      final pts = <double>[];
+      for (final p in c['points'] as List) {
+        final v = _values(p);
+        if (v.length < 2) throw CommandError('Each point needs [x, y]');
+        pts..add(v[0])..add(v[1]);
+      }
+      rings = [pts];
+    } else if (c['rings'] is List) {
+      rings = [for (final r in c['rings'] as List) _values(r)];
+    }
+    if (rings != null) {
+      if (sh.kind != 'path') sh.kind = 'path';
+      if (c['closed'] == null && c['points'] != null) sh.closed = false;
+      // Fit the layer box around the points (+ room for stroke and arrowheads).
+      double minX = double.infinity, minY = double.infinity, maxX = -double.infinity, maxY = -double.infinity;
+      for (final r in rings) {
+        for (int i = 0; i + 1 < r.length; i += 2) {
+          minX = math.min(minX, r[i]);
+          maxX = math.max(maxX, r[i]);
+          minY = math.min(minY, r[i + 1]);
+          maxY = math.max(maxY, r[i + 1]);
+        }
+      }
+      if (!minX.isFinite) throw CommandError('Shape has no points');
+      final pad = sh.strokeWidth * 3 + 8;
+      sh.rings = [
+        for (final r in rings) [for (int i = 0; i < r.length; i++) i.isEven ? r[i] - minX + pad : r[i] - minY + pad],
+      ];
+      l.width = maxX - minX + pad * 2;
+      l.height = maxY - minY + pad * 2;
+      l.prop(Props.anchor).staticValue = [l.width / 2, l.height / 2, 0];
+      if (placeFromPoints) {
+        l.prop(Props.position).staticValue = [minX - pad + l.width / 2, minY - pad + l.height / 2, 0];
+      }
+    }
   }
 
   static void _applyText(Layer l, Map<String, dynamic> c) {
@@ -493,6 +608,35 @@ class EditCommands {
     if (c['highlight_color'] != null) t.highlightColor = _color(c['highlight_color']);
     if (c['box_color'] != null) t.boxColor = c['box_color'] == 'none' ? 0 : _color(c['box_color']);
     if (c['shadow'] != null) t.shadow = c['shadow'] == true;
+    if (c['outline'] != null) t.outline = math.max(0.0, _num(c, 'outline'));
+    if (c['marks'] is List) {
+      t.marks = [
+        for (final m in c['marks'] as List)
+          TextMark(
+            '${(m as Map)['phrase']}',
+            style: '${m['style'] ?? 'highlight'}',
+            color: m['color'] != null
+                ? _color(m['color'])
+                : (m['style'] == 'circle' || m['style'] == 'underline')
+                    ? 0xFFE53935
+                    : 0xCCFFE14D,
+            start: l.start + ((m['delay'] as num?) ?? 0.5).toDouble(),
+            duration: ((m['duration'] as num?) ?? 0.6).toDouble(),
+          ),
+      ];
+    }
+    if (c['counter'] is Map) {
+      final m = Map<String, dynamic>.from(c['counter'] as Map);
+      t.counter = CounterSpec(
+        from: (m['from'] as num? ?? 0).toDouble(),
+        to: (m['to'] as num? ?? 100).toDouble(),
+        start: l.start + (m['delay'] as num? ?? 0).toDouble(),
+        duration: (m['duration'] as num? ?? 1.5).toDouble(),
+        decimals: (m['decimals'] as num? ?? 0).toInt(),
+        prefix: '${m['prefix'] ?? ''}',
+        suffix: '${m['suffix'] ?? ''}',
+      );
+    }
     if (c['words'] is List) {
       t.words = [
         for (final w in c['words'] as List)
@@ -511,6 +655,7 @@ class EditCommands {
         LayerType.solid => 'Solid',
         LayerType.nullObject => 'Null',
         LayerType.audio => 'Audio',
+        LayerType.shape => 'Shape',
       };
 
   static void _extendComp(Composition comp, double end) {

@@ -1,6 +1,6 @@
 import 'anim_prop.dart';
 
-enum LayerType { video, image, text, solid, nullObject, audio }
+enum LayerType { video, image, text, solid, nullObject, audio, shape }
 
 LayerType layerTypeFromName(String name) {
   final n = name.replaceAll('_', '').toLowerCase();
@@ -19,6 +19,7 @@ class Props {
   static const rotation = 'rotation'; // [x°, y°, z°]
   static const opacity = 'opacity'; // [0..100]
   static const volume = 'volume'; // [0..200] % for video/audio layers
+  static const trim = 'trim'; // [start%, end%] draw-on for shape layers
 
   static const all = [anchor, position, scale, rotation, opacity, volume];
 }
@@ -95,6 +96,9 @@ class TextData {
   int boxColor; // 0 = no background box
   bool shadow;
   List<WordTiming> words; // optional per-word timings (captions)
+  List<TextMark> marks;
+  CounterSpec? counter;
+  double outline; // outline-only text stroke width (0 = filled text)
 
   TextData({
     this.text = 'Title',
@@ -109,7 +113,11 @@ class TextData {
     this.boxColor = 0,
     this.shadow = true,
     List<WordTiming>? words,
-  }) : words = words ?? [];
+    List<TextMark>? marks,
+    this.counter,
+    this.outline = 0,
+  })  : words = words ?? [],
+        marks = marks ?? [];
 
   TextData copy() => TextData(
         text: text,
@@ -124,6 +132,9 @@ class TextData {
         boxColor: boxColor,
         shadow: shadow,
         words: words.map((w) => WordTiming(w.word, w.start, w.end)).toList(),
+        marks: marks.map((m) => TextMark.fromJson(m.toJson())).toList(),
+        counter: counter == null ? null : CounterSpec.fromJson(counter!.toJson()),
+        outline: outline,
       );
 
   Map<String, dynamic> toJson() => {
@@ -139,6 +150,9 @@ class TextData {
         'boxColor': boxColor,
         'shadow': shadow,
         if (words.isNotEmpty) 'words': words.map((w) => w.toJson()).toList(),
+        if (marks.isNotEmpty) 'marks': marks.map((m) => m.toJson()).toList(),
+        if (counter != null) 'counter': counter!.toJson(),
+        if (outline > 0) 'outline': outline,
       };
 
   static TextData fromJson(Map<String, dynamic> j) => TextData(
@@ -154,6 +168,135 @@ class TextData {
         boxColor: j['boxColor'] as int? ?? 0,
         shadow: j['shadow'] as bool? ?? true,
         words: (j['words'] as List? ?? []).map((e) => WordTiming.fromJson(e as Map<String, dynamic>)).toList(),
+        marks: (j['marks'] as List? ?? []).map((e) => TextMark.fromJson(e as Map<String, dynamic>)).toList(),
+        counter: j['counter'] == null ? null : CounterSpec.fromJson(j['counter'] as Map<String, dynamic>),
+        outline: (j['outline'] as num? ?? 0).toDouble(),
+      );
+}
+
+/// Vector shape content for shape layers. Coordinates are layer pixels.
+/// `rings` holds one flat [x0,y0,x1,y1,...] list per sub-path (paths, lines,
+/// map outlines); rect/ellipse/polygon/star use the layer box instead.
+class ShapeData {
+  String kind; // rect | ellipse | polygon | star | path
+  List<List<double>> rings;
+  bool closed;
+  bool smooth;
+  int sides;
+  double inner; // star inner radius ratio
+  double corner;
+  int fill; // ARGB, 0 = none
+  int fill2; // gradient end colour (top→bottom), 0 = none
+  int stroke; // ARGB, 0 = none
+  double strokeWidth;
+  List<double> dash; // [on, off] px, empty = solid
+  bool arrowStart;
+  bool arrowEnd;
+
+  ShapeData({
+    this.kind = 'rect',
+    List<List<double>>? rings,
+    this.closed = true,
+    this.smooth = false,
+    this.sides = 6,
+    this.inner = 0.5,
+    this.corner = 0,
+    this.fill = 0xFFFFFFFF,
+    this.fill2 = 0,
+    this.stroke = 0,
+    this.strokeWidth = 0,
+    List<double>? dash,
+    this.arrowStart = false,
+    this.arrowEnd = false,
+  })  : rings = rings ?? [],
+        dash = dash ?? [];
+
+  ShapeData copy() => ShapeData.fromJson(toJson());
+
+  Map<String, dynamic> toJson() => {
+        'kind': kind,
+        if (rings.isNotEmpty) 'rings': rings,
+        'closed': closed,
+        'smooth': smooth,
+        'sides': sides,
+        'inner': inner,
+        'corner': corner,
+        'fill': fill,
+        'fill2': fill2,
+        'stroke': stroke,
+        'strokeWidth': strokeWidth,
+        if (dash.isNotEmpty) 'dash': dash,
+        'arrowStart': arrowStart,
+        'arrowEnd': arrowEnd,
+      };
+
+  static ShapeData fromJson(Map<String, dynamic> j) => ShapeData(
+        kind: j['kind'] as String? ?? 'rect',
+        rings: (j['rings'] as List? ?? [])
+            .map((r) => (r as List).map((v) => (v as num).toDouble()).toList())
+            .toList(),
+        closed: j['closed'] as bool? ?? true,
+        smooth: j['smooth'] as bool? ?? false,
+        sides: (j['sides'] as num? ?? 6).toInt(),
+        inner: (j['inner'] as num? ?? 0.5).toDouble(),
+        corner: (j['corner'] as num? ?? 0).toDouble(),
+        fill: j['fill'] as int? ?? 0xFFFFFFFF,
+        fill2: j['fill2'] as int? ?? 0,
+        stroke: j['stroke'] as int? ?? 0,
+        strokeWidth: (j['strokeWidth'] as num? ?? 0).toDouble(),
+        dash: (j['dash'] as List? ?? []).map((v) => (v as num).toDouble()).toList(),
+        arrowStart: j['arrowStart'] as bool? ?? false,
+        arrowEnd: j['arrowEnd'] as bool? ?? false,
+      );
+}
+
+/// An animated annotation on part of a text: highlighter sweep, hand-drawn
+/// circle, underline or colour change. Times are composition seconds.
+class TextMark {
+  String phrase;
+  String style; // highlight | circle | underline | color
+  int color;
+  double start;
+  double duration;
+  TextMark(this.phrase, {this.style = 'highlight', this.color = 0xCCFFE14D, this.start = 0, this.duration = 0.6});
+
+  Map<String, dynamic> toJson() => {'p': phrase, 'st': style, 'c': color, 's': start, 'd': duration};
+  static TextMark fromJson(Map<String, dynamic> j) => TextMark(j['p'] as String,
+      style: j['st'] as String? ?? 'highlight',
+      color: j['c'] as int? ?? 0xCCFFE14D,
+      start: (j['s'] as num? ?? 0).toDouble(),
+      duration: (j['d'] as num? ?? 0.6).toDouble());
+}
+
+/// Counts a number up (or down) over time: "$1.2B", "95%", "3,000,000".
+class CounterSpec {
+  double from, to, start, duration;
+  int decimals;
+  String prefix, suffix;
+  CounterSpec({this.from = 0, this.to = 100, this.start = 0, this.duration = 1.5, this.decimals = 0, this.prefix = '', this.suffix = ''});
+
+  String valueAt(double t) {
+    final p = duration <= 0 ? 1.0 : ((t - start) / duration).clamp(0.0, 1.0);
+    final e = 1 - (1 - p) * (1 - p) * (1 - p);
+    final v = from + (to - from) * e;
+    var str = v.toStringAsFixed(decimals);
+    final neg = str.startsWith('-');
+    if (neg) str = str.substring(1);
+    final parts = str.split('.');
+    final intPart = parts[0].replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+    return '$prefix${neg ? '-' : ''}$intPart${parts.length > 1 ? '.${parts[1]}' : ''}$suffix';
+  }
+
+  Map<String, dynamic> toJson() =>
+      {'from': from, 'to': to, 'start': start, 'duration': duration, 'decimals': decimals, 'prefix': prefix, 'suffix': suffix};
+  static CounterSpec fromJson(Map<String, dynamic> j) => CounterSpec(
+        from: (j['from'] as num? ?? 0).toDouble(),
+        to: (j['to'] as num? ?? 100).toDouble(),
+        start: (j['start'] as num? ?? 0).toDouble(),
+        duration: (j['duration'] as num? ?? 1.5).toDouble(),
+        decimals: (j['decimals'] as num? ?? 0).toInt(),
+        prefix: j['prefix'] as String? ?? '',
+        suffix: j['suffix'] as String? ?? '',
       );
 }
 
@@ -207,6 +350,7 @@ class Layer {
 
   String? mediaId; // for video/image layers
   TextData? text;
+  ShapeData? shape;
   int color; // solid color (ARGB)
 
   /// Layer content size in pixels (media size, solid size, text box).
@@ -234,6 +378,7 @@ class Layer {
     this.blendMode = 'normal',
     this.mediaId,
     this.text,
+    this.shape,
     this.color = 0xFF3D5AFE,
     Map<String, AnimProp>? props,
     List<Effect>? effects,
@@ -251,6 +396,7 @@ class Layer {
     props.putIfAbsent(Props.rotation, () => AnimProp([0, 0, 0]));
     props.putIfAbsent(Props.opacity, () => AnimProp([100]));
     props.putIfAbsent(Props.volume, () => AnimProp([100]));
+    if (type == LayerType.shape) props.putIfAbsent(Props.trim, () => AnimProp([0, 100]));
   }
 
   double get end => start + duration;
@@ -287,6 +433,11 @@ class Layer {
       w.start += dt;
       w.end += dt;
     }
+    for (final m in text?.marks ?? const <TextMark>[]) {
+      m.start += dt;
+    }
+    final ctr = text?.counter;
+    if (ctr != null) ctr.start += dt;
   }
 
   /// Every keyframe time on this layer (for timeline diamonds).
@@ -339,6 +490,7 @@ class Layer {
         blendMode: blendMode,
         mediaId: mediaId,
         text: text?.copy(),
+        shape: shape?.copy(),
         color: color,
         props: props.map((k, v) => MapEntry(k, v.copy())),
         effects: effects.map((e) => e.copy()).toList(),
@@ -360,6 +512,7 @@ class Layer {
         'blendMode': blendMode,
         if (mediaId != null) 'mediaId': mediaId,
         if (text != null) 'text': text!.toJson(),
+        if (shape != null) 'shape': shape!.toJson(),
         'color': color,
         'width': width,
         'height': height,
@@ -385,6 +538,7 @@ class Layer {
         blendMode: j['blendMode'] as String? ?? 'normal',
         mediaId: j['mediaId'] as String?,
         text: j['text'] == null ? null : TextData.fromJson(j['text'] as Map<String, dynamic>),
+        shape: j['shape'] == null ? null : ShapeData.fromJson(j['shape'] as Map<String, dynamic>),
         color: j['color'] as int? ?? 0xFF3D5AFE,
         props: (j['props'] as Map<String, dynamic>? ?? {})
             .map((k, v) => MapEntry(k, AnimProp.fromJson(v as Map<String, dynamic>))),

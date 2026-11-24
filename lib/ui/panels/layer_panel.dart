@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/model/layer.dart';
 import '../../core/presets/motion_presets.dart';
 import '../../state/editor_controller.dart';
+import '../ai_tools.dart';
 import '../common.dart';
 import 'prop_row.dart';
 
@@ -56,6 +57,30 @@ class LayerPanel extends StatelessWidget {
                   ),
               ]),
             ],
+            if (l.type == LayerType.image || l.type == LayerType.video) ...[
+              const SectionTitle('AI tools'),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                if (l.type == LayerType.image) ...[
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.content_cut, size: 16),
+                    label: const Text('Remove background'),
+                    onPressed: () => AiTools.removeBackground(context, c, l),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.auto_fix_normal, size: 16),
+                    label: const Text('Erase object'),
+                    onPressed: () => AiTools.eraseObject(context, c, l),
+                  ),
+                ],
+                if (l.type == LayerType.video)
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.cleaning_services_outlined, size: 16),
+                    label: const Text('Clean plate (static shot)'),
+                    onPressed: () => AiTools.cleanPlate(context, c, l),
+                  ),
+              ]),
+            ],
+            if (l.type == LayerType.shape) _ShapeSection(c: c, layer: l),
             if (l.type == LayerType.video || l.type == LayerType.audio) ...[
               const SectionTitle('Audio'),
               row(Props.volume, 'Volume', 0, 100, decimals: 0),
@@ -343,6 +368,50 @@ class _TextSectionState extends State<_TextSection> {
           onChanged: (v) => c.tryRun({'op': 'update_layer', 'layer': l.id, 'shadow': v}),
         ),
       ]),
+    ]);
+  }
+}
+
+
+/// Fill / stroke / draw-on controls for shape layers.
+class _ShapeSection extends StatelessWidget {
+  final EditorController c;
+  final Layer layer;
+  const _ShapeSection({required this.c, required this.layer});
+
+  @override
+  Widget build(BuildContext context) {
+    final sh = layer.shape!;
+    void set(Map<String, dynamic> m) => c.tryRun({'op': 'update_layer', 'layer': layer.id, ...m});
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SectionTitle('Fill'),
+      Row(children: [
+        Expanded(child: SwatchRow(selected: sh.fill, onPick: (v) => set({'fill': colorHex(v)}))),
+        IconButton(tooltip: 'No fill', icon: const Icon(Icons.format_color_reset), onPressed: () => set({'fill': 'none'})),
+      ]),
+      const SectionTitle('Stroke'),
+      SwatchRow(selected: sh.stroke, onPick: (v) => set({'stroke': colorHex(v), if (sh.strokeWidth == 0) 'stroke_width': 6})),
+      Row(children: [
+        const SizedBox(width: 84, child: Text('Width', style: TextStyle(fontSize: 12.5, color: Colors.white70))),
+        Expanded(
+          child: Slider(
+            value: sh.strokeWidth.clamp(0.0, 60.0),
+            max: 60,
+            onChangeStart: (_) => c.beginGesture(),
+            onChanged: (v) => c.tryRun({'op': 'update_layer', 'layer': layer.id, 'stroke_width': v}, record: false),
+            onChangeEnd: (_) => c.endGesture(),
+          ),
+        ),
+      ]),
+      Wrap(spacing: 6, children: [
+        FilterChip(label: const Text('Dashed'), selected: sh.dash.isNotEmpty, onSelected: (v) => set({'dash': v ? [18, 12] : 'none'})),
+        FilterChip(label: const Text('Arrow end'), selected: sh.arrowEnd, onSelected: (v) => set({'arrow_end': v})),
+        FilterChip(label: const Text('Arrow start'), selected: sh.arrowStart, onSelected: (v) => set({'arrow_start': v})),
+        if (sh.kind == 'path') FilterChip(label: const Text('Smooth'), selected: sh.smooth, onSelected: (v) => set({'smooth': v})),
+      ]),
+      const SectionTitle('Draw on (trim path)'),
+      PropRow(c: c, ref: PropRef(layer.id, Props.trim), component: 0, label: 'Start %', min: 0, max: 100, decimals: 0),
+      PropRow(c: c, ref: PropRef(layer.id, Props.trim), component: 1, label: 'End %', min: 0, max: 100, decimals: 0),
     ]);
   }
 }

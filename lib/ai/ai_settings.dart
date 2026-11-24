@@ -15,6 +15,7 @@ class AiSettings {
   bool shareMedia = true;
   String captionLanguage = 'hi';
   bool captionsRoman = false;
+  String imageModel = 'gpt-image-1';
 
   static const defaultOpenaiModel = 'gpt-5-mini';
   static const defaultAnthropicModel = 'claude-sonnet-5-5';

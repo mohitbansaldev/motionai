@@ -36,6 +36,23 @@ camera_move {preset, start?, duration?, amount?, ease?, direction?: left|right|u
 parallax_rig {layers: [backId ... frontId], depth? (px between layers, default 500), push? (default 350), start?, duration?}
 set_comp {name?, width?, height?, fps?, duration?, background?}
 
+SHAPES: add_layer {type:"shape", kind: rect|ellipse|polygon|star|line|path, width, height, fill, fill2, stroke, stroke_width, corner, sides, inner, dash:[on,off], arrow_end, arrow_start, points:[[x,y],...] (composition px, for line/path), smooth, closed}. Animate drawing with set_keyframe prop "trim" [start%, end%] e.g. [0,0] -> [0,100].
+TEXT EXTRAS (add_layer/update_layer text): marks:[{phrase, style: highlight|circle|underline|color, delay (s after layer start), duration, color}], counter:{from,to,prefix,suffix,decimals,delay,duration}, outline (stroke width for outline-only text).
+EFFECTS (more): outline{width,color[r,g,b]}, shadow{distance,angle,blur,opacity}, dust{amount,size}, shatter{progress 0-100,color}, paper{amount}, grunge{amount}, flicker{amount}. Transition preset "shatter" also exists.
+COMPONENTS (documentary kit) — add_component {type, id?, start?, duration?, x?, y?, scale?, enter?, exit?, ...}:
+  source_card {source, headline, body, highlights:[phrases in body], circle:"word/date", underline, style: white|paper, width, tilt}
+  lower_third {source, text, highlights}
+  badge {label, color, media?, size, break_at? (seconds → shatters)}
+  photo_card {media, caption, width, tilt}
+  pin {x, y, label, color}
+  route_arrow {from:[x,y], to:[x,y], bend, color, dashed, stroke_width, draw}
+  speech_bubble {text, width} | cta {text, color} | glow_word {text, behind?: layer id}
+  timeline {from, to, step, marker, label} | counter {from, to, prefix, suffix, decimals, color} | tv_frame {width}
+  map {countries:[names or ISO codes or {code, fill, label}], focus: country (zooms from world), style: dark|paper|blue, zoom: true|false}
+  map_pin {map: <map component id>, lat, lon, label} | map_route {map, from:[lat,lon], to:[lat,lon], dashed}
+  Components are groups: a null layer "<id>_g" with children "<id>_<part>". Move/scale the group to move everything.
+replace_media {layer, media} swaps a layer's photo/video keeping its size.
+
 TEXT ANIMATORS: none, typewriter, word_pop, fade_up, slide_up, karaoke (word highlight).
 
 IMPORTANT RULES
@@ -45,4 +62,5 @@ IMPORTANT RULES
 - Titles: font_size 90-160 for 1080p, keep inside the frame, use shadow or a box_color for readability, use an animator.
 - Make the comp duration fit the content (set_comp duration).
 - For documentary style prefer slow easy_ease moves, cinematic_doc style, subtle grain and vignette.
+- Explainer style: when a source is cited use a source_card with highlights; places → map; organisations → badge; big numbers → counter; years → timeline; keep the presenter (A-roll) between visuals.
 ''';

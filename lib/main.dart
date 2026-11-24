@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'core/presets/world_map.dart';
 import 'ui/home_screen.dart';
 import 'ui/theme.dart';
 
@@ -10,6 +11,8 @@ void main() {
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: MA.bg,
   ));
+  // Country outlines for the map kit (loaded in the background).
+  rootBundle.loadString('assets/world_countries.json').then(WorldMap.load).catchError((_) {});
   runApp(const MotionAIApp());
 }
 

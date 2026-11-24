@@ -6,6 +6,7 @@ import '../../services/media_bridge.dart';
 import '../../services/media_importer.dart';
 import '../../state/editor_controller.dart';
 import '../common.dart';
+import '../doc_kit_sheet.dart';
 
 /// Add media, text, solids, nulls and the one-tap parallax rig.
 class AddPanel extends StatefulWidget {
@@ -115,6 +116,9 @@ class _AddPanelState extends State<AddPanel> {
       (Icons.movie_outlined, 'Video', () => _importMedia(MediaType.video)),
       (Icons.image_outlined, 'Image', () => _importMedia(MediaType.image)),
       (Icons.music_note_outlined, 'Music / VO', () => _importMedia(MediaType.audio)),
+      (Icons.article_outlined, 'Doc Kit', () => DocKitSheet.open(context, c)),
+      (Icons.category_outlined, 'Shapes', () => DocKitSheet.open(context, c, shapes: true)),
+      (Icons.public, 'World Map', () => DocKitSheet.open(context, c)),
       (Icons.text_fields, 'Text', () => _add({'op': 'add_layer', 'type': 'text', 'text': 'Your Title'})),
       (Icons.square_outlined, 'Solid', () => _add({'op': 'add_layer', 'type': 'solid', 'color': '#1E2A44'})),
       (Icons.control_camera, 'Null', () => _add({'op': 'add_layer', 'type': 'null', 'name': 'Controller'})),

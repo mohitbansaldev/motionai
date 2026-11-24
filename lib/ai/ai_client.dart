@@ -239,6 +239,33 @@ class AiClient {
     return j;
   }
 
+  /// OpenAI image editing: fills the transparent area of [maskPng] in
+  /// [imagePng] (both PNG, same size). Needs an OpenAI API key.
+  static Future<Uint8List> editImage({
+    required AiSettings s,
+    required String imagePng,
+    required String maskPng,
+    String prompt = 'Remove the object in the masked area and fill it naturally with the surrounding background. Keep everything else unchanged.',
+  }) async {
+    if (s.openaiKey.trim().isEmpty) {
+      throw AiException('HD erase uses OpenAI image editing. Add an OpenAI API key in AI settings, or use "Erase on phone".');
+    }
+    final req = http.MultipartRequest('POST', Uri.parse('https://api.openai.com/v1/images/edits'))
+      ..headers['Authorization'] = 'Bearer ${s.openaiKey.trim()}'
+      ..fields['model'] = s.imageModel
+      ..fields['prompt'] = prompt
+      ..files.add(await http.MultipartFile.fromPath('image', imagePng))
+      ..files.add(await http.MultipartFile.fromPath('mask', maskPng));
+    final streamed = await req.send().timeout(const Duration(minutes: 3));
+    final j = _decode(await http.Response.fromStream(streamed));
+    final data = (j['data'] as List?)?.first as Map?;
+    final b64 = data?['b64_json'] as String?;
+    if (b64 != null) return base64Decode(b64);
+    final url = data?['url'] as String?;
+    if (url != null) return (await http.get(Uri.parse(url))).bodyBytes;
+    throw AiException('Image edit returned no image.');
+  }
+
   /// OpenAI speech-to-text with word timestamps (used for captions).
   static Future<Map<String, dynamic>> transcribe({
     required AiSettings s,

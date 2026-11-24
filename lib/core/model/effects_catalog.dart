@@ -57,6 +57,33 @@ class EffectsCatalog {
     EffectDef('letterbox', 'Letterbox', [
       ParamDef('amount', 'Bar size %', [12], 0, 40),
     ]),
+    EffectDef('outline', 'Outline Stroke', [
+      ParamDef('width', 'Width', [8], 0, 60),
+      ParamDef('color', 'Color (R,G,B)', [255, 214, 0], 0, 255),
+    ]),
+    EffectDef('shadow', 'Drop Shadow', [
+      ParamDef('distance', 'Distance', [14], 0, 200),
+      ParamDef('angle', 'Angle', [60], 0, 360),
+      ParamDef('blur', 'Softness', [12], 0, 80),
+      ParamDef('opacity', 'Opacity', [55], 0, 100),
+    ]),
+    EffectDef('dust', 'Dust Particles', [
+      ParamDef('amount', 'Amount', [40], 0, 100),
+      ParamDef('size', 'Size', [2], 0.5, 8),
+    ]),
+    EffectDef('shatter', 'Shatter', [
+      ParamDef('progress', 'Progress', [0], 0, 100),
+      ParamDef('color', 'Shard color (R,G,B)', [255, 200, 40], 0, 255),
+    ]),
+    EffectDef('paper', 'Paper Texture', [
+      ParamDef('amount', 'Amount', [60], 0, 100),
+    ]),
+    EffectDef('grunge', 'Grunge Texture', [
+      ParamDef('amount', 'Amount', [60], 0, 100),
+    ]),
+    EffectDef('flicker', 'Light Flicker', [
+      ParamDef('amount', 'Amount', [30], 0, 100),
+    ]),
   ];
 
   static EffectDef? byType(String type) {

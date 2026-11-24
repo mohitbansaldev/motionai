@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:motionai/core/commands/edit_commands.dart';
@@ -9,6 +10,8 @@ import 'package:motionai/core/model/easing.dart';
 import 'package:motionai/core/model/layer.dart';
 import 'package:motionai/core/model/project.dart';
 import 'package:motionai/core/presets/templates.dart';
+import 'package:motionai/core/presets/components.dart';
+import 'package:motionai/core/presets/world_map.dart';
 
 Project newProject() => Project(
       id: 'p1',
@@ -305,5 +308,84 @@ void main() {
         Evaluator.evaluate(pr.main, time);
       }
     }
+  });
+
+  group('v4 documentary kit', () {
+    setUpAll(() => WorldMap.load(File('assets/world_countries.json').readAsStringSync()));
+
+    Project withMedia() {
+      final pr = newProject();
+      pr.media['img'] = MediaAsset(id: 'img', type: MediaType.image, path: '/a.jpg', name: 'a', width: 1200, height: 800);
+      return pr;
+    }
+
+    test('shape from points fits its box and keeps composition position', () {
+      final pr = newProject();
+      final r = EditCommands.runAtomic(pr, {
+        'op': 'add_layer', 'type': 'shape', 'id': 's', 'points': [[100, 200], [500, 300]], 'stroke': '#FFFFFF', 'stroke_width': 4, 'fill': 'none',
+      });
+      expect(r.createdIds, ['s']);
+      final l = pr.main.requireLayer('s');
+      final item = Evaluator.evaluate(pr.main, 0).single;
+      final p0 = item.project(l.shape!.rings[0][0], l.shape!.rings[0][1]);
+      expect(p0.x, closeTo(100, 0.01));
+      expect(p0.y, closeTo(200, 0.01));
+      EditCommands.runAtomic(pr, {'op': 'set_keyframe', 'target': 's', 'prop': 'trim', 'time': 0, 'value': [0, 0]});
+      expect(l.prop(Props.trim).keyframes.length, 1);
+    });
+
+    test('every component builds and evaluates', () {
+      for (final t in Components.types) {
+        final pr = withMedia();
+        final extra = <String, dynamic>{
+          if (t == 'photo_card') 'media': 'img',
+          if (t == 'map') ...{'countries': ['India', 'IRQ'], 'focus': 'Iraq'},
+          if (t == 'source_card') ...{'body': 'The coup happened on April 1st, 1941 and changed everything.', 'highlights': ['changed everything'], 'circle': '1941'},
+        };
+        if (t == 'map_pin' || t == 'map_route') {
+          EditCommands.runAtomic(pr, {'op': 'add_component', 'type': 'map', 'id': 'm1', 'start': 0, 'duration': 5});
+          extra['map'] = 'm1';
+          if (t == 'map_pin') extra.addAll({'lat': 28.6, 'lon': 77.2, 'label': 'Delhi'});
+          if (t == 'map_route') extra.addAll({'from': [28.6, 77.2], 'to': [33.3, 44.4]});
+        }
+        EditCommands.runAtomic(pr, {'op': 'add_component', 'type': t, 'start': 0, 'duration': 5, ...extra});
+        expect(pr.main.layers, isNotEmpty, reason: t);
+        for (double time = 0; time < 5; time += 0.7) {
+          Evaluator.evaluate(pr.main, time);
+        }
+      }
+    });
+
+    test('source card marks become absolute times', () {
+      final pr = newProject();
+      EditCommands.runAtomic(pr, {'op': 'add_component', 'type': 'source_card', 'id': 'sc', 'start': 2, 'body': 'alpha beta gamma', 'highlights': ['beta']});
+      final body = pr.main.requireLayer('sc_body');
+      expect(body.text!.marks.single.start, greaterThan(2));
+      expect(body.parentId, 'sc_g');
+    });
+
+    test('counter formats with separators', () {
+      final cs = CounterSpec(from: 0, to: 3000000, start: 0, duration: 1, suffix: ' BARRELS');
+      expect(cs.valueAt(5), '3,000,000 BARRELS');
+    });
+
+    test('replace_media keeps on-screen size', () {
+      final pr = withMedia();
+      pr.media['small'] = MediaAsset(id: 'small', type: MediaType.image, path: '/b.png', name: 'b', width: 600, height: 400);
+      EditCommands.runAtomic(pr, {'op': 'add_layer', 'type': 'image', 'media': 'img', 'id': 'p'});
+      double width() {
+        final it = Evaluator.evaluate(pr.main, 0).single;
+        return it.project(it.layer.width, 0).x - it.project(0, 0).x;
+      }
+      final before = width();
+      EditCommands.runAtomic(pr, {'op': 'replace_media', 'layer': 'p', 'media': 'small'});
+      expect(width(), closeTo(before, 0.01));
+    });
+
+    test('world map finds countries', () {
+      expect(WorldMap.find('IND')!.name, 'India');
+      expect(WorldMap.find('iraq'), isNotNull);
+      expect(WorldMap.countries.length, greaterThan(150));
+    });
   });
 }

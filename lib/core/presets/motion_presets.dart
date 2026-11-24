@@ -10,7 +10,7 @@ import '../model/project.dart';
 class MotionPresets {
   static const transitions = [
     'fade', 'zoom_in', 'zoom_out', 'slide_left', 'slide_right', 'slide_up', 'slide_down',
-    'blur', 'spin', 'pop', 'whip',
+    'blur', 'spin', 'pop', 'whip', 'shatter',
   ];
 
   static String transitionLabel(String t) => const {
@@ -25,6 +25,7 @@ class MotionPresets {
         'spin': 'Spin',
         'pop': 'Pop',
         'whip': 'Whip Pan',
+        'shatter': 'Shatter',
       }[t] ??
       t;
 
@@ -85,6 +86,20 @@ class MotionPresets {
         break;
       case 'pop':
         anim(Props.scale, (r) => [0, 0, r[2]], isIn ? Easing.back : Easing.easeIn);
+        break;
+      case 'shatter':
+        final sid = '${layer.id}_${isIn ? 'in' : 'out'}_shatter';
+        layer.effects.removeWhere((e) => e.id == sid);
+        final sfx = EffectsCatalog.create('shatter', sid);
+        final prog = sfx.params['progress']!;
+        if (isIn) {
+          prog.setKeyframe(tA, [100], easing: Easing.easeOut);
+          prog.setKeyframe(tB, [0]);
+        } else {
+          prog.setKeyframe(tA, [0], easing: Easing.easeOut);
+          prog.setKeyframe(tB, [100]);
+        }
+        layer.effects.add(sfx);
         break;
       case 'blur':
       case 'whip':

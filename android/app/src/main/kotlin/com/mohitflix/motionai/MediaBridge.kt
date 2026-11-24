@@ -76,6 +76,7 @@ class MediaBridge(private val context: Context, messenger: BinaryMessenger) : Me
                         call.argument<String>("fg")!!,
                         call.argument<String>("bg")!!,
                     )
+                    "inpaint" -> inpaint(call.argument<String>("path")!!, call.argument<String>("mask")!!, call.argument<String>("out")!!)
                     "normalizeImage" -> normalizeImage(call.argument<String>("path")!!, call.argument<String>("out")!!)
                     "thumbnailJpeg" -> thumbnail(call.argument<String>("path")!!, call.long("timeUs"), call.argument<Int>("maxSize") ?: 512)
                     "extractAudio" -> extractAudio(call.argument<String>("path")!!, call.argument<String>("out")!!)
@@ -165,6 +166,78 @@ class MediaBridge(private val context: Context, messenger: BinaryMessenger) : Me
         val out = ByteArrayOutputStream()
         bmp.compress(Bitmap.CompressFormat.JPEG, 80, out)
         return out.toByteArray()
+    }
+
+    // ------------------------------------------------------------ erase
+
+    /**
+     * Fills the white area of [maskPath] with surrounding pixels using a
+     * multi-scale diffusion fill (coarse-to-fine). Good for small/medium objects.
+     */
+    private fun inpaint(path: String, maskPath: String, out: String): Map<String, Any> {
+        val src = BitmapFactory.decodeFile(path) ?: throw IllegalStateException("Cannot read image")
+        val maskBmp = BitmapFactory.decodeFile(maskPath) ?: throw IllegalStateException("Cannot read mask")
+        val w = src.width
+        val h = src.height
+        val m = if (maskBmp.width != w || maskBmp.height != h) Bitmap.createScaledBitmap(maskBmp, w, h, true) else maskBmp
+        val px = IntArray(w * h).also { src.getPixels(it, 0, w, 0, 0, w, h) }
+        val mp = IntArray(w * h).also { m.getPixels(it, 0, w, 0, 0, w, h) }
+        val hole = BooleanArray(w * h) { ((mp[it] shr 8) and 0xFF) > 100 }
+        val r = FloatArray(w * h) { ((px[it] shr 16) and 0xFF).toFloat() }
+        val g = FloatArray(w * h) { ((px[it] shr 8) and 0xFF).toFloat() }
+        val b = FloatArray(w * h) { (px[it] and 0xFF).toFloat() }
+        fillLevel(r, g, b, hole, w, h)
+        for (i in 0 until w * h) {
+            if (hole[i]) px[i] = (0xFF shl 24) or (r[i].toInt().coerceIn(0, 255) shl 16) or (g[i].toInt().coerceIn(0, 255) shl 8) or b[i].toInt().coerceIn(0, 255)
+        }
+        val res = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
+        FileOutputStream(out).use { res.compress(Bitmap.CompressFormat.JPEG, 94, it) }
+        return mapOf("width" to w, "height" to h, "path" to out)
+    }
+
+    /** Recursive coarse-to-fine fill: solve at half size, upsample as a start, then smooth. */
+    private fun fillLevel(r: FloatArray, g: FloatArray, b: FloatArray, hole: BooleanArray, w: Int, h: Int) {
+        if (w > 24 && h > 24) {
+            val w2 = w / 2
+            val h2 = h / 2
+            val r2 = FloatArray(w2 * h2)
+            val g2 = FloatArray(w2 * h2)
+            val b2 = FloatArray(w2 * h2)
+            val hole2 = BooleanArray(w2 * h2)
+            for (y in 0 until h2) for (x in 0 until w2) {
+                var sr = 0f; var sg = 0f; var sb = 0f; var n = 0; var anyHole = false
+                for (dy in 0..1) for (dx in 0..1) {
+                    val i = (y * 2 + dy) * w + (x * 2 + dx)
+                    if (hole[i]) { anyHole = true } else { sr += r[i]; sg += g[i]; sb += b[i]; n++ }
+                }
+                val j = y * w2 + x
+                if (n > 0) { r2[j] = sr / n; g2[j] = sg / n; b2[j] = sb / n }
+                hole2[j] = n == 0 || (anyHole && n < 2)
+            }
+            fillLevel(r2, g2, b2, hole2, w2, h2)
+            for (y in 0 until h) for (x in 0 until w) {
+                val i = y * w + x
+                if (!hole[i]) continue
+                val j = minOf(y / 2, h2 - 1) * w2 + minOf(x / 2, w2 - 1)
+                r[i] = r2[j]; g[i] = g2[j]; b[i] = b2[j]
+            }
+        } else {
+            // Coarsest level: start holes from the mean of known pixels.
+            var sr = 0f; var sg = 0f; var sb = 0f; var n = 0
+            for (i in hole.indices) if (!hole[i]) { sr += r[i]; sg += g[i]; sb += b[i]; n++ }
+            if (n > 0) for (i in hole.indices) if (hole[i]) { r[i] = sr / n; g[i] = sg / n; b[i] = sb / n }
+        }
+        // Diffuse inside the hole (known pixels stay fixed).
+        val iters = if (w * h > 600_000) 6 else 14
+        repeat(iters) {
+            for (y in 1 until h - 1) for (x in 1 until w - 1) {
+                val i = y * w + x
+                if (!hole[i]) continue
+                r[i] = (r[i - 1] + r[i + 1] + r[i - w] + r[i + w]) * 0.25f
+                g[i] = (g[i - 1] + g[i + 1] + g[i - w] + g[i + w]) * 0.25f
+                b[i] = (b[i - 1] + b[i + 1] + b[i - w] + b[i + w]) * 0.25f
+            }
+        }
     }
 
     // ------------------------------------------------------ image import

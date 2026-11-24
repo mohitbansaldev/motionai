@@ -11,6 +11,7 @@ import '../../core/model/easing.dart';
 import '../../core/model/layer.dart';
 import '../../core/model/project.dart';
 import '../../state/video_pool.dart';
+import 'shape_painter.dart';
 
 /// Draws one evaluated layer: content → effects → masks → depth blur → opacity → transform.
 ///
@@ -81,6 +82,16 @@ class LayerView extends StatelessWidget {
         return _text(l, l.text ?? TextData());
       case LayerType.solid:
         return ColoredBox(color: Color(l.color));
+      case LayerType.shape:
+        final sh = l.shape;
+        if (sh == null) return const SizedBox.shrink();
+        final tr = l.props[Props.trim]?.valueAt(time) ?? const [0.0, 100.0];
+        return RepaintBoundary(
+          child: CustomPaint(
+            size: Size(l.width, l.height),
+            painter: ShapePainter(sh, tr[0] / 100, tr[1] / 100),
+          ),
+        );
       case LayerType.nullObject:
       case LayerType.audio:
         return const SizedBox.shrink();
@@ -110,6 +121,22 @@ class LayerView extends StatelessWidget {
     };
     final local = time - l.start;
     final p = t.animDuration <= 0 ? 1.0 : (local / t.animDuration).clamp(0.0, 1.0);
+
+    if (t.marks.isNotEmpty || t.counter != null || t.outline > 0) {
+      final shown = t.counter?.valueAt(time) ?? t.text;
+      Widget painted = CustomPaint(
+        size: Size(l.width, l.height),
+        painter: MarkedTextPainter(text: shown, style: style, align: align, marks: t.marks, time: time, outline: t.outline),
+      );
+      if (t.animator != 'none' && t.animator != 'karaoke') {
+        final e = Easing.easeOut.transform(p);
+        painted = Opacity(
+          opacity: e,
+          child: Transform.translate(offset: Offset(0, (1 - e) * t.fontSize * 0.4), child: painted),
+        );
+      }
+      return painted;
+    }
 
     Widget content;
     switch (t.animator) {
@@ -307,6 +334,65 @@ class LayerView extends StatelessWidget {
           Positioned(left: 0, right: 0, top: 0, height: bar, child: const ColoredBox(color: Colors.black)),
           Positioned(left: 0, right: 0, bottom: 0, height: bar, child: const ColoredBox(color: Colors.black)),
         ]);
+      case 'outline':
+        final w = p('width');
+        if (w <= 0) return child;
+        final col = Color.fromARGB(255, p('color', 0).round(), p('color', 1).round(), p('color', 2).round());
+        final silhouette = ColorFiltered(colorFilter: ColorFilter.mode(col, BlendMode.srcIn), child: child);
+        return Stack(clipBehavior: Clip.none, children: [
+          for (int i = 0; i < 12; i++)
+            Transform.translate(
+              offset: Offset(math.cos(i * math.pi / 6) * w, math.sin(i * math.pi / 6) * w),
+              child: silhouette,
+            ),
+          child,
+        ]);
+      case 'shadow':
+        final dist = p('distance'), blur = p('blur'), op = (p('opacity') / 100).clamp(0.0, 1.0);
+        final a = p('angle') * math.pi / 180;
+        return Stack(clipBehavior: Clip.none, children: [
+          Transform.translate(
+            offset: Offset(math.cos(a) * dist, math.sin(a) * dist),
+            child: Opacity(
+              opacity: op,
+              child: ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(sigmaX: math.max(0.01, blur), sigmaY: math.max(0.01, blur), tileMode: TileMode.decal),
+                child: ColorFiltered(colorFilter: const ColorFilter.mode(Colors.black, BlendMode.srcIn), child: child),
+              ),
+            ),
+          ),
+          child,
+        ]);
+      case 'dust':
+        return overlay(CustomPaint(painter: _DustPainter(time, p('amount') / 100, p('size'))));
+      case 'shatter':
+        final prog = (p('progress') / 100).clamp(0.0, 1.0);
+        if (prog <= 0) return child;
+        return Stack(clipBehavior: Clip.none, children: [
+          Opacity(
+            opacity: (1 - prog * 1.6).clamp(0.0, 1.0),
+            child: Transform.scale(scale: 1 + prog * 0.15, child: child),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _ShardPainter(
+                  prog,
+                  Color.fromARGB(255, p('color', 0).round(), p('color', 1).round(), p('color', 2).round()),
+                  e.id.hashCode,
+                ),
+              ),
+            ),
+          ),
+        ]);
+      case 'paper':
+        return overlay(CustomPaint(painter: _TexturePainter(e.id.hashCode, p('amount') / 100, dark: false)));
+      case 'grunge':
+        return overlay(CustomPaint(painter: _TexturePainter(e.id.hashCode, p('amount') / 100, dark: true)));
+      case 'flicker':
+        final f = p('amount') / 100;
+        final v = 1 - f * (0.5 + 0.5 * math.sin(time * 23.0) * math.sin(time * 7.3)).abs();
+        return Opacity(opacity: v.clamp(0.0, 1.0), child: child);
       default:
         return child;
     }
@@ -403,6 +489,85 @@ class _GrainPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GrainPainter old) => old.seed != seed || old.amount != amount || old.dot != dot;
+}
+
+class _DustPainter extends CustomPainter {
+  final double t, amount, dot;
+  _DustPainter(this.t, this.amount, this.dot);
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (amount <= 0) return;
+    final rnd = math.Random(7);
+    final n = (60 + 240 * amount).round();
+    final paint = Paint();
+    for (int i = 0; i < n; i++) {
+      final sx = rnd.nextDouble(), sy = rnd.nextDouble(), sp = 0.01 + rnd.nextDouble() * 0.03, ph = rnd.nextDouble() * 6;
+      final x = ((sx + t * sp * 0.6 + math.sin(t * 0.7 + ph) * 0.01) % 1) * size.width;
+      final y = ((sy - t * sp) % 1 + 1) % 1 * size.height;
+      final a = (0.25 + 0.5 * (0.5 + 0.5 * math.sin(t * 2 + ph))) * amount;
+      paint.color = Colors.white.withValues(alpha: a.clamp(0.0, 1.0));
+      canvas.drawCircle(Offset(x, y), dot * (0.5 + rnd.nextDouble()), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DustPainter old) => old.t != t || old.amount != amount;
+}
+
+class _ShardPainter extends CustomPainter {
+  final double p;
+  final Color color;
+  final int seed;
+  _ShardPainter(this.p, this.color, this.seed);
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rnd = math.Random(seed);
+    final c = size.center(Offset.zero);
+    final paint = Paint();
+    for (int i = 0; i < 70; i++) {
+      final a = rnd.nextDouble() * math.pi * 2;
+      final speed = (0.3 + rnd.nextDouble()) * size.shortestSide * 0.9;
+      final start = Offset(c.dx + (rnd.nextDouble() - 0.5) * size.width * 0.8, c.dy + (rnd.nextDouble() - 0.5) * size.height * 0.8);
+      final pos = start + Offset(math.cos(a), math.sin(a)) * speed * p + Offset(0, p * p * size.height * 0.4);
+      final r = size.shortestSide * (0.01 + rnd.nextDouble() * 0.035);
+      final rot = rnd.nextDouble() * 6 + p * 8;
+      paint.color = (i % 3 == 0 ? Colors.white : color).withValues(alpha: (1 - p).clamp(0.0, 1.0));
+      canvas.save();
+      canvas.translate(pos.dx, pos.dy);
+      canvas.rotate(rot);
+      canvas.drawPath(Path()..moveTo(-r, -r * 0.4)..lineTo(r, -r * 0.7)..lineTo(r * 0.3, r)..close(), paint);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ShardPainter old) => old.p != p;
+}
+
+class _TexturePainter extends CustomPainter {
+  final int seed;
+  final double amount;
+  final bool dark;
+  _TexturePainter(this.seed, this.amount, {required this.dark});
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (amount <= 0) return;
+    final rnd = math.Random(seed);
+    final paint = Paint()..maskFilter = MaskFilter.blur(BlurStyle.normal, size.shortestSide * 0.03);
+    for (int i = 0; i < 40; i++) {
+      final o = Offset(rnd.nextDouble() * size.width, rnd.nextDouble() * size.height);
+      final r = size.shortestSide * (0.05 + rnd.nextDouble() * 0.2);
+      paint.color = (dark ? Colors.black : const Color(0xFF8B6B3D)).withValues(alpha: amount * (0.08 + rnd.nextDouble() * 0.15));
+      canvas.drawCircle(o, r, paint);
+    }
+    final speck = Paint()..color = (dark ? Colors.black : const Color(0xFF5A4630)).withValues(alpha: amount * 0.35);
+    for (int i = 0; i < 400; i++) {
+      canvas.drawCircle(Offset(rnd.nextDouble() * size.width, rnd.nextDouble() * size.height), rnd.nextDouble() * 1.6, speck);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TexturePainter old) => old.amount != amount;
 }
 
 const _lr = 0.2126, _lg = 0.7152, _lb = 0.0722;

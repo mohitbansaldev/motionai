@@ -59,6 +59,12 @@ class MediaBridge {
     }
   }
 
+  /// Erases the white area of [maskPath] (same size as the image) on the phone.
+  static Future<String> inpaint(String path, String maskPath, String outPath) async {
+    final r = await _ch.invokeMapMethod<String, dynamic>('inpaint', {'path': path, 'mask': maskPath, 'out': outPath});
+    return r!['path'] as String;
+  }
+
   /// JPEG thumbnail for sending to the AI.
   static Future<Uint8List?> thumbnailJpeg(String path, double seconds, {int maxSize = 512}) async {
     try {
