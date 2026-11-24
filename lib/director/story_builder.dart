@@ -77,11 +77,13 @@ class StoryBuilder {
       // ---------------------------------------------------- presenter beats
       if (v['aroll'] == true) {
         if (v['punch'] == true && aroll != null) {
+          // A jump cut: hold the normal framing until one frame before, then cut in.
           final s1 = arollScale * 1.14;
+          final f = 1 / comp.fps;
           cmds.addAll([
-            {'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': b.start - 0.001, 'value': [arollScale, arollScale, 100], 'ease': 'hold'},
+            {'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': b.start - f, 'value': [arollScale, arollScale, 100], 'ease': 'hold'},
             {'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': b.start, 'value': [s1, s1, 100], 'ease': 'linear'},
-            {'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': b.start + dur - 0.001, 'value': [s1 * 1.02, s1 * 1.02, 100], 'ease': 'hold'},
+            {'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': b.start + dur - f, 'value': [s1 * 1.02, s1 * 1.02, 100], 'ease': 'hold'},
             {'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': b.start + dur, 'value': [arollScale, arollScale, 100]},
           ]);
           if (sfxKind != null && sfxKind != 'none') sfx.add((b.start, sfxKind));
