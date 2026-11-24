@@ -42,13 +42,24 @@ class ChatGptAuth {
     return base64Url.encode(List<int>.generate(n, (_) => r.nextInt(256))).replaceAll('=', '');
   }
 
+  /// Stable per-install host id in the URN UUID form OpenAI's docs use.
   static Future<String> _hostId() async {
     var id = await _get('host');
-    if (id == null) {
-      id = 'motionai-android-${_rand(12)}';
+    if (id == null || !id.startsWith('urn:uuid:')) {
+      id = 'urn:uuid:${_uuid4()}';
       await _set('host', id);
     }
     return id;
+  }
+
+  static String _uuid4() {
+    final r = Random.secure();
+    final b = List<int>.generate(16, (_) => r.nextInt(256));
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    String h(int i) => b[i].toRadixString(16).padLeft(2, '0');
+    final hex = List.generate(16, h).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
   }
 
   /// Opens the browser for sign-in and waits for the loopback callback.
@@ -80,7 +91,9 @@ class ChatGptAuth {
       'code_challenge_method': 'S256',
       'code_challenge': challenge,
     };
-    final url = Uri.parse(_authorize).replace(queryParameters: params);
+    // Percent-encode every value (spaces as %20, not '+').
+    final query = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+    final url = Uri.parse('$_authorize?$query');
 
     final callback = Completer<Map<String, String>>();
     final sub = server.listen((req) async {
