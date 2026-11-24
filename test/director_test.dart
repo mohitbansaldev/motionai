@@ -113,7 +113,9 @@ void main() {
     // Music loops to cover the video and is ducked under speech.
     final music = comp.layers.where((l) => l.name.startsWith('Music')).toList();
     expect(music.length, greaterThanOrEqualTo(2));
-    expect(music.first.prop(Props.volume).scalarAt(3), lessThan(15));
+    final first = music.firstWhere((l) => l.start == 0);
+    expect(first.prop(Props.volume).scalarAt(3), lessThan(15));
+    expect(music.firstWhere((l) => l.start > 15).prop(Props.volume).scalarAt(18), greaterThan(25));
     expect(comp.duration, greaterThanOrEqualTo(20));
     // Sound effects and captions.
     expect(comp.layers.where((l) => l.name.startsWith('SFX')).length, greaterThanOrEqualTo(3));
