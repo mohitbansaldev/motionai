@@ -69,6 +69,13 @@ class LayerView extends StatelessWidget {
           gaplessPlayback: true,
           filterQuality: FilterQuality.medium,
           cacheWidth: math.min(l.width.round(), 2560),
+          errorBuilder: (_, e, _) => ColoredBox(
+            color: const Color(0xFF3A1010),
+            child: Center(
+              child: Text('Image could not be shown\n$e',
+                  textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: l.height * 0.04)),
+            ),
+          ),
         );
       case LayerType.text:
         return _text(l, l.text ?? TextData());

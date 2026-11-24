@@ -23,7 +23,11 @@ class _AddPanelState extends State<AddPanel> {
   Future<void> _importMedia(MediaType kind) async {
     setState(() => _busy = true);
     try {
-      final assets = await MediaImporter(c.storage).pick(kind: kind);
+      final importer = MediaImporter(c.storage);
+      final assets = await importer.pick(kind: kind);
+      if (importer.errors.isNotEmpty && mounted) {
+        showSnack(context, 'Could not import ${importer.errors.join('; ')}');
+      }
       if (assets.isEmpty) return;
       for (final a in assets) {
         c.project.media[a.id] = a;
@@ -44,6 +48,10 @@ class _AddPanelState extends State<AddPanel> {
       }
       final err = c.tryRun({'op': 'batch', 'commands': cmds});
       if (err != null && mounted) showSnack(context, err);
+      if (err == null) {
+        final r = c.comp.layers.first;
+        c.select(r.id);
+      }
     } catch (e) {
       if (mounted) showSnack(context, 'Import failed: $e');
     } finally {
@@ -56,8 +64,12 @@ class _AddPanelState extends State<AddPanel> {
   Future<void> _photo3d() async {
     setState(() => _busy = true);
     try {
-      final picked = await MediaImporter(c.storage).pick(kind: MediaType.image);
-      if (picked.isEmpty) return;
+      final importer = MediaImporter(c.storage);
+      final picked = await importer.pick(kind: MediaType.image);
+      if (picked.isEmpty) {
+        if (importer.errors.isNotEmpty && mounted) showSnack(context, 'Could not import ${importer.errors.join('; ')}');
+        return;
+      }
       final src = picked.first;
       final base = src.path.substring(0, src.path.lastIndexOf('.'));
       final fgPath = '${base}_subject.png', bgPath = '${base}_plate.jpg';

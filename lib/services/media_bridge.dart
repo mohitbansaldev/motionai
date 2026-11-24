@@ -46,6 +46,19 @@ class MediaBridge {
     return (r!['width'] as int, r['height'] as int);
   }
 
+  /// Converts any phone photo to an upright JPEG/PNG. [outBase] has no extension.
+  static Future<(String, int, int)?> normalizeImage(String path, String outBase) async {
+    try {
+      final r = await _ch.invokeMapMethod<String, dynamic>('normalizeImage', {'path': path, 'out': outBase});
+      if (r == null) return null;
+      return (r['path'] as String, r['width'] as int, r['height'] as int);
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null; // fall back to Flutter's own decoder
+    }
+  }
+
   /// JPEG thumbnail for sending to the AI.
   static Future<Uint8List?> thumbnailJpeg(String path, double seconds, {int maxSize = 512}) async {
     try {

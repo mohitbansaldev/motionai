@@ -47,6 +47,8 @@ class ProjectStorage {
     if (await f.exists()) await f.delete();
   }
 
+  Future<String> mediaDir() async => (await _dir('media')).path;
+
   /// Copies a picked file into app storage and returns the new path.
   Future<String> importFile(String sourcePath, String assetId) async {
     final d = await _dir('media');

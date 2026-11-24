@@ -76,6 +76,7 @@ class MediaBridge(private val context: Context, messenger: BinaryMessenger) : Me
                         call.argument<String>("fg")!!,
                         call.argument<String>("bg")!!,
                     )
+                    "normalizeImage" -> normalizeImage(call.argument<String>("path")!!, call.argument<String>("out")!!)
                     "thumbnailJpeg" -> thumbnail(call.argument<String>("path")!!, call.long("timeUs"), call.argument<Int>("maxSize") ?: 512)
                     "extractAudio" -> extractAudio(call.argument<String>("path")!!, call.argument<String>("out")!!)
                     "encoderStart" -> {
@@ -164,6 +165,43 @@ class MediaBridge(private val context: Context, messenger: BinaryMessenger) : Me
         val out = ByteArrayOutputStream()
         bmp.compress(Bitmap.CompressFormat.JPEG, 80, out)
         return out.toByteArray()
+    }
+
+    // ------------------------------------------------------ image import
+
+    /**
+     * Decodes any photo Android can read (JPEG, PNG, WebP, HEIC/HEIF...),
+     * applies EXIF rotation, limits size to 4096 px and writes a JPEG
+     * (or PNG when the image has transparency).
+     */
+    private fun normalizeImage(path: String, outBase: String): Map<String, Any> {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        var sample = 1
+        while (max(bounds.outWidth, bounds.outHeight) / sample > 4096) sample *= 2
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        var bmp = BitmapFactory.decodeFile(path, opts) ?: throw IllegalStateException("This image format can't be read")
+        val rotation = try {
+            when (android.media.ExifInterface(path).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+        } catch (_: Throwable) { 0f }
+        if (rotation != 0f) {
+            val m = android.graphics.Matrix().apply { postRotate(rotation) }
+            bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
+        }
+        val png = bmp.hasAlpha() && path.lowercase().endsWith(".png")
+        val out = outBase + if (png) ".png" else ".jpg"
+        FileOutputStream(out).use {
+            bmp.compress(if (png) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG, if (png) 100 else 92, it)
+        }
+        return mapOf("width" to bmp.width, "height" to bmp.height, "path" to out)
     }
 
     // ----------------------------------------------------- subject cut-out
