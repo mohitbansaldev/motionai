@@ -7,7 +7,10 @@ import '../core/commands/edit_commands.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../core/presets/templates.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../services/project_storage.dart';
+import '../services/updater.dart';
 import 'editor_screen.dart';
 import 'theme.dart';
 
@@ -38,6 +41,62 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   void _reload() => setState(() => _projects = _storage.listProjects());
+
+  @override
+  void initState() {
+    super.initState();
+    // Quiet automatic check on launch.
+    Future.delayed(const Duration(seconds: 2), () => _checkUpdate(manual: false));
+  }
+
+  Future<void> _checkUpdate({required bool manual}) async {
+    try {
+      final u = await Updater.check();
+      if (!mounted) return;
+      if (u == null) {
+        if (manual) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('You have the latest version (build ${Updater.current}).')));
+        return;
+      }
+      await showModalBottomSheet(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.system_update, color: MA.accent2),
+                const SizedBox(width: 10),
+                Text('Update available · build ${u.build}', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ]),
+              const SizedBox(height: 6),
+              Text('You have build ${Updater.current}. Your projects stay as they are.', style: const TextStyle(color: MA.textDim)),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: GradientButton(
+                  label: 'Download update',
+                  icon: Icons.download_rounded,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    launchUrl(Uri.parse(u.url), mode: LaunchMode.externalApplication);
+                  },
+                ),
+              ),
+              if (u.olderUrl != null)
+                TextButton(
+                  onPressed: () => launchUrl(Uri.parse(u.olderUrl!), mode: LaunchMode.externalApplication),
+                  child: const Text('Older phone? Download this version instead'),
+                ),
+              const Text('After downloading, tap the file to install over the current app.',
+                  style: TextStyle(fontSize: 12, color: MA.textDim)),
+            ]),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (manual && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
 
   Future<void> _open(Project p) async {
     HapticFeedback.selectionClick();
@@ -218,8 +277,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5)),
               ),
               const SizedBox(height: 2),
-              const Text('Cinematic motion, 3D camera & AI editing', style: TextStyle(color: MA.textDim, fontSize: 13.5)),
+              Text('Cinematic motion, 3D camera & AI editing · build ${Updater.current}',
+                  style: const TextStyle(color: MA.textDim, fontSize: 13.5)),
             ]),
+          ),
+          IconButton(
+            tooltip: 'Check for updates',
+            onPressed: () => _checkUpdate(manual: true),
+            icon: const Icon(Icons.system_update_alt_rounded, color: MA.textDim),
           ),
           Container(
             width: 44,

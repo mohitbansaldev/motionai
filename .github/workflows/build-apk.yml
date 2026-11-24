@@ -41,7 +41,19 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
-      - run: flutter build apk --release --split-per-abi
+      # Permanent signing key (repo secret) so updates install over the old app.
+      - name: Signing key
+        env:
+          KEY: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEY" ]; then
+            mkdir -p ~/.android
+            echo "$KEY" | base64 -d > ~/.android/debug.keystore
+            echo "Using the permanent signing key"
+          else
+            echo "No SIGNING_KEYSTORE_B64 secret yet: random key (uninstall needed between builds)"
+          fi
+      - run: flutter build apk --release --split-per-abi --build-number=${{ github.run_number }} --dart-define=BUILD_NUMBER=${{ github.run_number }}
       - run: |
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk MotionAI.apk
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk MotionAI-older-phones.apk
