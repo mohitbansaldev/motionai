@@ -96,6 +96,30 @@ New effects: glow {amount, radius}, grain {amount, size}, light_leak {amount, sp
 
 Audio: `add_layer` with `type: "audio"` and an audio media id. Every layer has a `volume` property (0–200).
 
+## V2-E: depth from photo (2.5D parallax)
+
+| op | fields |
+|---|---|
+| `photo_to_3d` | `media` (photo id) or `layer` (photo layer id), `layers`? 3–6 (4), `start`?, `duration`? (rest of the layer), `camera`? move name (`drift` = slow push-in + drift, or any `camera_shot` move) / `{move, intensity?, direction?, start?, duration?}` / `"none"`, `intensity`? 0–1 (0.5), `model`? `auto` / `depth` / `fake` |
+| `depth_map` | `media`, `model`? — new grayscale photo media, near = white |
+
+Both run as a **background job** (`depth_N`): the command validates and logs the job
+id; poll `job_status {job}`. When the job is done the app re-runs the command with
+`prepared` (internal: `{model, layers: [{media, x, y, k, depth}]}`), which is the one
+undo step that places the layers.
+
+How it works: depth from Depth Anything V2 Small (ONNX on Windows, model downloaded
+once) or a built-in estimate (`fake`: ground-plane gradient + sky / detail / haze
+cues; used on Android or if the model fails). The photo is split at depth quantiles
+into far → near layers; each nearer layer's matte is its region grown a few px plus
+an edge-following feather, and behind it the farther layer is inpainted, so the
+stack composites to the original photo exactly. Photos that fill the frame get a
+mirrored 8 % margin so camera moves show no edges. Layers are copies of the photo
+layer (timing, transform, masks; frame-wide effects such as vignette/grain stay on
+the far layer only) pushed to camera distance `k` × home distance with the
+make_3d homothety, k from the slice's mean inverse depth (0.5 intensity: far ≈ 2.75,
+near ≈ 0.63). The flat photo layer is hidden, then `camera_shot` adds the move.
+
 ## Composition
 
 | op | fields |

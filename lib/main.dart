@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'core/presets/world_map.dart';
 import 'remote/remote_control.dart'; // MCP (Agent P)
 import 'remote/remote_ui.dart'; // MCP (Agent P)
+import 'ui/depth_tools.dart'; // V2-E
 import 'ui/home_screen.dart';
 import 'ui/theme.dart';
 
@@ -18,6 +19,7 @@ void main() {
   // Country outlines for the map kit (loaded in the background).
   rootBundle.loadString('assets/world_countries.json').then(WorldMap.load).catchError((_) {});
   RemoteControl.instance.init().catchError((_) {}); // MCP (Agent P): Claude control server (if enabled)
+  DepthTools.install(); // V2-E: photo_to_3d / depth_map background jobs
   runApp(const MotionAIApp());
 }
 

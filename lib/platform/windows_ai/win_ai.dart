@@ -19,6 +19,7 @@ import 'image_io.dart';
 import 'inpaint.dart';
 import 'model_store.dart';
 import 'segment.dart';
+import 'depth.dart'; // V2-E
 import 'tts.dart';
 import 'whisper.dart';
 
@@ -57,6 +58,59 @@ class WinAi {
   // Separate function so the isolate closure captures only plain strings.
   static Future<(int, int)> _cutoutIsolate(String dll, String model, String path, String fg, String bg, int threads) =>
       Isolate.run(() => Segment.cutoutFile(dll, model, path, fg, bg, threads));
+
+  // V2-E >>> depth from photo (photo_to_3d / depth_map). Runs on every
+  // platform: the ONNX depth model on Windows ([model] auto|depth), the
+  // pure-Dart estimate elsewhere or as the fallback ([model] fake).
+  static Future<(String?, String?)> _depthEngine(String model, void Function(String)? onStatus) async {
+    if (model == 'fake') return (null, null);
+    if (!Platform.isWindows) {
+      if (model == 'depth') throw UnsupportedError('The depth model runs in the Windows app; use model "auto" or "fake" here.');
+      return (null, null);
+    }
+    final dll = onnxRuntimePath;
+    if (!File(dll).existsSync()) {
+      if (model == 'depth') throw StateError('The AI engine (onnxruntime.dll) is missing next to MotionAI. Reinstall MotionAI.');
+      return (null, null);
+    }
+    try {
+      final path = await ModelStore.ensure(Depth.model,
+          onProgress: (p) => _status('Downloading the depth model once (${Depth.model.sizeLabel})… ${(p * 100).round()}%', onStatus));
+      return (dll, path);
+    } catch (e) {
+      if (model == 'depth') rethrow;
+      _status('Depth model unavailable ($e); using the built-in estimate', onStatus);
+      return (null, null);
+    }
+  }
+
+  /// Splits a photo into depth layers (PNG files "<outPrefix>_<i>.png");
+  /// see [Depth.photoTo3dFile] for the result map.
+  static Future<Map<String, dynamic>> photoTo3d(String path, String outPrefix,
+      {required double mediaWidth, int layers = 4, double pad = 0, String model = 'auto', void Function(String status)? onStatus}) async {
+    final (dll, modelPath) = await _depthEngine(model, onStatus);
+    _status(modelPath == null ? 'Estimating depth and building layers…' : 'Reading depth with AI and building layers…', onStatus);
+    return _photoTo3dIsolate(path, outPrefix, mediaWidth, layers, pad, dll, modelPath, _threads, model == 'depth');
+  }
+
+  // Separate functions so the isolate closures capture only plain values.
+  static Future<Map<String, dynamic>> _photoTo3dIsolate(String path, String outPrefix, double mediaWidth, int layers, double pad,
+          String? dll, String? modelPath, int threads, bool require) =>
+      Isolate.run(() => Depth.photoTo3dFile(
+          path: path, outPrefix: outPrefix, mediaWidth: mediaWidth, layers: layers, pad: pad,
+          ortLibrary: dll, modelPath: modelPath, threads: threads, requireModel: require));
+
+  /// Grayscale depth PNG of a photo (near = white); see [Depth.depthMapFile].
+  static Future<Map<String, dynamic>> depthMap(String path, String outPath, {String model = 'auto', void Function(String status)? onStatus}) async {
+    final (dll, modelPath) = await _depthEngine(model, onStatus);
+    _status('Reading depth…', onStatus);
+    return _depthMapIsolate(path, outPath, dll, modelPath, _threads, model == 'depth');
+  }
+
+  static Future<Map<String, dynamic>> _depthMapIsolate(String path, String outPath, String? dll, String? modelPath, int threads, bool require) =>
+      Isolate.run(() => Depth.depthMapFile(
+          path: path, outPath: outPath, ortLibrary: dll, modelPath: modelPath, threads: threads, requireModel: require));
+  // <<< V2-E
 
   /// Erases the white area of [maskPngPath] from [imagePath] into [outPath].
   static Future<void> inpaint(String imagePath, String maskPngPath, String outPath) async {
