@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/rendering.dart';
+import 'package:flutter/rendering.dart' hide Layer;
 import 'package:flutter/widgets.dart';
 
 import '../../../core/model/layer.dart';
