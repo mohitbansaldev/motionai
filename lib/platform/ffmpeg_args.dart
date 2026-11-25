@@ -126,8 +126,14 @@ List<String> frameArgs(String path, double seconds, int tw, int th) => [
 
 /// Sequential reader: constant-rate RGBA frames from [seconds] onwards.
 /// Frame k on stdout shows source time `seconds + k / fps`.
+/// win-30: decode video on the GPU when one is available (NVDEC / D3D11VA /
+/// Quick Sync); FFmpeg falls back to the CPU by itself and copies frames to
+/// system memory for the scale filter.
+bool hwDecode = true;
+
 List<String> readerArgs(String path, double seconds, int tw, int th, double fps) => [
       ..._quiet,
+      if (hwDecode) ...['-hwaccel', 'auto'],
       ..._seek(seconds),
       '-i', path,
       '-an', '-sn', '-dn',
