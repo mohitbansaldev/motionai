@@ -3,9 +3,9 @@ import 'dart:typed_data';
 
 /// Small sound effects synthesised on the phone (no stock files needed):
 /// whoosh for transitions, hit for big numbers / reveals, riser before a hook,
-/// tick for timelines, pop for cards.
+/// tick for timelines, pop for cards, impact for intros (decays to silence).
 class Sfx {
-  static const kinds = ['whoosh', 'hit', 'riser', 'tick', 'pop'];
+  static const kinds = ['whoosh', 'hit', 'riser', 'tick', 'pop', 'impact'];
   static const rate = 44100;
 
   static double length(String kind) => switch (kind) {
@@ -14,6 +14,7 @@ class Sfx {
         'riser' => 2.0,
         'tick' => 0.12,
         'pop' => 0.25,
+        'impact' => 2.4,
         _ => 0.5,
       };
 
@@ -48,6 +49,13 @@ class Sfx {
       case 'pop':
         _addTone(l, r, 700, 180, 0.6, exp: true);
         _burst(l, r, rnd, 0.015, 0.3);
+        break;
+      case 'impact':
+        // Big intro hit that decays to silence (title slam: hit → silence → drop).
+        _addTone(l, r, 70, 30, 1.0, exp: true);
+        _addTone(l, r, 180, 60, 0.35, exp: true);
+        _burst(l, r, rnd, 0.12, 0.8);
+        _tail(l, r, rnd, 0.3);
         break;
     }
     _normalize(l, r, 0.85);

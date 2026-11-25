@@ -1,7 +1,12 @@
 import 'dart:math' as math;
 
+import '../engine/evaluator.dart';
+import '../model/layer.dart';
 import '../model/project.dart';
 import 'world_map.dart';
+
+part 'components_doc.dart';
+part 'components_article.dart';
 
 /// Documentary kit: ready-made, fully editable groups of layers built from
 /// ordinary edit commands. Every component is a null "group" layer (anchor at
@@ -11,6 +16,10 @@ class Components {
   static const types = [
     'source_card', 'lower_third', 'badge', 'photo_card', 'pin', 'route_arrow',
     'speech_bubble', 'cta', 'timeline', 'counter', 'glow_word', 'map', 'map_pin', 'map_route', 'tv_frame',
+    // V1 doc kit
+    'name_tag', 'character_label', 'arrow_callout', 'censor_bar', 'plaque', 'poster', 'glass_screen',
+    'title_slam', 'foreground_wipe', 'icon_stream', 'icon_badge', 'scanner', 'silhouette_crowd',
+    'number_tiles', 'date_title', 'article',
   ];
 
   static String label(String t) => const {
@@ -29,6 +38,22 @@ class Components {
         'map_pin': 'Map Pin',
         'map_route': 'Map Route',
         'tv_frame': 'TV Frame',
+        'name_tag': 'Name Tag',
+        'character_label': 'Character Label',
+        'arrow_callout': 'Arrow Callout',
+        'censor_bar': 'Censor Bar',
+        'plaque': 'Plaque / Gravestone',
+        'poster': 'Vintage Poster',
+        'glass_screen': 'Glass Screen',
+        'title_slam': 'Title Slam Intro',
+        'foreground_wipe': 'Foreground Wipe',
+        'icon_stream': 'Icon Stream',
+        'icon_badge': 'Icon Badge',
+        'scanner': 'Scanner Beam',
+        'silhouette_crowd': 'Silhouette Crowd',
+        'number_tiles': 'Rolling Tiles',
+        'date_title': 'Date Title',
+        'article': 'Article Highlight',
       }[t] ??
       t;
 
@@ -70,6 +95,38 @@ class Components {
         return _mapRoute(b);
       case 'tv_frame':
         return _tv(b);
+      case 'name_tag':
+        return _nameTag(b);
+      case 'character_label':
+        return _characterLabel(b, p);
+      case 'arrow_callout':
+        return _arrowCallout(b);
+      case 'censor_bar':
+        return _censorBar(b);
+      case 'plaque':
+        return _plaque(b);
+      case 'poster':
+        return _poster(b, p);
+      case 'glass_screen':
+        return _glassScreen(b, p);
+      case 'title_slam':
+        return _titleSlam(b, p);
+      case 'foreground_wipe':
+        return _foregroundWipe(b, p);
+      case 'icon_stream':
+        return _iconStream(b, p);
+      case 'icon_badge':
+        return _iconBadge(b, p);
+      case 'scanner':
+        return _scanner(b, p);
+      case 'silhouette_crowd':
+        return _silhouetteCrowd(b, p);
+      case 'number_tiles':
+        return _numberTiles(b);
+      case 'date_title':
+        return _dateTitle(b);
+      case 'article':
+        return _article(b, p);
     }
     return const [];
   }
@@ -259,7 +316,10 @@ class Components {
     return b.finish(cmds, enter: 'slide_left', exit: 'slide_right');
   }
 
-  static List<Map<String, dynamic>> _timeline(_B b) {
+  static List<Map<String, dynamic>> _timeline(_B b) =>
+      b.str('style', 'ruler') == 'classic' ? _timelineClassic(b) : _yearRuler(b);
+
+  static List<Map<String, dynamic>> _timelineClassic(_B b) {
     final from = b.n('from', 1930).round(), to = b.n('to', 1970).round();
     final step = math.max(1, b.n('step', 10).round());
     final marker = b.n('marker', (from + to) / 2);
@@ -497,6 +557,123 @@ class _B {
         'text': t, 'width': tw, 'height': th, 'position': [x, y, 0], 'font_size': fs, 'font_weight': weight,
         'text_color': color, 'align': align, 'shadow': false, 'name': t.length > 20 ? t.substring(0, 20) : t,
       };
+
+  // ---------------------------------------------------------- V1 helpers
+
+  double get end => start + dur;
+  bool flag(String k, bool d) => c[k] == null ? d : c[k] == true;
+
+  /// A null layer (anchor 0,0) used as a sub-group.
+  List<Map<String, dynamic>> nul(String part, double x, double y, {String? parent, double? st, double? du, String? name}) => [
+        {
+          'op': 'add_layer', 'type': 'null', 'id': id(part), 'name': name ?? part, 'parent': parent ?? g,
+          'start': st ?? start, 'duration': du ?? dur, 'position': [x, y, 0],
+        },
+        {'op': 'set_property', 'target': id(part), 'prop': 'anchor', 'value': [0, 0, 0]},
+      ];
+
+  Map<String, dynamic> kf(String layerId, String prop, double t, dynamic v, [String ease = 'easy_ease']) =>
+      {'op': 'set_keyframe', 'target': layerId, 'prop': prop, 'time': t, 'value': v, 'ease': ease};
+
+  Map<String, dynamic> setp(String layerId, String prop, dynamic v) => {'op': 'set_property', 'target': layerId, 'prop': prop, 'value': v};
+
+  Map<String, dynamic> fx(String layerId, String effect, [Map<String, dynamic>? params, String? fxId]) =>
+      {'op': 'add_effect', 'layer': layerId, 'effect': effect, if (params != null) 'params': params, if (fxId != null) 'id': fxId};
+
+  /// Open or closed path from points in the parent's coordinates.
+  Map<String, dynamic> path(String part, List<List<double>> pts,
+          {String stroke = '#FFFFFF', double width = 4, String fill = 'none', bool smooth = false, bool closed = false,
+          List<double>? dash, bool arrowEnd = false, String? parent, double? st, double? du}) =>
+      {
+        'op': 'add_layer', 'type': 'shape', 'id': id(part), 'parent': parent ?? g, 'start': st ?? start, 'duration': du ?? dur,
+        'points': pts, 'smooth': smooth, 'closed': closed, 'fill': fill, 'stroke': stroke, 'stroke_width': width,
+        if (dash != null) 'dash': dash, if (arrowEnd) 'arrow_end': true,
+      };
+
+  /// Photo/video child scaled to [widthPx] (or to [heightPx]) and centred on x,y.
+  Map<String, dynamic> media(String part, MediaAsset m, double x, double y,
+      {double? widthPx, double? heightPx, String? parent, double? st, double? du}) {
+    final s = (heightPx != null ? heightPx / math.max(1, m.height) : (widthPx ?? m.width) / math.max(1, m.width)) * 100;
+    return {
+      'op': 'add_layer', 'type': m.type == MediaType.video ? 'video' : 'image', 'media': m.id, 'id': id(part),
+      'parent': parent ?? g, 'start': st ?? start, 'duration': du ?? dur, 'fit': 'none',
+      'position': [x, y, 0], 'scale': [s, s, 100],
+    };
+  }
+
+  /// Full-frame background (gradient from [color] at the top to [color2]).
+  Map<String, dynamic> backdrop(String part, String color, {String? color2, String name = 'Backdrop'}) => {
+        'op': 'add_layer', 'type': 'shape', 'id': id(part), 'name': name, 'kind': 'rect', 'start': start, 'duration': dur,
+        'width': w, 'height': h, 'position': [w / 2, h / 2, 0], 'fill': color, if (color2 != null) 'fill2': color2,
+      };
+
+  /// Full-frame transparent layer carrying a particles effect (atmosphere).
+  List<Map<String, dynamic>> atmos(String part, String kind,
+          {double amount = 40, double speed = 1, String? color, double? direction, double opacity = 100, double? st, double? du}) =>
+      [
+        {
+          'op': 'add_layer', 'type': 'solid', 'id': id(part), 'name': 'Atmosphere $kind', 'color': '#00000000',
+          'width': w, 'height': h, 'position': [w / 2, h / 2, 0], 'start': st ?? start, 'duration': du ?? dur,
+        },
+        fx(id(part), 'particles', {
+          'kind': kind, 'amount': amount, 'speed': speed,
+          if (color != null) 'color': color,
+          if (direction != null) 'direction': direction,
+        }),
+        if (opacity < 100) setp(id(part), 'opacity', opacity),
+      ];
+
+  /// Full-frame flashes peaking at [times] (absolute).
+  List<Map<String, dynamic>> flashes(String part, List<double> times, {String color = '#FFFFFF', double fade = 0.28}) {
+    final lid = id(part);
+    final cmds = <Map<String, dynamic>>[
+      {
+        'op': 'add_layer', 'type': 'solid', 'id': lid, 'name': 'Flash', 'color': color, 'width': w, 'height': h,
+        'position': [w / 2, h / 2, 0], 'start': start, 'duration': dur,
+      },
+    ];
+    for (final t in times) {
+      if (t > start + 0.02) cmds.add(kf(lid, 'opacity', t - 0.06, 0, 'ease_in'));
+      cmds.add(kf(lid, 'opacity', t, 100, 'ease_out'));
+      cmds.add(kf(lid, 'opacity', t + fade, 0, 'linear'));
+    }
+    return cmds;
+  }
+
+  /// One media id (photo or video) from param [k], if it exists.
+  MediaAsset? mediaOf(Project p, String k) {
+    final v = c[k];
+    final m = v is String ? p.media[v] : null;
+    return m != null && m.type != MediaType.audio ? m : null;
+  }
+
+  /// Media ids from a string or a list param.
+  List<MediaAsset> mediaList(Project p, String k) {
+    final v = c[k];
+    final ids = v is List ? [for (final e in v) '$e'] : (v is String ? [v] : const <String>[]);
+    return [for (final i in ids) if (p.media[i] != null && p.media[i]!.type != MediaType.audio) p.media[i]!];
+  }
+
+  /// An audio media id from param [k], or a project sound named one of [names].
+  MediaAsset? audioOf(Project p, String k, List<String> names) {
+    final v = c[k];
+    if (v == false || v == 'none') return null;
+    final m = v is String ? p.media[v] : null;
+    if (m != null && m.type != MediaType.image) return m;
+    if (v != null) return null;
+    for (final n in names) {
+      for (final a in p.media.values) {
+        if (a.type == MediaType.audio && a.name == n) return a;
+      }
+    }
+    return null;
+  }
+
+  /// List of maps from a list param (other values become {key: value}).
+  List<Map<String, dynamic>> specs(String k, String key) => [
+        for (final v in (c[k] as List? ?? const []))
+          v is Map ? Map<String, dynamic>.from(v) : {key: v},
+      ];
 
   /// Adds the enter/exit animation for the group.
   List<Map<String, dynamic>> finish(List<Map<String, dynamic>> cmds, {String? enter, String? exit = 'pop'}) {

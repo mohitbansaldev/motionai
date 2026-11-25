@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/commands/edit_commands.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../core/presets/components.dart';
@@ -52,8 +53,26 @@ class BuildOptions {
 /// presenter punch-ins, sound effects on cuts, music ducked under the voice,
 /// and captions. Pure Dart, so it is unit-tested.
 class StoryBuilder {
-  static const transitions = ['fade', 'zoom_in', 'zoom_out', 'slide_left', 'slide_right', 'whip', 'blur', 'pop', 'shatter'];
-  static const moves = ['ken_burns', 'push_in', 'pull_out', 'pan_left', 'pan_right', 'parallax', 'depth'];
+  static const transitions = [
+    'fade', 'zoom_in', 'zoom_out', 'slide_left', 'slide_right', 'whip', 'blur', 'pop', 'shatter',
+    'iris', 'ink', 'smoke', 'spin', 'flash', 'glitch_flash', 'foreground_wipe',
+  ];
+  static const moves = ['ken_burns', 'push_in', 'pull_out', 'pan_left', 'pan_right', 'parallax', 'depth', ...moves3d];
+
+  /// 3D camera moves ("compose flat, play deep": make_3d + camera_shot).
+  static const moves3d = ['drift', 'fly_to', 'push_through', 'pass_by', 'reveal', 'pull_back', 'orbit'];
+
+  /// Components that are drawn over whatever is below (no backdrop needed).
+  static const overlays = [
+    'map', 'lower_third', 'cta', 'pin', 'route_arrow', 'map_pin', 'map_route', 'name_tag', 'character_label',
+    'arrow_callout', 'censor_bar', 'foreground_wipe',
+  ];
+
+  /// Components that bring their own full-frame backdrop.
+  static const ownBackdrop = ['article', 'title_slam', 'glass_screen', 'route_follow', 'map_fly', 'room'];
+
+  /// True when this build knows the 3D scene ops (they come with the scene branch).
+  static bool get has3d => EditCommands.ops.contains('make_3d') && EditCommands.ops.contains('camera_shot');
 
   static List<Map<String, dynamic>> build(Project p, List<Beat> beats, BuildOptions o) {
     final comp = p.main;
@@ -66,12 +85,18 @@ class StoryBuilder {
     final arollScale = aroll?.prop(Props.scale).staticValue[0] ?? 100.0;
     var prevWasAroll = true;
     var n = 0;
+    var musicFrom = 0.0; // a title slam keeps the intro silent until its drop
 
     for (final b in kept) {
       final v = b.visual;
       final dur = math.max(0.8, b.end - b.start);
       final tag = 'd${o.tag}_${n++}';
-      final trans = transitions.contains(v['transition']) ? '${v['transition']}' : 'fade';
+      var trans = transitions.contains(v['transition']) ? '${v['transition']}' : 'fade';
+      if (trans == 'foreground_wipe') {
+        // Something sweeps past the lens and hides the cut at the beat start.
+        cmds.add({'op': 'add_component', 'type': 'foreground_wipe', 'id': '${tag}_wipe', 'start': math.max(0.0, b.start - 0.35), 'length': 0.7, if (v['wipe_media'] is String && p.media[v['wipe_media']] != null) 'media': v['wipe_media']});
+        trans = 'fade';
+      }
       final sfxKind = v['sfx'] is String ? '${v['sfx']}' : null;
 
       // ---------------------------------------------------- presenter beats
@@ -96,11 +121,25 @@ class StoryBuilder {
 
       // ---------------------------------------------------- photo / video beats
       if (v['component'] == null && media != null && media.type != MediaType.audio) {
-        final move = moves.contains(v['move']) ? '${v['move']}' : 'ken_burns';
+        var move = moves.contains(v['move']) ? '${v['move']}' : 'ken_burns';
+        if (moves3d.contains(move) && (!has3d || media.type != MediaType.image)) move = move == 'pull_back' ? 'pull_out' : 'push_in';
         final cut = o.cutouts[media.id];
-        if (move == 'depth' && cut != null && p.media[cut.$1] != null && p.media[cut.$2] != null) {
+        if (moves3d.contains(move)) {
+          final hasCut = cut != null && p.media[cut.$1] != null && p.media[cut.$2] != null;
+          final ids = hasCut ? ['${tag}_bg', '${tag}_fg'] : ['${tag}_m'];
+          final srcs = hasCut ? [cut.$2, cut.$1] : [media.id];
+          for (int k = 0; k < ids.length; k++) {
+            cmds.add({'op': 'add_layer', 'type': 'image', 'media': srcs[k], 'id': ids[k], 'name': k == 0 ? _short(b.line) : 'Subject', 'start': b.start, 'duration': dur, 'fit': 'cover'});
+          }
+          cmds.add({'op': 'animate_in', 'layer': ids.first, 'preset': trans, 'duration': 0.35});
+          cmds.add({'op': 'make_3d', 'layers': ids, 'bands': hasCut ? {ids[0]: 'far', ids[1]: 'near'} : {ids[0]: 'mid'}, 'start': b.start});
+          cmds.add({'op': 'camera_shot', 'move': move, 'target': ids.last, 'start': b.start, 'duration': dur});
+          brollIds.addAll(ids);
+          _overlays(cmds, v, tag, ids.last, b.start, dur);
+        } else if (move == 'depth' && cut != null && p.media[cut.$1] != null && p.media[cut.$2] != null) {
           _depthShot(cmds, p, b.start, dur, tag, cut.$2, cut.$1, v['behind_text'] is String ? '${v['behind_text']}' : null, trans);
           brollIds.addAll(['${tag}_bg', '${tag}_fg']);
+          _overlays(cmds, v, tag, '${tag}_fg', b.start, dur);
         } else {
           final id = '${tag}_m';
           cmds.add({
@@ -117,6 +156,7 @@ class StoryBuilder {
           cmds.add({'op': 'animate_in', 'layer': id, 'preset': trans, 'duration': trans == 'fade' ? 0.25 : 0.4});
           cmds.add({'op': 'add_effect', 'layer': id, 'effect': 'vignette', 'params': {'amount': 50}});
           brollIds.add(id);
+          _overlays(cmds, v, tag, id, b.start, dur);
         }
         sfx.add((b.start, sfxKind ?? (prevWasAroll || trans != 'fade' ? 'whoosh' : 'none')));
         prevWasAroll = false;
@@ -126,7 +166,7 @@ class StoryBuilder {
       // ---------------------------------------------------- doc-kit components
       final type = '${v['component']}';
       if (!Components.types.contains(type)) continue;
-      final needsBg = !['map', 'lower_third', 'cta', 'pin', 'route_arrow', 'map_pin', 'map_route'].contains(type) && v['over_aroll'] != true;
+      final needsBg = !overlays.contains(type) && !ownBackdrop.contains(type) && v['over_aroll'] != true;
       if (needsBg) {
         final bg = '${tag}_bg';
         cmds.add({'op': 'add_layer', 'type': 'solid', 'id': bg, 'name': 'Backdrop', 'color': v['bg'] is String ? v['bg'] : '#141414', 'start': b.start, 'duration': dur, 'width': w, 'height': h});
@@ -140,16 +180,29 @@ class StoryBuilder {
         ..remove('transition')
         ..remove('over_aroll')
         ..remove('bg');
-      if (args['media'] != null && p.media[args['media']] == null) args.remove('media');
+      if (args['media'] is String && p.media[args['media']] == null) args.remove('media');
       if (type == 'photo_card' && args['media'] == null) continue;
+      if (type == 'title_slam') {
+        final hit = o.sfxMedia['impact'] ?? o.sfxMedia['hit'];
+        args['hit'] = hit != null && p.media[hit] != null ? hit : 'none';
+        args['music'] = 'none'; // the music loop below starts on the drop
+        args['drop'] = math.min(2.6, math.max(0.5, dur - 0.2));
+        if (b.start < 1) musicFrom = b.start + (args['drop'] as double);
+      }
+      for (final k in ['media', 'logo', 'avatar']) {
+        final mv = args[k];
+        if (mv is List) args[k] = [for (final e in mv) if (p.media['$e'] != null) '$e'];
+      }
       cmds.add({'op': 'add_component', 'type': type, 'id': tag, 'start': b.start, 'duration': dur, ...args});
       sfx.add((
         b.start,
         sfxKind ??
             switch (type) {
-              'counter' || 'glow_word' || 'badge' => 'hit',
-              'timeline' => 'tick',
-              'source_card' || 'photo_card' || 'speech_bubble' || 'lower_third' || 'cta' => 'pop',
+              'counter' || 'glow_word' || 'badge' || 'date_title' || 'plaque' => 'hit',
+              'timeline' || 'number_tiles' => 'tick',
+              'source_card' || 'photo_card' || 'speech_bubble' || 'lower_third' || 'cta' || 'name_tag' || 'character_label' || 'article' || 'poster' => 'pop',
+              'scanner' => 'riser',
+              'title_slam' || 'foreground_wipe' => 'none',
               _ => 'whoosh',
             }
       ));
@@ -183,7 +236,7 @@ class StoryBuilder {
     final music = o.musicMedia == null ? null : p.media[o.musicMedia];
     if (music != null && end > 0) {
       final len = music.duration > 1 ? music.duration : end;
-      var t = 0.0;
+      var t = musicFrom < end - 0.5 ? musicFrom : 0.0;
       var k = 0;
       final env = duckEnvelope(o.speech, end, o.musicLevel, o.duckLevel);
       while (t < end - 0.05 && k < 50) {
@@ -213,6 +266,21 @@ class StoryBuilder {
   }
 
   static double _pct(double g) => (g * 1000).roundToDouble() / 10;
+
+  /// Optional overlays on a photo/video beat: a name tag introducing the
+  /// person and a label pinned to the subject.
+  static void _overlays(List<Map<String, dynamic>> cmds, Map<String, dynamic> v, String tag, String subject, double t0, double dur) {
+    final nt = v['name_tag'];
+    if (nt is Map && nt['name'] is String) {
+      final t1 = t0 + math.min(0.5, dur * 0.2);
+      cmds.add({'op': 'add_component', 'type': 'name_tag', 'id': '${tag}_nt', 'start': t1, 'duration': math.max(0.8, dur - (t1 - t0)), 'name': nt['name'], if (nt['role'] is String) 'role': nt['role']});
+    }
+    final label = v['label'];
+    if (label is String && label.trim().isNotEmpty) {
+      final t1 = t0 + math.min(0.4, dur * 0.2);
+      cmds.add({'op': 'add_component', 'type': 'character_label', 'id': '${tag}_lb', 'start': t1, 'duration': math.max(0.8, dur - (t1 - t0)), 'text': label.trim(), 'attach': subject, 'at': [0.5, 0.2]});
+    }
+  }
 
   static String _short(String s) {
     final t = s.trim();
