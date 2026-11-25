@@ -463,16 +463,25 @@ class _SceneKit {
       'op': 'add_layer', 'type': 'solid', 'id': b.id('sep'), 'name': 'Room front', 'color': '#00000000', 'width': 2, 'height': 2,
       'start': b.start, 'duration': b.dur, 'position': [0, 0, 0],
     });
-    final items = b.mediaList(p, 'items');
+    // Cut-outs standing on the floor: media ids or {media, x (comp px), z (0 front … 1 back wall), height px}.
+    final specs = b.specs('items', 'media');
+    final items = <(MediaAsset, Map<String, dynamic>)>[
+      for (final it in specs)
+        if (p.media['${it['media']}'] != null && p.media['${it['media']}']!.type != MediaType.audio) (p.media['${it['media']}']!, it),
+    ];
     for (int i = 0; i < items.length; i++) {
-      final m = items[i];
-      final ih = rh * 0.5;
+      final (m, it) = items[i];
+      final ih = (it['height'] as num?)?.toDouble() ?? rh * 0.5;
       final s = ih / math.max(1, m.height) * 100;
-      final x = cx + (i + 1 - (items.length + 1) / 2) * rw / (items.length + 1);
+      final zf = ((it['z'] as num?)?.toDouble() ?? 0.7).clamp(0.0, 1.0);
+      final z = zFront + rd * zf;
+      final depthK = (z + z0) / z0;
+      final sx = (it['x'] as num?)?.toDouble();
+      final x = sx != null ? cx + (sx - cx) * depthK : cx + (i + 1 - (items.length + 1) / 2) * rw / (items.length + 1);
       cmds.add({
         'op': 'add_layer', 'type': m.type == MediaType.video ? 'video' : 'image', 'media': m.id, 'id': b.id('item$i'), 'name': m.name,
         'parent': b.g, 'start': b.start, 'duration': b.dur, 'fit': 'none', 'is3d': true,
-        'position': [x, floorY - ih / 2, zBack - rd * 0.3], 'scale': [s, s, 100],
+        'position': [x, floorY - ih / 2, z], 'scale': [s, s, 100],
       });
     }
     return cmds;
@@ -485,8 +494,10 @@ class _SceneKit {
     final inset = bw * 0.07;
     final pw = bw - inset * 2;
     final ph = m == null ? pw * 0.62 : pw * m.height / math.max(1, m.width);
-    final bh = ph + inset * 2;
-    final bend = b.n('curve', 35).clamp(0.0, 100.0);
+    final title = b.str('title', '');
+    final titleH = title.isEmpty ? 0.0 : bw * 0.13;
+    final bh = ph + inset * 2 + titleH;
+    final bend = b.n('curve', b.n('bend', 35)).clamp(0.0, 100.0);
     final glass = b.str('frame', 'wood') == 'glass';
     final cmds = b.group('Board', tilt: b.n('tilt', 0));
     final panel = b.id('panel'), pic = b.id('pic');
@@ -502,12 +513,17 @@ class _SceneKit {
     final double s;
     if (m != null) {
       s = pw / math.max(1, m.width) * 100;
-      cmds.add(b.media('pic', m, 0, 0, widthPx: pw));
+      cmds.add(b.media('pic', m, 0, -titleH / 2, widthPx: pw));
     } else {
       s = 100;
-      cmds.add(b.shape('pic', 'rect', pw, ph, 0, 0, fill: '#D8CBB0', fill2: '#A8987A'));
+      cmds.add(b.shape('pic', 'rect', pw, ph, 0, -titleH / 2, fill: '#D8CBB0', fill2: '#A8987A'));
     }
     cmds.add(b.fx(pic, 'curve', {'bend': bend}, '${pic}_curve'));
+    if (title.isNotEmpty) {
+      final ty = bh / 2 - inset * 0.6 - titleH / 2;
+      cmds.add(b.text('title', title, pw, titleH, 0, ty, titleH * 0.62, color: glass ? '#FFFFFF' : '#F6D98A', weight: 900));
+      cmds.add(b.fx(b.id('title'), 'curve', {'bend': bend}, '${b.id('title')}_curve'));
+    }
     if (b.flag('pop', true)) {
       final t1 = b.start + b.n('pop_at', 0.9);
       cmds.add(b.fx(pic, 'shadow', {'distance': 30, 'blur': 30, 'opacity': 65}));
