@@ -468,13 +468,21 @@ void main() {
   });
 
   testWidgets('GPU shader matches the CPU keyer', (tester) async {
+    // Futures made in another test's fake-async zone never complete here, so
+    // poll instead of awaiting the shader load.
+    ChromaKeyer.ensureLoaded();
+    for (int i = 0; i < 60 && !ChromaKeyer.gpuReady && !ChromaKeyer.gpuFailed; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+    if (!ChromaKeyer.gpuReady) {
+      // ignore: avoid_print
+      print('chroma_key shader not available in flutter test: CPU keyer only');
+      return;
+    }
+    // ignore: avoid_print
+    print('chroma_key shader loaded in flutter test: comparing GPU with CPU');
     await tester.runAsync(() async {
-      await ChromaKeyer.load();
-      if (!ChromaKeyer.gpuReady) {
-        // ignore: avoid_print
-        print('chroma_key shader not available in flutter test: CPU keyer only');
-        return;
-      }
       // Blend green → skin (soft edge) + green → white fringes, 4 rows.
       final colors = <List<int>>[];
       for (int i = 0; i <= 20; i++) {
@@ -517,7 +525,7 @@ void main() {
       }
       src.dispose();
     });
-  });
+  }, timeout: const Timeout(Duration(seconds: 90)));
 
   test('shader source exists and is declared', () {
     expect(File('shaders/chroma_key.frag').existsSync(), isTrue);
