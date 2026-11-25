@@ -408,8 +408,11 @@ class ShotGeometry {
     for (final f in far) {
       var touched = false;
       double? base; // how far it already sits below the mid tops at the first frame (the composition)
-      for (int pass = 0; pass < 3; pass++) {
-        double worst = 0, hWorst = 1, tWorst = 0;
+      for (int pass = 0; pass < 4; pass++) {
+        // Per sample: how much higher the top must go (screen px) and the
+        // layer's screen height there. Growing about the bottom raises the
+        // top by height × (k − 1) at every time, so one k fixes all samples.
+        final needs = <({double t, double need, double h})>[];
         for (final t in times) {
           final fb = Scene3D.screenBox(comp, [f], t);
           if (fb == null || fb[3] <= fb[1]) continue;
@@ -426,27 +429,32 @@ class ShotGeometry {
           final v = fb[1] - (midTop - margin);
           if (pass == 0 && t == times.first) base = math.max(0.0, v);
           final need = v - (base ?? 0.0);
-          if (need > worst) {
-            worst = need;
-            hWorst = fb[3] - fb[1];
-            tWorst = t;
-          }
+          if (need > 0.5) needs.add((t: t, need: need + 1, h: fb[3] - fb[1]));
         }
-        if (worst <= 0.5) break;
+        if (needs.isEmpty) break;
         touched = true;
-        final k = math.min(1.6, (hWorst + worst + 1) / math.max(1.0, hWorst));
+        var kNeed = 1.0;
+        for (final n in needs) {
+          kNeed = math.max(kNeed, (n.h + n.need) / math.max(1.0, n.h));
+        }
+        final k = math.min(1.6, kNeed);
         final bottom = bottomOf(comp, f, 0);
         final a = f.prop(Props.anchor).staticValue;
         _map(f.prop(Props.scale), (v) => [v[0] * k, v[1] * k, v[2]]);
         final sy = f.prop(Props.scale).valueAt(0)[1].abs() / 100;
         final newY = bottom - (f.height - a[1]) * sy;
         _map(f.prop(Props.position), (v) => [v[0], newY, v[2]]);
-        final rest = worst + 1 - hWorst * (k - 1);
-        if (rest > 0.5) {
-          final cam = Evaluator.camera3D(comp, tWorst);
-          final b = Scene3D.worldBox(comp, f, tWorst);
-          final d = b == null ? Scene3D.homeZoom(comp) : math.max(Scene3D.minClearance, cam.depthOf(b.center));
-          final lift = rest * d / cam.zoom;
+        if (kNeed > k) {
+          // Still not enough: lift it (world px) by the largest remainder.
+          var lift = 0.0;
+          for (final n in needs) {
+            final rest = n.need - n.h * (k - 1);
+            if (rest <= 0) continue;
+            final cam = Evaluator.camera3D(comp, n.t);
+            final b = Scene3D.worldBox(comp, f, n.t);
+            final d = b == null ? Scene3D.homeZoom(comp) : math.max(Scene3D.minClearance, cam.depthOf(b.center));
+            lift = math.max(lift, rest * d / cam.zoom);
+          }
           _map(f.prop(Props.position), (v) => [v[0], v[1] - lift, v[2]]);
         }
       }
