@@ -1,3 +1,4 @@
+import '../engine/chroma.dart' show kChromaNamedColors; // CHROMA (Agent M)
 import 'anim_prop.dart';
 import 'layer.dart';
 
@@ -24,7 +25,7 @@ class EffectDef {
   final String label;
   final List<ParamDef> params;
 
-  /// Grouping in the Effects panel: color | stylize | distort | atmosphere | reveal | blur.
+  /// Grouping in the Effects panel: keying | color | stylize | distort | atmosphere | reveal | blur.
   final String category;
   const EffectDef(this.type, this.label, this.params, {this.category = 'stylize'});
 }
@@ -161,9 +162,21 @@ class EffectsCatalog {
     EffectDef('glitch', 'Glitch', [
       ParamDef('amount', 'Amount', [50], 0, 100),
     ], category: 'reveal'),
+
+    // CHROMA (Agent M) >>> green / blue screen keyer (lib/ui/preview/fx/chroma_key.dart)
+    EffectDef('chroma_key', 'Green Screen (Chroma Key)', [
+      ParamDef('color', 'Key color', [0, 177, 64], 0, 255, color: true),
+      ParamDef('tolerance', 'Tolerance', [50], 0, 100),
+      ParamDef('softness', 'Edge softness', [20], 0, 100),
+      ParamDef('spill', 'Spill suppression', [50], 0, 100),
+      ParamDef('choke', 'Choke (− grow / + shrink)', [0], -50, 50),
+      ParamDef('contrast', 'Matte contrast', [0], 0, 100),
+      ParamDef('view', 'View', [0], 0, 1, options: ['final', 'matte']),
+    ], category: 'keying'),
+    // <<< CHROMA (Agent M)
   ];
 
-  static const categories = ['color', 'blur', 'stylize', 'distort', 'atmosphere', 'reveal'];
+  static const categories = ['keying', 'color', 'blur', 'stylize', 'distort', 'atmosphere', 'reveal']; // CHROMA (Agent M): + keying
 
   static String categoryLabel(String c) => const {
         'color': 'Color & looks',
@@ -172,6 +185,7 @@ class EffectsCatalog {
         'distort': 'Distort',
         'atmosphere': 'Atmosphere',
         'reveal': 'Reveal & flash',
+        'keying': 'Keying (green screen)', // CHROMA (Agent M)
       }[c] ??
       c;
 
@@ -196,6 +210,8 @@ class EffectsCatalog {
       return [i.toDouble()];
     }
     if (def.color || def.defaultValue.length == 3) {
+      final named = kChromaNamedColors[v.trim().toLowerCase()]; // CHROMA (Agent M): "green" | "blue"
+      if (named != null) return List.of(named);
       final s = v.trim().replaceFirst('#', '').replaceFirst('0x', '');
       final n = int.tryParse(s, radix: 16);
       if (n == null || (s.length != 6 && s.length != 8)) throw ArgumentError('Bad color "$v" for "$key" (use "#RRGGBB")');
