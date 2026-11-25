@@ -447,14 +447,15 @@ void main() {
       final p = small();
       run(p, {'op': 'precompose', 'layers': ['red'], 'layer_id': 'g'});
       run(p, {'op': 'set_property', 'target': 'g', 'prop': 'position', 'value': [180, 50, 0]}); // +80 px
-      final px = await render(tester, p, 1, [[140, 50], [60, 50]]);
+      // Red now spans x 100..180 (blue, on top, still covers 130..170).
+      final px = await render(tester, p, 1, [[110, 50], [60, 50]]);
       expect(px[0], 0xFFFF0000, reason: 'red moved right with the comp layer');
       expect(px[1], 0xFF000000);
 
       run(p, {'op': 'precompose', 'layers': ['g'], 'layer_id': 'g2'});
       run(p, {'op': 'precompose', 'layers': ['g2'], 'layer_id': 'g3'});
       expect(Precomp.levelsBelow(p, p.main.id), 4);
-      final deep = await render(tester, p, 1, [[140, 50], [60, 50]], draft: true);
+      final deep = await render(tester, p, 1, [[110, 50], [60, 50]], draft: true);
       expect(deep, px);
     });
 
