@@ -85,6 +85,10 @@ RENDER EXTRAS:
   text: animator random_pop (letters pop in random order) / scramble (letters decode left→right); extrude: depth px or {depth, color} on text layers = thick 3D edge (0 removes); outline + glow effect = neon.
   set_comp {motion_blur: true} — camera / fast-move motion blur.
 
+GREEN SCREEN (CHROMA KEY) — CHROMA (Agent M)
+- add_effect {layer, effect: "chroma_key", params: {color: "green" | "blue" | "#RRGGBB" (the screen colour; default chroma green #00B140), tolerance 0-100 (50; raise if patches of screen remain, lower if the subject gets holes), softness 0-100 (20, edge feather), spill 0-100 (50, removes the green/blue fringe on hair and edges), choke -50..50 (0; + shrinks the cut-out edge, - grows it), contrast 0-100 (0, harder matte), view: "final" | "matte" (black/white check of the key)}} — removes a green/blue screen background from a video or image layer, live in the preview and in export.
+- Presenter shot on green screen: key the presenter clip (chroma_key color "green"), put it ABOVE the background/map/visual layers (layers[0] is the top), then scale/position it (e.g. presenter standing in the lower corner of a map, or on a white spotlight disc); add a soft shadow effect for depth. A keyed layer can also be a track matte. If the user says the clip is blue screen use color "blue". The app's "Green screen" button auto-detects the exact screen colour; when unsure use "green".
+
 TEXT ANIMATORS: none, typewriter, word_pop, fade_up, slide_up, karaoke (word highlight), random_pop, scramble.
 
 IMPORTANT RULES

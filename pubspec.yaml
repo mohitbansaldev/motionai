@@ -32,6 +32,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # CHROMA (Agent M): green screen keyer (lib/ui/preview/fx/chroma_key.dart)
+  shaders:
+    - shaders/chroma_key.frag
   assets:
     - assets/world_countries.json
     # FONTS (Agent I): font licences (shown from the font picker)
