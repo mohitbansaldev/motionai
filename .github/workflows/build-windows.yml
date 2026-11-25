@@ -6,7 +6,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main, feat/windows, integ/v1]
+    branches: [main, feat/windows, integ/v1, feat/winai] # TEMP feat/winai (Agent E CI check) - remove before merge
   workflow_dispatch:
 
 permissions:
@@ -78,9 +78,10 @@ jobs:
           if (-not (Test-Path smoke.mp4)) { throw 'FFmpeg smoke test failed' }
 
       # --- WINAI BINARIES ---
-      # Agent E (feat/winai) owns this step's contents (Windows AI layer).
-      # Interim: whisper.cpp CLI in a "whisper" sub-folder and ONNX Runtime
-      # next to the exe, used by lib/platform/windows_ai/win_ai.dart.
+      # Agent E (feat/winai) owns this step's contents (Windows AI layer,
+      # lib/platform/windows_ai): whisper.cpp CLI in a "whisper" sub-folder
+      # (speech-to-text) and onnxruntime.dll next to the exe (photo cut-out).
+      # Models are downloaded by the app on first use, not bundled.
       - name: Bundle Windows AI binaries (whisper.cpp, ONNX Runtime)
         continue-on-error: true
         shell: pwsh
@@ -105,18 +106,62 @@ jobs:
           Get-ChildItem $dest
           & (Join-Path $dest 'whisper-cli.exe') --help 2>&1 | Select-Object -First 3
 
-          # ONNX Runtime is optional here (photo cut-out arrives with the Windows AI branch).
+          # ONNX Runtime (CPU) from the official PyPI wheel, else NuGet, else GitHub.
+          $ortVer = '1.22.0'
+          $dll = $null
           try {
-            $rel = Invoke-RestMethod 'https://api.github.com/repos/microsoft/onnxruntime/releases/latest' -Headers @{ 'User-Agent' = 'motionai-ci' }
-            $asset = $rel.assets | Where-Object { $_.name -match '^onnxruntime-win-x64-[0-9.]+\.zip$' } | Select-Object -First 1
-            if (-not $asset) { throw 'no win-x64 asset' }
-            Write-Host "ONNX Runtime: $($asset.name)"
-            Invoke-WebRequest $asset.browser_download_url -OutFile ort.zip
-            Expand-Archive ort.zip -DestinationPath ort_x -Force
-            Get-ChildItem ort_x -Recurse -Filter onnxruntime*.dll | Copy-Item -Destination $env:REL
-          } catch {
-            Write-Warning "ONNX Runtime not bundled: $_"
+            python -m pip download "onnxruntime==$ortVer" --no-deps --only-binary=:all: --platform win_amd64 --python-version 3.12 -d ort_whl
+            $whl = Get-ChildItem ort_whl -Filter *.whl | Select-Object -First 1
+            Copy-Item $whl.FullName ort_whl.zip
+            Expand-Archive ort_whl.zip -DestinationPath ort_x -Force
+            $dll = Get-ChildItem ort_x -Recurse -Filter onnxruntime.dll | Select-Object -First 1
+            if ($dll) { Write-Host "ONNX Runtime $ortVer from PyPI" }
+          } catch { Write-Host "PyPI wheel not available: $_" }
+          if (-not $dll) {
+            try {
+              Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime/$ortVer" -OutFile ort_nuget.zip
+              Expand-Archive ort_nuget.zip -DestinationPath ort_n -Force
+              $dll = Get-ChildItem 'ort_n\runtimes\win-x64\native' -Filter onnxruntime.dll | Select-Object -First 1
+              if ($dll) { Write-Host "ONNX Runtime $ortVer from NuGet" }
+            } catch { Write-Host "NuGet package not available: $_" }
           }
+          if (-not $dll) {
+            Invoke-WebRequest "https://github.com/microsoft/onnxruntime/releases/download/v$ortVer/onnxruntime-win-x64-$ortVer.zip" -OutFile ort.zip
+            Expand-Archive ort.zip -DestinationPath ort_g -Force
+            $dll = Get-ChildItem ort_g -Recurse -Filter onnxruntime.dll | Select-Object -First 1
+            if ($dll) { Write-Host "ONNX Runtime $ortVer from GitHub" }
+          }
+          if (-not $dll) { throw 'Could not get onnxruntime.dll' }
+          Copy-Item $dll.FullName $env:REL
+          $shared = Join-Path $dll.DirectoryName 'onnxruntime_providers_shared.dll'
+          if (Test-Path $shared) { Copy-Item $shared $env:REL }
+          Get-Item (Join-Path $env:REL 'onnxruntime.dll') | Format-List Name, Length, VersionInfo
+
+      # Runs the real engines once (cut-out model, Windows voice → whisper
+      # words) and checks the model download URLs. Informational only.
+      - name: Windows AI smoke test
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          New-Item -ItemType Directory -Force winai_models | Out-Null
+          Invoke-WebRequest 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx' -OutFile winai_models\u2netp.onnx
+          Invoke-WebRequest 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin' -OutFile winai_models\ggml-tiny.bin
+          Write-Host "u2netp.onnx $((Get-Item winai_models\u2netp.onnx).Length) sha256 $((Get-FileHash winai_models\u2netp.onnx -Algorithm SHA256).Hash)"
+          Write-Host "ggml-tiny.bin $((Get-Item winai_models\ggml-tiny.bin).Length) sha1 $((Get-FileHash winai_models\ggml-tiny.bin -Algorithm SHA1).Hash)"
+          foreach ($m in 'base', 'small') {
+            try {
+              $r = Invoke-WebRequest -Method Head "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$m.bin"
+              Write-Host "ggml-$m.bin length $($r.Headers['Content-Length'])"
+            } catch { Write-Warning "ggml-$m.bin not reachable: $_" }
+          }
+          $env:WINAI_IT = '1'
+          $env:WINAI_ORT = (Resolve-Path "$env:REL\onnxruntime.dll").Path
+          $env:WINAI_U2NETP = (Resolve-Path winai_models\u2netp.onnx).Path
+          $env:WINAI_WHISPER = (Resolve-Path "$env:REL\whisper\whisper-cli.exe").Path
+          $env:WINAI_WHISPER_MODEL = (Resolve-Path winai_models\ggml-tiny.bin).Path
+          flutter test test/winai_test.dart --plain-name "windows integration" -r expanded
+          if ($LASTEXITCODE -ne 0) { throw 'Windows AI smoke test failed' }
       # --- END WINAI BINARIES ---
 
       # Visual C++ runtime next to the exe, so it starts on PCs without it.
@@ -139,6 +184,7 @@ jobs:
           Get-ChildItem MotionAI-* | Format-Table Name, Length
 
       - uses: softprops/action-gh-release@v2
+        if: github.ref_name != 'feat/winai' # TEMP (Agent E CI check) - remove before merge
         with:
           tag_name: win-${{ github.run_number }}
           name: MotionAI for Windows · build ${{ github.run_number }}
