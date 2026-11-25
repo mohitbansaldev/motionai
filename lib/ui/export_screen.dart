@@ -14,6 +14,7 @@ import '../core/engine/precomp.dart'; // PRECOMP (Agent L)
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../platform/ffmpeg_args.dart';
+import '../platform/win_gpu.dart'; // win-30
 import '../platform/win_media.dart';
 import '../platform/win_tools.dart';
 import '../remote/remote_export.dart'; // MCP (Agent P)
@@ -82,6 +83,26 @@ class _ExportScreenState extends State<ExportScreen> {
 
   // win-30 >>>
   bool _rechecking = false;
+  int? _gpuPref;
+  bool _gpuPrefLoaded = false;
+
+  Future<void> _loadGpuPref() async {
+    final v = await WinGpu.preference();
+    if (mounted) setState(() {
+      _gpuPref = v;
+      _gpuPrefLoaded = true;
+    });
+  }
+
+  Future<void> _useHighPerfGpu() async {
+    final ok = await WinGpu.setPreference(2);
+    if (!mounted) return;
+    setState(() => _gpuPref = ok ? 2 : _gpuPref);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ok
+            ? 'MotionAI will use the high-performance GPU (NVIDIA/AMD) after a restart. Close and reopen the app.'
+            : 'Could not change the GPU setting. Use Windows Settings → Display → Graphics.')));
+  }
 
   Future<void> _recheckGpu() async {
     setState(() => _rechecking = true);
@@ -110,6 +131,12 @@ class _ExportScreenState extends State<ExportScreen> {
               child: Text('${encoderLabel(e)} not available: ${_shortReason(WinMedia.encoderErrors[e]!)}',
                   maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.orangeAccent, fontSize: 11.5)),
             ),
+        if (_gpuPrefLoaded && _gpuPref != 2)
+          TextButton.icon(
+            onPressed: _useHighPerfGpu,
+            icon: const Icon(Icons.memory, size: 16),
+            label: Text('Use high-performance GPU (now: ${WinGpu.label(_gpuPref)})'),
+          ),
         TextButton.icon(
           onPressed: _rechecking ? null : _recheckGpu,
           icon: const Icon(Icons.refresh, size: 16),
@@ -138,6 +165,7 @@ class _ExportScreenState extends State<ExportScreen> {
       _encoder = WinMedia.preferredEncoder;
       _outDir = _savedDir ?? WinTools.defaultExportDir();
       _loadDir();
+      _loadGpuPref(); // win-30
       WinMedia.workingEncoders().then((e) {
         if (mounted) setState(() => _encoders = e);
       }).catchError((Object e) {
