@@ -40,51 +40,55 @@ float alphaAt(vec2 uv, vec2 khat, float kl) {
   return keyAlpha(unpremul(texture(uImage, clamp(uv, vec2(0.0), vec2(1.0)))), khat, kl);
 }
 
+// One exit only: samplers + several `return`s in main() can crash the
+// Windows (SkSL/ANGLE) compiler (flutter/flutter#190809).
 void main() {
   vec2 uv = FlutterFragCoord().xy / uSize;
   vec4 src = texture(uImage, uv);
   vec3 rgb = unpremul(src);
   vec2 k = chroma(uKey);
   float kl = length(k);
+  vec4 outColor = src;
   if (kl < 0.0001) {
-    fragColor = uView > 0.5 ? vec4(vec3(src.a), 1.0) : src;
-    return;
-  }
-  vec2 khat = k / kl;
-  float a = keyAlpha(rgb, khat, kl);
+    // A grey key colour keys nothing.
+    if (uView > 0.5) outColor = vec4(vec3(src.a), 1.0);
+  } else {
+    vec2 khat = k / kl;
+    float a = keyAlpha(rgb, khat, kl);
 
-  float r = abs(uChoke);
-  if (r > 0.01) {
-    vec2 px = vec2(r) / uSize;
-    float m = a;
-    for (int i = 0; i < 8; i++) {
-      float t = float(i) * 0.7853982;
-      float s = alphaAt(uv + vec2(cos(t), sin(t)) * px, khat, kl);
-      m = uChoke > 0.0 ? min(m, s) : max(m, s);
+    float r = abs(uChoke);
+    if (r > 0.01) {
+      vec2 px = vec2(r) / uSize;
+      float m = a;
+      for (int i = 0; i < 8; i++) {
+        float t = float(i) * 0.7853982;
+        float s = alphaAt(uv + vec2(cos(t), sin(t)) * px, khat, kl);
+        m = uChoke > 0.0 ? min(m, s) : max(m, s);
+      }
+      for (int i = 0; i < 4; i++) {
+        float t = float(i) * 1.5707964;
+        float s = alphaAt(uv + vec2(cos(t), sin(t)) * px * 0.5, khat, kl);
+        m = uChoke > 0.0 ? min(m, s) : max(m, s);
+      }
+      a = m;
     }
-    for (int i = 0; i < 4; i++) {
-      float t = float(i) * 1.5707964;
-      float s = alphaAt(uv + vec2(cos(t), sin(t)) * px * 0.5, khat, kl);
-      m = uChoke > 0.0 ? min(m, s) : max(m, s);
-    }
-    a = m;
-  }
-  if (uGain != 1.0) a = clamp((a - 0.5) * uGain + 0.5, 0.0, 1.0);
-  float fa = a * src.a;
+    if (uGain != 1.0) a = clamp((a - 0.5) * uGain + 0.5, 0.0, 1.0);
+    float fa = a * src.a;
 
-  if (uView > 0.5) {
-    fragColor = vec4(vec3(fa), 1.0);
-    return;
-  }
-
-  if (uSpill > 0.0) {
-    vec2 c = chroma(rgb);
-    float along = dot(c, khat);
-    if (along > 0.0) {
-      float y = dot(rgb, vec3(0.299, 0.587, 0.114));
-      c -= khat * along * uSpill;
-      rgb = clamp(vec3(y + 1.402 * c.y, y - 0.344136 * c.x - 0.714136 * c.y, y + 1.772 * c.x), 0.0, 1.0);
+    if (uView > 0.5) {
+      outColor = vec4(vec3(fa), 1.0);
+    } else {
+      if (uSpill > 0.0) {
+        vec2 c = chroma(rgb);
+        float along = dot(c, khat);
+        if (along > 0.0) {
+          float y = dot(rgb, vec3(0.299, 0.587, 0.114));
+          c -= khat * along * uSpill;
+          rgb = clamp(vec3(y + 1.402 * c.y, y - 0.344136 * c.x - 0.714136 * c.y, y + 1.772 * c.x), 0.0, 1.0);
+        }
+      }
+      outColor = vec4(rgb * fa, fa);
     }
   }
-  fragColor = vec4(rgb * fa, fa);
+  fragColor = outColor;
 }

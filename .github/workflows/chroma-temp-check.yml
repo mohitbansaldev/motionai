@@ -20,11 +20,11 @@ jobs:
         run: |
           E=$(dirname $(which flutter))/cache/artifacts/engine/linux-x64
           ls $E | head -50
-          $E/impellerc --help | head -60 || true
           $E/impellerc --sksl --runtime-stage-gles --runtime-stage-vulkan --runtime-stage-metal --iplr \
             --sl=/tmp/chroma.iplr --spirv=/tmp/chroma.spv --input=shaders/chroma_key.frag --input-type=frag \
-            --include=shaders --include=$E/shader_lib
+            --include=shaders --include=$E/shader_lib 2>&1 | tee /tmp/impellerc.log
           ls -la /tmp/chroma.iplr
+          if grep -q WARNING /tmp/impellerc.log; then echo "impellerc warnings"; exit 1; fi
   windows:
     runs-on: windows-latest
     steps:
