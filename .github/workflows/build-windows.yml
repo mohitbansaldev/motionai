@@ -1,0 +1,148 @@
+# Builds the Windows desktop app on GitHub's servers: MotionAI-Setup.exe
+# (installer) + a portable zip, published as release "win-N".
+# The release is NOT marked latest: the Android in-app updater reads
+# releases/latest, the Windows updater looks for the newest "win-*" tag.
+name: Build Windows
+
+on:
+  push:
+    branches: [main, feat/windows]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      REL: build\windows\x64\runner\Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Adds any missing platform files (never overwrites existing ones).
+      - run: flutter create --org com.mohitflix --project-name motionai --platforms=windows,android .
+
+      - name: Window title, size and product name
+        shell: pwsh
+        run: |
+          $f = 'windows/runner/main.cpp'
+          $s = Get-Content $f -Raw
+          $s = $s -replace 'Win32Window::Size size\(\d+, \d+\)', 'Win32Window::Size size(1440, 900)'
+          $s = $s -replace 'window\.Create\(L"motionai"', 'window.Create(L"MotionAI"'
+          Set-Content $f $s -NoNewline
+          Select-String -Path $f -Pattern 'Size size|window.Create'
+          $rc = 'windows/runner/Runner.rc'
+          if (Test-Path $rc) {
+            (Get-Content $rc -Raw) -replace '"motionai"', '"MotionAI"' | Set-Content $rc -NoNewline
+          }
+
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+
+      - run: flutter build windows --release --build-number=${{ github.run_number }} --dart-define=BUILD_NUMBER=${{ github.run_number }}
+
+      # FFmpeg/FFprobe (GPL build with NVENC, QSV and AMF encoders) next to the exe.
+      - name: Bundle FFmpeg
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $urls = @(
+            'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-gpl-8.1.zip',
+            'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
+          )
+          $ok = $false
+          foreach ($u in $urls) {
+            try { Invoke-WebRequest $u -OutFile ffmpeg.zip; $ok = $true; Write-Host "Using $u"; break } catch { Write-Host "Not available: $u" }
+          }
+          if (-not $ok) { throw 'Could not download FFmpeg' }
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_x -Force
+          $bin = Get-ChildItem ffmpeg_x -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $bin.FullName $env:REL
+          Copy-Item (Join-Path $bin.DirectoryName 'ffprobe.exe') $env:REL
+          & "$env:REL\ffmpeg.exe" -hide_banner -version | Select-Object -First 1
+          & "$env:REL\ffmpeg.exe" -hide_banner -encoders | Select-String 'h264_|libx264'
+          # Smoke test: the exact RGBA-pipe encode the app does (CPU encoder; runners have no GPU).
+          & "$env:REL\ffmpeg.exe" -hide_banner -loglevel error -f lavfi -i color=c=red:s=320x240:r=30:d=1 -f rawvideo -pix_fmt rgba frames.rgba
+          & "$env:REL\ffmpeg.exe" -y -hide_banner -loglevel error -f rawvideo -pix_fmt rgba -s 320x240 -framerate 30 -i frames.rgba -an -vf "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p" -c:v libx264 -preset medium -crf 18 smoke.mp4
+          if (-not (Test-Path smoke.mp4)) { throw 'FFmpeg smoke test failed' }
+
+      # --- WINAI BINARIES ---
+      # Agent E (feat/winai) owns this step's contents (Windows AI layer).
+      # Interim: whisper.cpp CLI in a "whisper" sub-folder and ONNX Runtime
+      # next to the exe, used by lib/platform/windows_ai/win_ai.dart.
+      - name: Bundle Windows AI binaries (whisper.cpp, ONNX Runtime)
+        shell: pwsh
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $wurls = @(
+            'https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip',
+            'https://github.com/ggml-org/whisper.cpp/releases/download/v1.7.6/whisper-bin-x64.zip'
+          )
+          $ok = $false
+          foreach ($u in $wurls) {
+            try { Invoke-WebRequest $u -OutFile whisper.zip; $ok = $true; Write-Host "Using $u"; break } catch { Write-Host "Not available: $u" }
+          }
+          if (-not $ok) { throw 'Could not download whisper.cpp' }
+          Expand-Archive whisper.zip -DestinationPath whisper_x -Force
+          $cli = Get-ChildItem whisper_x -Recurse -Filter whisper-cli.exe | Select-Object -First 1
+          if (-not $cli) { $cli = Get-ChildItem whisper_x -Recurse -Filter main.exe | Select-Object -First 1 }
+          $dest = Join-Path $env:REL 'whisper'
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Copy-Item $cli.FullName (Join-Path $dest 'whisper-cli.exe')
+          Get-ChildItem $cli.DirectoryName -Filter *.dll | Copy-Item -Destination $dest
+          Get-ChildItem $dest
+          & (Join-Path $dest 'whisper-cli.exe') --help 2>&1 | Select-Object -First 3
+
+          Invoke-WebRequest 'https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip' -OutFile ort.zip
+          Expand-Archive ort.zip -DestinationPath ort_x -Force
+          Get-ChildItem ort_x -Recurse -Filter onnxruntime*.dll | Copy-Item -Destination $env:REL
+      # --- END WINAI BINARIES ---
+
+      # Visual C++ runtime next to the exe, so it starts on PCs without it.
+      - name: Bundle VC++ runtime
+        shell: pwsh
+        run: |
+          foreach ($d in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item "$env:WINDIR\System32\$d" $env:REL
+          }
+          Get-ChildItem $env:REL | Format-Table Name, Length
+
+      - name: Installer and portable zip
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "/DAppVersion=0.5.${{ github.run_number }}" "/DSourceDir=$PWD\$env:REL" "/DOutDir=$PWD" installer\motionai.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed' }
+          Compress-Archive -Path "$env:REL\*" -DestinationPath MotionAI-Windows-portable.zip -Force
+          Get-ChildItem MotionAI-* | Format-Table Name, Length
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: win-${{ github.run_number }}
+          name: MotionAI for Windows · build ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: false
+          body: |
+            **Windows 10/11 (64-bit):** download and run **MotionAI-Setup.exe** (no admin needed).
+            Or unzip MotionAI-Windows-portable.zip anywhere and run motionai.exe.
+            Built from `${{ github.ref_name }}` @ ${{ github.sha }}.
+          files: |
+            MotionAI-Setup.exe
+            MotionAI-Windows-portable.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: motionai-windows
+          path: MotionAI-Setup.exe

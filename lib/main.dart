@@ -1,3 +1,5 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -25,7 +27,22 @@ class MotionAIApp extends StatelessWidget {
       title: 'MotionAI',
       debugShowCheckedModeBanner: false,
       theme: MA.theme(),
+      // Mouse and trackpad can drag horizontal lists on the PC too.
+      scrollBehavior: const _AllPointersScroll(),
       home: const HomeScreen(),
     );
   }
+}
+
+class _AllPointersScroll extends MaterialScrollBehavior {
+  const _AllPointersScroll();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.invertedStylus,
+      };
 }

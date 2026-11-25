@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,7 @@ import '../core/model/project.dart';
 import '../core/presets/templates.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../platform/win_window.dart';
 import '../services/project_storage.dart';
 import '../services/updater.dart';
 import 'editor_screen.dart';
@@ -57,6 +59,10 @@ class _HomeScreenState extends State<HomeScreen> {
         if (manual) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('You have the latest version (build ${Updater.current}).')));
         return;
       }
+      if (Platform.isWindows) {
+        await _windowsUpdate(u);
+        return;
+      }
       await showModalBottomSheet(
         context: context,
         builder: (ctx) => SafeArea(
@@ -98,6 +104,52 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Windows: download MotionAI-Setup.exe in the app, run it, quit.
+  Future<void> _windowsUpdate(UpdateInfo u) async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Update available · build ${u.build}'),
+        content: Text('You have build ${Updater.current}. MotionAI will download the installer, close and update itself. '
+            'Your projects stay as they are.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Later')),
+          if (u.olderUrl != null)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx, false);
+                launchUrl(Uri.parse(u.olderUrl!), mode: LaunchMode.externalApplication);
+              },
+              child: const Text('Portable zip'),
+            ),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Update now')),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+    final progress = ValueNotifier<double>(0);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Downloading update…'),
+        content: ValueListenableBuilder<double>(
+          valueListenable: progress,
+          builder: (_, v, __) => LinearProgressIndicator(value: v > 0 ? v : null),
+        ),
+      ),
+    );
+    try {
+      final path = await Updater.downloadInstaller(u, onProgress: (v) => progress.value = v);
+      await Updater.runInstallerAndExit(path);
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: $e')));
+      launchUrl(Uri.parse(u.url), mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _open(Project p) async {
     HapticFeedback.selectionClick();
     await Navigator.of(context).push(PageRouteBuilder(
@@ -108,6 +160,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ScaleTransition(scale: Tween(begin: 0.98, end: 1.0).animate(a), child: child),
       ),
     ));
+    WinWindow.setTitle(null);
     _reload();
   }
 
@@ -377,7 +430,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: () => _open(p),
       onLongPress: () => _menu(p),
-      child: Container(
+      onSecondaryTap: () => _menu(p),
+      child: _Hover(
+        child: Container(
         decoration: MA.card(color: MA.surface),
         clipBehavior: Clip.antiAlias,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -426,6 +481,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ]),
           ),
         ]),
+        ),
       ),
     );
   }
@@ -452,4 +508,29 @@ class _HomeScreenState extends State<HomeScreen> {
     if (d.inDays < 1) return '${d.inHours}h ago';
     return '${d.inDays}d ago';
   }
+}
+
+/// Desktop hover: lifts a card slightly under the mouse pointer.
+class _Hover extends StatefulWidget {
+  final Widget child;
+  const _Hover({required this.child});
+
+  @override
+  State<_Hover> createState() => _HoverState();
+}
+
+class _HoverState extends State<_Hover> {
+  bool _on = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _on = true),
+        onExit: (_) => setState(() => _on = false),
+        child: AnimatedScale(
+          scale: _on ? 1.025 : 1,
+          duration: const Duration(milliseconds: 140),
+          child: AnimatedOpacity(opacity: _on ? 1 : 0.94, duration: const Duration(milliseconds: 140), child: widget.child),
+        ),
+      );
 }

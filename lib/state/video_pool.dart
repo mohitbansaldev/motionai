@@ -32,8 +32,10 @@ class VideoPool extends ChangeNotifier {
     });
   }
 
-  /// Call whenever the time changes or the project is edited.
-  void sync(Project project, double t, {required bool playing}) {
+  /// Call whenever the time changes or the project is edited. [rate] is the
+  /// shuttle speed (J/K/L); reverse shuttle (rate < 0) scrubs paused players.
+  void sync(Project project, double t, {required bool playing, double rate = 1}) {
+    if (rate <= 0) playing = false;
     final comp = project.main;
     final alive = <String>{};
     for (final l in comp.layers) {
@@ -50,11 +52,17 @@ class VideoPool extends ChangeNotifier {
       if ((e.controller.value.volume - vol).abs() > 0.01) e.controller.setVolume(vol);
       if (playing && active) {
         final pos = e.controller.value.position.inMicroseconds / 1e6;
+        final speed = l.speed * rate;
         if (!e.controller.value.isPlaying) {
           e.seekTo(target);
-          e.controller.setPlaybackSpeed(l.speed);
+          e.controller.setPlaybackSpeed(speed);
+          e.speed = speed;
           e.controller.play();
-        } else if ((pos - target).abs() > 0.25) {
+        } else if (e.speed != speed) {
+          e.controller.setPlaybackSpeed(speed);
+          e.speed = speed;
+          e.seekTo(target);
+        } else if ((pos - target).abs() > 0.25 * rate) {
           e.seekTo(target); // drift correction
         }
       } else {
@@ -88,6 +96,7 @@ class _Entry {
   final VideoPlayerController controller;
   final String path;
   bool ready = false;
+  double speed = 1;
   bool _seeking = false;
   double? _pending;
   double _last = -1;
