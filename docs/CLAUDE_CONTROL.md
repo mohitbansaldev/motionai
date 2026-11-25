@@ -15,6 +15,27 @@ This works with:
 
 It needs the **Windows** version of MotionAI.
 
+## Local and cloud: use both
+
+There are two ways for Claude to reach MotionAI. They can be used together.
+
+| | **Local** (Claude Code / Claude Desktop on this PC) | **Cloud** (a claude.ai session linked to this PC) |
+|---|---|---|
+| How it connects | `motionai-mcp.exe` or `http://127.0.0.1:7820/mcp`, directly | The Claude desktop app's browser pane opens `http://127.0.0.1:7820/health` and calls `/mcp` from there |
+| Speed | Fastest: no internet round trip per call | One extra hop per call. Use `batch` and `format: "jpeg"` |
+| Needs | A terminal session open on the PC | The Claude desktop app open and online. The PC must not sleep |
+| Good for | Long builds, exports, many small edits | Planning, research, Google Flow images, working from the phone |
+
+Tips that make both fast:
+
+- Put several calls in one `batch` (for example run_commands + check_scene + preview_shot).
+- `preview_shot {format: "jpeg"}` and `render_frame {format: "jpeg"}` are about 5× smaller than PNG.
+- `export_status {wait_s: 60}` waits for the export instead of polling.
+- `get_layers {comp}`, `render_frame {comp}` and `preview_shot {comp}` read any composition without changing the user's view.
+- `list_files` / `read_file` / `write_file` share files through `Documents\MotionAI_Files`.
+  Images from Google Flow land in `Documents\MotionAI_Flow` (see `tool/flow_helper.js`).
+- You can watch videos in Chrome while Claude works. Don't press keys inside MotionAI during an export.
+
 ---
 
 ## 1. Turn it on in MotionAI (once)
