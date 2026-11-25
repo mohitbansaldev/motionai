@@ -1215,13 +1215,63 @@ List<Map<String, dynamic>> _evInsetCircle(_B b0, Project p) {
 List<Map<String, dynamic>> _evBook(_B b0, Project p) {
   final side = b0.str('enter', 'rise') == 'side_popin';
   final openAt0 = b0.n('open_at', 1.6);
-  final flips = b0.n('flips', 1).round().clamp(0, 4);
   final pages = b0.specs('pages', 'text');
   final marks = b0.specs('marks', 'phrase');
   final zoomTo = b0.str('zoom_to', 'page') == 'page';
-  final tOpen = openAt0, tFlip0 = tOpen + 0.45, tZoom = tFlip0 + flips * 0.3 + 0.1;
-  final tMarks = (zoomTo ? tZoom + 0.8 : tZoom) + 0.3;
-  final b = _evWithDur(b0, math.max(6.0, tMarks + marks.length * 1.0 + 3.0));
+  bool filled(Map<String, dynamic> pg) => pg['media'] is String || '${pg['text'] ?? ''}'.trim().isNotEmpty;
+  // win-30: two or more real pages are READ — zoom in first, hold each page
+  // long enough to read (its marks play on it), then flip to the next.
+  // (Before, the pages flipped by in 0.3 s and only the last one was seen.)
+  final read = zoomTo && b0.c['read'] != false && pages.where(filled).length >= 2;
+  final int flips = read ? math.min(pages.length - 1, 4) : b0.n('flips', 1).round().clamp(0, 4).toInt();
+  final nPages = flips + 1;
+  final tOpen = openAt0;
+  final pageMarks = [for (int k = 0; k < nPages; k++) <Map<String, dynamic>>[]];
+  for (final mk in marks) {
+    var k = mk['page'] is num ? (mk['page'] as num).round().clamp(0, nPages - 1).toInt() : -1;
+    if (k < 0 && read) {
+      final ph = '${mk['phrase'] ?? ''}'.toLowerCase();
+      for (int q = 0; q < nPages && q < pages.length; q++) {
+        if (ph.isNotEmpty && '${pages[q]['text'] ?? ''}'.toLowerCase().contains(ph)) {
+          k = q;
+          break;
+        }
+      }
+    }
+    pageMarks[k < 0 ? nPages - 1 : k].add(mk);
+  }
+  double markSpan(List<Map<String, dynamic>> ms) => ms.fold(0.0, (a, m) => a + ('${m['style'] ?? 'highlight'}' == 'highlight' ? 0.9 : 0.6));
+  // Times relative to the start: flipAt[k] turns page k, markAt[k] = its first mark.
+  final flipAt = <double>[], markAt = <double>[];
+  final double tZoom, tEnd;
+  if (read) {
+    tZoom = tOpen + 0.45;
+    var tr = tZoom + 0.8 + 0.2;
+    for (int k = 0; k < nPages; k++) {
+      final words = k < pages.length ? '${pages[k]['text'] ?? ''}'.split(RegExp(r'\s+')).where((x) => x.isNotEmpty).length : 0;
+      final hold = math.max((words / 3.2).clamp(1.6, 5.0).toDouble(), markSpan(pageMarks[k]) + 1.0);
+      markAt.add(tr + 0.3);
+      if (k < flips) {
+        flipAt.add(tr + hold);
+        tr = tr + hold + 0.35;
+      } else {
+        tr += hold;
+      }
+    }
+    tEnd = tr + 1.2;
+  } else {
+    final tFlip0 = tOpen + 0.45;
+    for (int k = 0; k < flips; k++) {
+      flipAt.add(tFlip0 + k * 0.3);
+    }
+    tZoom = tFlip0 + flips * 0.3 + 0.1;
+    final tMarks = (zoomTo ? tZoom + 0.8 : tZoom) + 0.3;
+    for (int k = 0; k < nPages; k++) {
+      markAt.add(tMarks);
+    }
+    tEnd = tMarks + marks.length * 1.0 + 3.0;
+  }
+  final b = _evWithDur(b0, math.max(6.0, tEnd));
   final w = b.w, h = b.h;
   final cmds = <Map<String, dynamic>>[];
 
@@ -1257,16 +1307,15 @@ List<Map<String, dynamic>> _evBook(_B b0, Project p) {
   ], stroke: '#C9BEA6', width: 1.5)));
 
   // Page contents (right page), switched by the flips.
-  final nPages = flips + 1;
-  final pageEnds = [for (int k = 0; k < nPages; k++) k < flips ? b.start + tFlip0 + k * 0.3 : b.end];
+  final pageEnds = [for (int k = 0; k < nPages; k++) k < flips ? b.start + flipAt[k] : b.end];
   final pw = cw * 0.86, phh = ch * 0.88;
   for (int k = 0; k < nPages; k++) {
-    final ps = b.start + (k == 0 ? 0 : tFlip0 + (k - 1) * 0.3);
+    final ps = b.start + (k == 0 ? 0 : flipAt[k - 1]);
     final pd = math.max(0.1, pageEnds[k] - ps);
     final spec = k < pages.length ? pages[k] : const <String, dynamic>{};
     final media = spec['media'] is String ? p.media['${spec['media']}'] : null;
-    final last = k == nPages - 1;
-    final pmarks = last ? marks : const <Map<String, dynamic>>[];
+    final pmarks = pageMarks[k];
+    final tMarks = markAt[k];
     final part = 'pg$k';
     if (media != null && media.type != MediaType.audio) {
       final s = math.min(pw / math.max(1, media.width), phh / math.max(1, media.height));
@@ -1357,8 +1406,9 @@ List<Map<String, dynamic>> _evBook(_B b0, Project p) {
   cmds.add(_evKf(cover, 'scale', tO + 0.2, [1, 100, 100]));
   cmds.add(_evKf(cover, 'opacity', tO + 0.19, 100, 'hold'));
   cmds.add(_evKf(cover, 'opacity', tO + 0.2, 0));
-  cmds.add(_evKf(b.id('cvshade'), 'opacity', tO, 0, 'ease_in'));
-  cmds.add(_evKf(b.id('cvshade'), 'opacity', tO + 0.2, 55));
+  // A light shade only (55 % read as the cover flashing black).
+  cmds.add(_evKf(b.id('cvshade'), 'opacity', tO + 0.08, 0, 'ease_in'));
+  cmds.add(_evKf(b.id('cvshade'), 'opacity', tO + 0.2, 22));
   cmds.add(_evKf(inside, 'opacity', tO + 0.19, 0, 'hold'));
   cmds.add(_evKf(inside, 'opacity', tO + 0.2, 100));
   cmds.add(_evKf(inside, 'scale', tO + 0.2, [1, 100, 100], 'ease_out'));
@@ -1370,7 +1420,7 @@ List<Map<String, dynamic>> _evBook(_B b0, Project p) {
 
   // Page flips: a leaf folds to the spine and lands on the left.
   for (int k = 0; k < flips; k++) {
-    final tf = b.start + tFlip0 + k * 0.3;
+    final tf = b.start + flipAt[k];
     final leaf = 'leaf$k', back = 'leafb$k';
     cmds.addAll(b.nul(leaf, 0, 0, parent: spine, st: tf, du: 0.15, name: 'Page flip'));
     cmds.add(on(b.id(leaf), b.shape('${leaf}_p', 'rect', cw * 0.985, ch * 0.975, cw / 2, 0, fill: '#F4EEDF', fill2: '#E2D8C2'), tf, 0.15));

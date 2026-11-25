@@ -358,7 +358,8 @@ void main() {
       expect(ys.reduce((a, b) => a < b ? a : b), lessThan(kH * 0.52 - 1), reason: 'overshoots above its rest');
       // Zoomed in: scale 100 % and the right page centre in the middle of the frame.
       final g = layer(p, 'bk_g');
-      final tz = 1.6 + 0.45 + 0.3 + 0.1 + 0.8;
+      // win-30: two real pages are read — zoom in right after opening.
+      final tz = 1.6 + 0.45 + 0.8;
       expect(g.prop(Props.scale).valueAt(tz)[0], closeTo(100, 1e-6));
       final page = layer(p, 'bk_pg1');
       final c = screen(p.main, page, tz, page.width / 2, page.height / 2);
@@ -368,6 +369,22 @@ void main() {
       expect(marks.map((m) => m.style), ['highlight', 'underline']);
       expect(marks.first.start, greaterThan(tz));
       expect(marks.last.start, greaterThan(marks.first.start));
+      // The first page stays up (zoomed in) long enough to read before it flips.
+      expect(layer(p, 'bk_pg0').end, greaterThan(tz + 1.5));
+    });
+
+    test('book: each text page gets its own marks and reading time', () {
+      final p = project();
+      run(p, {
+        'op': 'add_component', 'type': 'book', 'id': 'bk', 'start': 0,
+        'pages': [{'text': 'The expedition left in March with three trucks.'}, {'text': 'By June the radio was silent.'}, {'text': 'Nobody came back.'}],
+        'marks': [{'phrase': 'three trucks'}, {'phrase': 'radio was silent', 'style': 'underline'}],
+      });
+      expect(layer(p, 'bk_pg0').text!.marks.map((m) => m.style), ['highlight']);
+      expect(layer(p, 'bk_pg1').text!.marks.map((m) => m.style), ['underline']);
+      expect(layer(p, 'bk_pg2').text!.marks, isEmpty);
+      expect(p.main.layerById('bk_leaf1'), isNotNull, reason: 'one flip per extra page');
+      expect(layer(p, 'bk_pg1').start, greaterThan(layer(p, 'bk_pg0').start + 3));
     });
 
     test('book side_popin has no backdrop and pops in beside the presenter', () {
