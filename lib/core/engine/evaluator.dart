@@ -218,15 +218,20 @@ class Evaluator {
   static Matrix4? _screenMatrix(_Frame f, Layer layer) {
     final world = worldMatrix(f.comp, layer, f.t, f.worldCache);
     if (!layer.is3D) return f.cam2d.multiplied(world);
-    for (final c in [
-      Vector3(0, 0, 0),
-      Vector3(layer.width, 0, 0),
-      Vector3(layer.width, layer.height, 0),
-      Vector3(0, layer.height, 0),
-    ]) {
-      if (f.cam.depthOf(world.transformed3(c)) < kNearPlane) return null;
-    }
+    if (_crossesNearPlane(f, world, layer)) return null;
     return f.cam2d.multiplied(f.proj).multiplied(world);
+  }
+
+  static final Vector3 _corner = Vector3.zero();
+
+  /// True when a corner of the 3D layer is closer to the camera than [kNearPlane].
+  static bool _crossesNearPlane(_Frame f, Matrix4 world, Layer layer) {
+    for (int i = 0; i < 4; i++) {
+      _corner.setValues(i == 1 || i == 2 ? layer.width : 0, i >= 2 ? layer.height : 0, 0);
+      world.transform3(_corner);
+      if (f.cam.depthOf(_corner) < kNearPlane) return true;
+    }
+    return false;
   }
 
   static RenderItem? _item(_Frame f, Layer layer) {
@@ -237,14 +242,7 @@ class Evaluator {
 
     if (layer.is3D) {
       // Cull layers crossing behind the camera.
-      for (final c in [
-        Vector3(0, 0, 0),
-        Vector3(layer.width, 0, 0),
-        Vector3(layer.width, layer.height, 0),
-        Vector3(0, layer.height, 0),
-      ]) {
-        if (f.cam.depthOf(world.transformed3(c)) < kNearPlane) return null;
-      }
+      if (_crossesNearPlane(f, world, layer)) return null;
       final center = world.transformed3(Vector3(layer.width / 2, layer.height / 2, 0));
       final depth = f.cam.depthOf(center);
       double blur = 0;

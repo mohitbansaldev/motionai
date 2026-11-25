@@ -40,36 +40,45 @@ class CompositionCanvas extends StatelessWidget {
   Widget build(BuildContext context) {
     final comp = project.main;
     final list = items ?? Evaluator.evaluate(comp, time);
+    final children = <Widget>[Positioned.fill(child: ColoredBox(color: Color(comp.background)))];
+    for (int i = 0; i < list.length; i++) {
+      final item = list[i];
+      final matte = item.matte;
+      if (matte == null) {
+        children.add(_view(item, ValueKey(item.layer.id)));
+        continue;
+      }
+      // Track matte: the layer shows only inside/outside the matte layer's
+      // pixels. Neighbours in paint order that use the same matte share one
+      // compositor, so the matte is rendered once (e.g. scanner targets).
+      final group = [item];
+      while (i + 1 < list.length) {
+        final next = list[i + 1];
+        if (next.matte?.layer.id != matte.layer.id || next.matteInverse != item.matteInverse) break;
+        group.add(next);
+        i++;
+      }
+      children.add(Positioned.fill(
+        key: ValueKey('${item.layer.id}#matte'),
+        child: MatteComposite(
+          inverse: item.matteInverse,
+          resolution: draft ? 0.5 : 1.0,
+          matte: Stack(clipBehavior: Clip.none, children: [_view(matte, null, asMatte: true)]),
+          content: Stack(clipBehavior: Clip.none, children: [for (final g in group) _view(g, ValueKey(g.layer.id))]),
+        ),
+      ));
+    }
+    if (overlay != null) children.add(Positioned.fill(child: IgnorePointer(child: overlay!)));
     return SizedBox(
       width: comp.width,
       height: comp.height,
       child: ClipRect(
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            Positioned.fill(child: ColoredBox(color: Color(comp.background))),
-            for (final item in list)
-              if (item.matte == null)
-                _view(item, ValueKey(item.layer.id))
-              else
-                // Track matte: the layer shows only inside/outside the matte layer's pixels.
-                Positioned.fill(
-                  key: ValueKey('${item.layer.id}#matte'),
-                  child: MatteComposite(
-                    inverse: item.matteInverse,
-                    resolution: draft ? 0.5 : 1.0,
-                    matte: Stack(clipBehavior: Clip.none, children: [_view(item.matte!, null)]),
-                    content: Stack(clipBehavior: Clip.none, children: [_view(item, null)]),
-                  ),
-                ),
-            if (overlay != null) Positioned.fill(child: IgnorePointer(child: overlay!)),
-          ],
-        ),
+        child: Stack(clipBehavior: Clip.hardEdge, children: children),
       ),
     );
   }
 
-  Widget _view(RenderItem item, Key? key) => LayerView(
+  Widget _view(RenderItem item, Key? key, {bool asMatte = false}) => LayerView(
         key: key,
         item: item,
         project: project,
@@ -78,5 +87,6 @@ class CompositionCanvas extends StatelessWidget {
         videoFrames: videoFrames,
         draft: draft,
         playing: playing,
+        asMatte: asMatte,
       );
 }

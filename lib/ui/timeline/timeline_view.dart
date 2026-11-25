@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/model/layer.dart';
 import '../../state/editor_controller.dart';
@@ -15,23 +17,30 @@ enum _Drag { none, scrub, scroll, move, trimIn, trimOut, zoom }
 
 /// Layer timeline: ruler + playhead, one row per layer (plus a camera row),
 /// drag clips to move, drag edges to trim, pinch to zoom, long-press a row
-/// for the layer menu.
+/// for the layer menu. With a mouse: hover highlights, right-click menu,
+/// wheel scrolls (Shift = sideways, Ctrl/Alt = zoom at the pointer).
 class TimelineView extends StatefulWidget {
   final EditorController controller;
   final void Function(Layer layer) onLayerMenu;
-  const TimelineView({super.key, required this.controller, required this.onLayerMenu});
+
+  /// Right-click on a clip/row (desktop). Falls back to [onLayerMenu].
+  final void Function(Layer layer, Offset globalPosition)? onLayerContextMenu;
+  const TimelineView({super.key, required this.controller, required this.onLayerMenu, this.onLayerContextMenu});
 
   @override
-  State<TimelineView> createState() => _TimelineViewState();
+  State<TimelineView> createState() => TimelineViewState();
 }
 
 class _Viewport {
   double pxPerSec = 80;
   double scrollX = 0; // seconds offset * pxPerSec
   double scrollY = 0;
+  int hoverRow = -2; // -2 = none
+  bool hoverClip = false;
 }
 
-class _TimelineViewState extends State<TimelineView> {
+/// Public so the desktop editor can zoom from buttons and shortcuts.
+class TimelineViewState extends State<TimelineView> {
   final _vp = _Viewport();
   _Drag _drag = _Drag.none;
   Layer? _dragLayer;
@@ -60,6 +69,100 @@ class _TimelineViewState extends State<TimelineView> {
     final x = c.time * _vp.pxPerSec - _vp.scrollX;
     final w = _size.width - _headerW;
     if (x > w * 0.85 || x < 0) _vp.scrollX = math.max(0.0, c.time * _vp.pxPerSec - w * 0.15);
+  }
+
+  double get pxPerSec => _vp.pxPerSec;
+
+  /// Zooms by [factor] keeping the time under [focusX] (default: playhead) still.
+  void zoomBy(double factor, {double? focusX}) {
+    if (_size.width == 0) return;
+    final fx = focusX ?? _xAtTime(c.time).clamp(_headerW, _size.width).toDouble();
+    final focusT = _timeAtX(fx);
+    _vp.pxPerSec = (_vp.pxPerSec * factor).clamp(8.0, 800.0).toDouble();
+    _vp.scrollX = focusT * _vp.pxPerSec - (fx - _headerW);
+    _clampScroll();
+    setState(() {});
+  }
+
+  /// Shows the whole composition.
+  void zoomToFit() {
+    if (_size.width == 0) return;
+    final w = math.max(60.0, _size.width - _headerW - 40);
+    _vp.pxPerSec = (w / math.max(0.5, c.comp.duration)).clamp(8.0, 800.0).toDouble();
+    _vp.scrollX = 0;
+    _clampScroll();
+    setState(() {});
+  }
+
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
+    GestureBinding.instance.pointerSignalResolver.register(e, (ev) {
+      final s = ev as PointerScrollEvent;
+      final kb = HardwareKeyboard.instance;
+      final dy = s.scrollDelta.dy, dx = s.scrollDelta.dx;
+      if (kb.isControlPressed || kb.isAltPressed) {
+        zoomBy(math.exp(-dy / 300), focusX: math.max(_headerW, s.localPosition.dx));
+        return;
+      }
+      final contentH = (c.comp.layers.length + 1) * _rowH;
+      final overflowY = contentH > _size.height - _rulerH;
+      if (kb.isShiftPressed || !overflowY || s.localPosition.dy < _rulerH) {
+        _vp.scrollX += dy + dx;
+      } else {
+        _vp.scrollY += dy;
+        _vp.scrollX += dx;
+      }
+      _clampScroll();
+      setState(() {});
+    });
+  }
+
+  void _onHover(PointerHoverEvent e) {
+    final p = e.localPosition;
+    final row = _rowAt(p.dy);
+    final l = _layerForRow(row);
+    final onClip = l != null && p.dx > _headerW && p.dx >= _xAtTime(l.start) && p.dx <= _xAtTime(l.end);
+    if (row != _vp.hoverRow || onClip != _vp.hoverClip) {
+      setState(() {
+        _vp.hoverRow = row;
+        _vp.hoverClip = onClip;
+      });
+    }
+    final cursor = _cursorAt(p);
+    if (cursor != _cursor) setState(() => _cursor = cursor);
+  }
+
+  MouseCursor _cursor = SystemMouseCursors.basic;
+
+  MouseCursor _cursorAt(Offset p) {
+    if (p.dx <= _headerW) return SystemMouseCursors.click;
+    final row = _rowAt(p.dy);
+    if (row == -1) return SystemMouseCursors.resizeColumn;
+    final l = _layerForRow(row);
+    if (l == null || l.locked) return SystemMouseCursors.basic;
+    final x0 = _xAtTime(l.start), x1 = _xAtTime(l.end);
+    if (l.id == c.selectedLayerId && ((p.dx - x0).abs() < _handleW * 0.6 || (p.dx - x1).abs() < _handleW * 0.6)) {
+      return SystemMouseCursors.resizeLeftRight;
+    }
+    if (p.dx >= x0 && p.dx <= x1) return SystemMouseCursors.grab;
+    return SystemMouseCursors.basic;
+  }
+
+  void _onSecondaryTap(TapUpDetails d) {
+    final row = _rowAt(d.localPosition.dy);
+    if (row == 0) {
+      c.selectCamera();
+      return;
+    }
+    final l = _layerForRow(row);
+    if (l == null) return;
+    c.select(l.id);
+    final cb = widget.onLayerContextMenu;
+    if (cb != null) {
+      cb(l, d.globalPosition);
+    } else {
+      widget.onLayerMenu(l);
+    }
   }
 
   double _timeAtX(double x) => (x - _headerW + _vp.scrollX) / _vp.pxPerSec;
@@ -229,16 +332,25 @@ class _TimelineViewState extends State<TimelineView> {
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, box) {
       _size = Size(box.maxWidth, box.maxHeight);
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapUp: _onTapUp,
-        onLongPressStart: _onLongPress,
-        onScaleStart: _onScaleStart,
-        onScaleUpdate: _onScaleUpdate,
-        onScaleEnd: _onScaleEnd,
-        child: CustomPaint(
-          size: _size,
-          painter: _TimelinePainter(c, _vp, Listenable.merge([c, c.timeNotifier])),
+      return Listener(
+        onPointerSignal: _onPointerSignal,
+        child: MouseRegion(
+          cursor: _cursor,
+          onHover: _onHover,
+          onExit: (_) => setState(() => _vp.hoverRow = -2),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: _onTapUp,
+            onSecondaryTapUp: _onSecondaryTap,
+            onLongPressStart: _onLongPress,
+            onScaleStart: _onScaleStart,
+            onScaleUpdate: _onScaleUpdate,
+            onScaleEnd: _onScaleEnd,
+            child: CustomPaint(
+              size: _size,
+              painter: _TimelinePainter(c, _vp, Listenable.merge([c, c.timeNotifier])),
+            ),
+          ),
         ),
       );
     });
@@ -254,6 +366,7 @@ class _TimelinePainter extends CustomPainter {
   static final _rowAlt = Paint()..color = const Color(0xFF181B20);
   static final _header = Paint()..color = const Color(0xFF1E2127);
   static final _ruler = Paint()..color = const Color(0xFF22252C);
+  static final _hover = Paint()..color = const Color(0x0FFFFFFF);
 
   double x(double t) => _headerW + t * vp.pxPerSec - vp.scrollX;
 
@@ -270,6 +383,7 @@ class _TimelinePainter extends CustomPainter {
       final top = _rulerH + r * _rowH - vp.scrollY;
       if (top > size.height || top + _rowH < _rulerH) continue;
       if (r.isOdd) canvas.drawRect(Rect.fromLTWH(0, top, size.width, _rowH), _rowAlt);
+      if (r == vp.hoverRow) canvas.drawRect(Rect.fromLTWH(0, top, size.width, _rowH), _hover);
       if (r == 0) {
         _cameraRow(canvas, size, top);
       } else {
@@ -321,6 +435,14 @@ class _TimelinePainter extends CustomPainter {
     final rect = RRect.fromRectAndRadius(Rect.fromLTRB(x0, top + 4, x1, top + _rowH - 4), const Radius.circular(5));
     final base = layerColor(l.type);
     canvas.drawRRect(rect, Paint()..color = l.visible ? base.withValues(alpha: 0.85) : base.withValues(alpha: 0.3));
+    if (!selected && vp.hoverClip && vp.hoverRow == c.comp.indexOf(l.id) + 1) {
+      canvas.drawRRect(
+          rect,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..color = Colors.white54);
+    }
     if (selected) {
       canvas.drawRRect(
           rect,

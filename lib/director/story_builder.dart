@@ -369,7 +369,7 @@ class StoryBuilder {
 
     // ---------------------------------------------------- captions
     if (o.captionWords != null && o.captionWords!.isNotEmpty) {
-      cmds.addAll(CaptionMaker.fromWords(p, o.captionWords!, o.captions ?? CaptionOptions()));
+      cmds.addAll(CaptionMaker.fromWords(p, o.captionWords!, o.captions ?? CaptionOptions(), pending: cmds)); // keep clear of name tags etc.
     }
     return cmds;
   }

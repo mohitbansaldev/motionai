@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -33,6 +34,9 @@ class EditorController extends ChangeNotifier {
   Ticker? _ticker;
   bool _playing = false;
   double _playStartTime = 0;
+
+  /// Playback speed: 1 = normal; J/K/L shuttle uses -4..4.
+  double rate = 1;
 
   EditorController(this.project, this.storage);
 
@@ -70,7 +74,7 @@ class EditorController extends ChangeNotifier {
       _ticker?.start();
     }
     timeNotifier.value = v;
-    videos.sync(project, v, playing: _playing);
+    videos.sync(project, v, playing: _playing, rate: rate);
   }
 
   void stepFrames(int n) => seek(time + n * comp.frameDuration);
@@ -81,7 +85,12 @@ class EditorController extends ChangeNotifier {
   }
 
   void _onTick(Duration elapsed) {
-    var t = _playStartTime + elapsed.inMicroseconds / 1e6;
+    var t = _playStartTime + elapsed.inMicroseconds / 1e6 * rate;
+    if (rate < 0 && t <= 0) {
+      timeNotifier.value = 0;
+      pause();
+      return;
+    }
     if (t >= comp.duration) {
       if (loop) {
         _playStartTime = 0;
@@ -95,29 +104,55 @@ class EditorController extends ChangeNotifier {
       }
     }
     timeNotifier.value = t;
-    videos.sync(project, t, playing: _playing);
+    videos.sync(project, t, playing: _playing, rate: rate);
+  }
+
+  /// J/K/L shuttle: [direction] 1 = forward (L), -1 = backward (J). Pressing
+  /// again in the same direction doubles the speed (up to 4x); K = [pause].
+  void shuttle(int direction) {
+    final same = _playing && rate.sign == direction.sign;
+    final double next = same ? math.min(4.0, rate.abs() * 2) * direction : direction.toDouble();
+    if (_playing) {
+      _playStartTime = time;
+      _ticker?.stop();
+      rate = next;
+      _ticker?.start();
+      videos.sync(project, time, playing: true, rate: rate);
+      notifyListeners();
+    } else {
+      rate = next;
+      play();
+    }
   }
 
   void play() {
     if (_playing || _ticker == null) return;
-    if (time >= comp.duration - comp.frameDuration) timeNotifier.value = 0;
+    if (rate > 0 && time >= comp.duration - comp.frameDuration) timeNotifier.value = 0;
     _playing = true;
     _playStartTime = time;
     _ticker!.start();
-    videos.sync(project, time, playing: true);
+    videos.sync(project, time, playing: true, rate: rate);
     notifyListeners();
   }
 
   void pause() {
     if (!_playing) return;
     _playing = false;
+    rate = 1;
     _ticker?.stop();
     videos.pauseAll();
     seek(time);
     notifyListeners();
   }
 
-  void togglePlay() => _playing ? pause() : play();
+  void togglePlay() {
+    if (_playing) {
+      pause();
+    } else {
+      rate = 1;
+      play();
+    }
+  }
 
   void setLoop(bool v) {
     loop = v;
