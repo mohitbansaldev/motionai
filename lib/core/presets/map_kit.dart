@@ -451,11 +451,18 @@ class _SceneKit {
       final m = b.mediaOf(p, mediaKey) ?? (altKey == null ? null : b.mediaOf(p, altKey));
       final id = b.id(part);
       if (m != null) {
+        // win-30: cover the plane without stretching (a 16:9 wall photo on a
+        // tall wall was squashed); a rect mask trims it to the plane.
+        final mw = math.max(1, m.width), mh = math.max(1, m.height);
+        final s = math.max(pw / mw, ph / mh);
         cmds.add({
           'op': 'add_layer', 'type': m.type == MediaType.video ? 'video' : 'image', 'media': m.id, 'id': id, 'name': 'Room $part',
           'parent': b.g, 'start': b.start, 'duration': b.dur, 'fit': 'none', 'is3d': true,
-          'position': pos, 'scale': [pw / math.max(1, m.width) * 100, ph / math.max(1, m.height) * 100, 100],
+          'position': pos, 'scale': [s * 100, s * 100, 100],
         });
+        if ((pw / mw - ph / mh).abs() > 1e-6 * s) {
+          cmds.add({'op': 'add_mask', 'layer': id, 'shape': 'rect', 'center': [mw / 2, mh / 2], 'size': [pw / s, ph / s], 'feather': 0});
+        }
       } else {
         cmds.add({
           'op': 'add_layer', 'type': 'shape', 'id': id, 'name': 'Room $part', 'parent': b.g, 'start': b.start, 'duration': b.dur,

@@ -558,18 +558,19 @@ List<Map<String, dynamic>> _streetSet(TemplateCtx c) {
   final n = people.length;
   cmds.add(_in(id, {
     'op': 'add_component', 'type': 'room', 'id': 'st', 'start': 0, 'duration': du,
-    'width': w * 1.5, 'depth': z0 * 3.2, 'height': h * 2.4, 'color': '#5A5148',
+    'width': w * 1.5, 'depth': z0 * 3.2, 'height': h * 1.5, 'color': '#5A5148', 'floor_color': '#34312D',
     if (c.media('end') != null) 'back': c.media('end')!.id,
     if (c.media('left') != null) 'left': c.media('left')!.id,
     if (c.media('right') != null) 'right': c.media('right')!.id,
     if (c.media('road') != null) 'floor': c.media('road')!.id,
     'items': [
       for (var i = 0; i < n; i++)
-        {'media': people[i].id, 'x': n == 1 ? 0.5 : 0.22 + 0.56 * i / (n - 1), 'z': 0.35 + 0.5 * ((i * 37) % 10) / 10},
+        // Ahead of the camera's whole walk (z 0 = street front, 1 = its end).
+        {'media': people[i].id, 'x': n == 1 ? 0.5 : 0.22 + 0.56 * i / (n - 1), 'z': 0.74 + 0.18 * ((i * 37) % 10) / 10},
     ],
   }));
   // Walk down the street: forward with a gentle sideways sway and a slight rise.
-  final zs = -z0 * 1.1 * 1.0, ze = -z0 * 0.15;
+  final zs = -z0 * 1.25, ze = -z0 * 0.62;
   cmds.addAll([
     _k(id, 'camera', 'position', 0, [w / 2 - 120 * k, h / 2 + 40 * k, zs], 'easy_ease'),
     _k(id, 'camera', 'position', du, [w / 2 + 120 * k, h / 2 - 10 * k, ze], 'easy_ease'),
