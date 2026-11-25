@@ -586,7 +586,7 @@ List<Map<String, dynamic>> _streetSet(TemplateCtx c) {
 
 List<Map<String, dynamic>> _pushThrough(TemplateCtx c) {
   const id = 'push';
-  final w = c.w, h = c.h, k = w / 1920;
+  final w = c.w, h = c.h;
   final z0 = w * 1.38889;
   final du = c.n('duration', 4).clamp(2.0, 12.0).toDouble();
   final cmds = _comp(c, id, 'Push through', du);
