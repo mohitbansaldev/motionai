@@ -796,8 +796,10 @@ class EditCommands {
   /// arrow_start, arrow_end.
   static void _applyShape(Layer l, Map<String, dynamic> c, {required bool placeFromPoints}) {
     final sh = l.shape ??= ShapeData();
-    if (c['kind'] != null) {
-      final k = '${c['kind']}';
+    // win-30: "shape": "ellipse" is a common slip for "kind" (it was ignored → a square).
+    final kindArg = c['kind'] ?? (c['shape'] is String ? c['shape'] : null);
+    if (kindArg != null) {
+      final k = '$kindArg';
       const kinds = ['rect', 'ellipse', 'polygon', 'star', 'path', 'line'];
       if (!kinds.contains(k)) throw CommandError('Unknown shape kind "$k". Use ${kinds.join(', ')}');
       sh.kind = k == 'line' ? 'path' : k;
