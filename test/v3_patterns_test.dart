@@ -262,7 +262,13 @@ void main() {
         r.createdIds.addAll(res.createdIds);
       }, caps: caps);
       expect(p.main.layerById('mf0_plate'), isNotNull);
-      expect(p.main.layerById('mf0_flood'), isNotNull, reason: 'adjustment-layer fallback');
+      // V3 merge: once the real mood_flood op (V3-D) exists it succeeds and builds its own
+      // layers; before that the adjustment-layer fallback 'mf0_flood' must appear.
+      if (EditCommands.ops.contains('mood_flood')) {
+        expect(p.main.layers.length, greaterThan(1));
+      } else {
+        expect(p.main.layerById('mf0_flood'), isNotNull, reason: 'adjustment-layer fallback');
+      }
       expect(r.log.last, contains('apply_patterns'));
     });
 
