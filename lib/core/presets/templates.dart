@@ -6,6 +6,7 @@ import '../model/layer.dart';
 import '../model/project.dart';
 import 'components.dart';
 import 'doc_transitions.dart'; // V2-C
+import 'templates_datahud.dart'; // V3-C
 import 'world_map.dart';
 
 /// Starter templates: ready-made animated scenes built only from edit
@@ -786,6 +787,7 @@ class SceneTemplates {
       },
     ),
     ...docTransitionTemplates(), // V2-C: one per documentary transition
+    ...dataHudTemplates(), // V3-C: stat title, date stamp, calendar, unit chart, social bug
     // ---------------------------------------------------------------- Captions
     SceneTemplate(
       id: 'glow_word', name: 'Glow word', category: 'Captions',

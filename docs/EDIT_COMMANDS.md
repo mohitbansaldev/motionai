@@ -234,3 +234,58 @@ Transitions come from `TransitionRegistry` (lib/core/presets/transition_registry
   {"plate": "vault", "style": "slow_push_detail", "duration": 5, "layers": [{"media": "gold", "role": "front"}, {"media": "bulb", "role": "mid", "hero": true}]}
 ]}
 ```
+
+<!-- V3-C >>> -->
+## V3-C: data, HUD & overlays (documentary pattern library 21–34, 61–64)
+
+All are `add_component` types (one undo step, group `<id>_g`, children `<id>_<part>`); common keys `id`, `start`,
+`duration` (5; social_cta/bug: 0.4 + hold + 0.3), `x`, `y`, `scale`, `sfx` (false = no sounds). Sizes ≤ 1.5 are fractions
+of the frame where noted. Code: `lib/core/presets/components_datahud.dart`, icons `vector_icons.dart`, flags `flags.dart`.
+
+| type | keys (defaults) | when |
+|---|---|---|
+| `unit_chart` | `total_label`, `groups` [{`count`, `color`, `label`, `at`}], `icon` (person; seat or any vector icon or media id), `cols` (10), `area` [x0,y0,x1,y1] (0..1), `stagger` (0.03), `label_x` | total + breakdown (label fades in from a blur, pictograms pop row by row 0→115→100 %, group number + 2-line label at the left at `at`) |
+| `people_grid` | `total` (16), `alive` (6), `alive_color` #C62828, `dead_color` #8A8A8A, `dead` fade/grey/x, `dead_at` (1.6), `rows` (2), `names` [{name, role}] (3 cols, top 35 %), `count_text`, `count_at`, `media` (20 % mono underlay), `alive_index` | survivor / casualty tallies |
+| `stat_figure` | `icon` (scale; money, clock, fuel, media), `from`, `to`, `steps` (6), `step_time` (0.25) or `count` (total s), `label`, `unit`, `prefix`, `decimals`, `figure` human/media/none, `color_from` #FFFFFF, `color_to` #E53935, `delay` (0.6) | a value changing over time (number rolls up step by step and turns red, silhouette tints grey → red) |
+| `calendar_flip` | `from` (1), `to` (72), `rate` (4 pages/s), `header_color` #E0245E, `label` CALENDAR, `size` (0.2 w), `tilt` [50,0,-20], `caption`, `max_pages` (40) | durations in days ("kitne din?") — 3D tear-off pages flip over the binding (paper sfx) |
+| `clock_stamp` | `lines` [text or {text, at}], `x` (0.045 w), `y`, `size` (0.058 h), `cps` (13), `blink_colon` (true, 1 Hz), `retype` [{text, at, line?}], `darken_below` (0.3), `persist`, `font` (Share Tech Mono), `italic` (true) | exact date / time / day count spoken |
+| `clock_overlay` | `opacity` (30), `scale` (140), `spin` (1 minute-hand turn/s; hour hand 1/12), `style` face/line, `enter` fade/rise, `glow`, `numerals`, `blend`, `sfx` (clock_tick bed) | a duration passing behind a stat |
+| `split_screen` | `orientation` vertical/horizontal/diagonal, `angle` (10 for diagonal), `a`/`b` {`media` or `layer` (gets a track matte), `label`, `value`, `value_text`, `unit`, `note`, `color`, `bar_color`}, `max`, `divider` {color #FFE000, width}, `middle` (cut-out media) | two clashing numbers — divider draws 0.25 s, halves wipe out from it, labels pop, yellow bars grow |
+| `gauge_hud` | `from` (20000), `to` (12000), `step` (1000), `unit` FT, `label_every`, `side` right/left (or top/bottom with `orientation: horizontal`), `pointer_color` #E01010, `scroll` (s), `spacing`, `height` | altitude / speed / depth changing (tape scrolls under a fixed red pointer, soft-edged window matte) |
+| `icon_sticker` | `items` [{`icon`/`media`/`text`, `at`}], `color` #FFE500, `icon_color` #111111, `x` (0.8 w), `y` (0.45 h), `size` (0.13 h), `swap` squash/pop/flip | presenter lists items on camera |
+| `icon_drop` | `icon`/`preset` (stop) or `media`, `enter` drop/rise, `bounce` (true), `size` (0.22 h), `color`, `detail_color`, `shadow` | one concept landing (STOP, deal, yes/no, warning) |
+| `social_cta` | `platform` youtube/whatsapp/facebook/twitter/x/instagram/telegram/custom, `line1`, `line2`, `handle` (Mohitflix; "none" hides), `color`, `size`, `hold` (2.8), `exit` fade/disintegrate/<animate_out preset> | presenter stint > 5 s |
+| `social_bug` | as social_cta, `exit` disintegrate | channel bug once per ~40 s |
+| `ui_toggle` | `from` off/on, `to`, `at` (0.5), `size` (0.1 w), `height` (size/2), `on_color` #2ECC40, `off_color` #8E8E93, `label`, `labels` true/[off, on] | a device / system starts or stops (ui_click sfx) |
+| `audio_wave` | `width` (0.42), `height` (0.16), `bars` (40), `color` #7FB2FF, `bg` #0B1E6B, `speed`, `levels` [0..1], `label`, `card` | broadcast / radio / announcement |
+| `flag_badge` | `country` (ISO-2/ISO-3/English name; ~50 simple drawn flags, else colour disc + code), `size` (0.12 h), `ring`, `ring_width`, `label` (text or true) | a country named |
+| `presenter_stats` | `lines` [{text, at, size?, color?, lead_color?}], `x` (0.67 w), `y` (0.3 h), `size` (0.03 h), `gap`, `cps` (22), `animator` | stat lines beside the presenter |
+| `lower_third` | `style: "bar_wipe"`, `text`, `gradient` [c1, c2], `kicker`, `width` (0.42), `height`, `animator` | CTA / chapter bar (wipes L→R 0.25 s, slides down on exit) |
+| `info_card` | `title`, `lines` [..], `width` (0.3), `accent` #2EE6E6 | event title / date / address card (dark glass) |
+| `stat_title` | `line1`, `line2`, `emphasis` (1.6), `style` red_outline/yellow/white, `size` (0.06 h), `at2` | a stat that is the whole sentence |
+
+Vector icons (`VectorIcons`, own drawings as shape paths): person, seat, scale, money, clock, fuel, stop, handshake,
+check, cross, warning, music, heart, radio, plane, helicopter, globe (+ aliases: passenger, chair, deal, yes, no, danger,
+airplane, chopper, world …).
+
+**Text keys** (`add_layer` / `update_layer`): `stroke` (px edge behind filled letters, or `{width, color}`, `"none"`),
+`stroke_color`, `italic`, `letter_spacing` (px), `lead_color` + `lead_chars` (3; typewriter's newest letters coloured),
+`word_times` [s after the layer start, one per word], `dim_color` (word_fade_grey; default #8A8A8A).
+
+**Animators**: `typewriter_soft` (per letter opacity 0→1 + blur 8→0 over 0.12 s, spread over `anim_duration`),
+`letter_drop` (letters drop from 1.1 font sizes above with a small bounce, stagger ≤ 0.08 s), `word_fade_grey` (line shown
+grey, each word eases to its colour in 0.2 s at `word_times`, else spread over `anim_duration`).
+
+**Text styles**: `caption_red_outline`, `stat_red_outline`, `osd_timestamp`, `label_yellow_outline`, `stat_yellow`.
+**Fonts**: Share Tech Mono, Comic Neue (OFL, google/fonts), Poppins ExtraBold (800).
+
+**Blend**: `update_layer {blend}` — normal, screen, add, lighten, multiply, overlay, darken, soft_light, hard_light,
+color_dodge, difference (validated). Rendered by `BlendComposite` (lib/ui/preview/fx/datahud_fx.dart): everything below
+and the layer are drawn to images and composited with the blend mode (falls back to normal over a live video texture in
+the preview; export blends). A layer with a track matte ignores its blend.
+
+**Effect**: `disintegrate` {progress 0–100, size (block px, 14), drift (50)} — blocks drop out in random order sweeping
+left → right; the breaking edge drifts up-right.
+
+Templates: `stat_title`, `date_stamp`, `day_counter`, `passenger_tally`, `social_bug`.
+<!-- <<< V3-C -->

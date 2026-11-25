@@ -7,5 +7,5 @@ were only renamed from Family[axes].ttf to Family-VariableFont_axes.ttf.
 OFL-1.1: Anton, Bebas Neue, Oswald, Teko, Barlow Condensed, Playfair Display,
   DM Serif Display, Cinzel, Great Vibes, Dancing Script, Roboto Mono, Inter,
   Montserrat, Poppins, Noto Sans Devanagari, Hind, Mukta, Baloo 2, Rozha One,
-  Yatra One, Kalam
+  Yatra One, Kalam, Share Tech Mono, Comic Neue (V3-C; Poppins ExtraBold added)
 Apache-2.0: Permanent Marker, Special Elite

@@ -76,7 +76,10 @@ class WordTiming {
 
 /// Text animators: how text appears when the layer starts.
 class TextAnimators {
-  static const all = ['none', 'typewriter', 'word_pop', 'fade_up', 'slide_up', 'karaoke', 'random_pop', 'scramble'];
+  static const all = [
+    'none', 'typewriter', 'word_pop', 'fade_up', 'slide_up', 'karaoke', 'random_pop', 'scramble',
+    'typewriter_soft', 'letter_drop', 'word_fade_grey', // V3-C
+  ];
   static String label(String a) => const {
         'none': 'None',
         'typewriter': 'Typewriter',
@@ -86,6 +89,9 @@ class TextAnimators {
         'karaoke': 'Word Highlight',
         'random_pop': 'Random Pop',
         'scramble': 'Scramble',
+        'typewriter_soft': 'Soft Typewriter', // V3-C
+        'letter_drop': 'Letter Drop', // V3-C
+        'word_fade_grey': 'Grey → Word Fade', // V3-C
       }[a] ??
       a;
 }
@@ -108,6 +114,17 @@ class TextData {
   double outline; // outline-only text stroke width (0 = filled text)
   double extrude; // 3D extruded edge depth in px (0 = none)
   int extrudeColor; // colour of the extruded edge (ARGB)
+  // V3-C >>> filled text with a coloured edge, italic, tracking, typewriter
+  // lead colour, per-word reveal times (word_fade_grey)
+  double stroke; // edge width px drawn behind the filled letters (0 = none)
+  int strokeColor; // ARGB
+  bool italic;
+  double letterSpacing; // px
+  int leadColor; // typewriter: newest letters in this colour (0 = off)
+  int leadChars; // how many newest letters
+  List<double> wordTimes; // seconds after the layer start, one per word
+  int dimColor; // word_fade_grey: colour before a word is spoken (0 = grey)
+  // <<< V3-C
 
   TextData({
     this.text = 'Title',
@@ -127,8 +144,19 @@ class TextData {
     this.outline = 0,
     this.extrude = 0,
     this.extrudeColor = 0xFF8A8A8A,
+    // V3-C >>>
+    this.stroke = 0,
+    this.strokeColor = 0xFFFFFFFF,
+    this.italic = false,
+    this.letterSpacing = 0,
+    this.leadColor = 0,
+    this.leadChars = 0,
+    List<double>? wordTimes,
+    this.dimColor = 0,
+    // <<< V3-C
   })  : words = words ?? [],
-        marks = marks ?? [];
+        marks = marks ?? [],
+        wordTimes = wordTimes ?? []; // V3-C
 
   TextData copy() => TextData(
         text: text,
@@ -148,6 +176,16 @@ class TextData {
         outline: outline,
         extrude: extrude,
         extrudeColor: extrudeColor,
+        // V3-C >>>
+        stroke: stroke,
+        strokeColor: strokeColor,
+        italic: italic,
+        letterSpacing: letterSpacing,
+        leadColor: leadColor,
+        leadChars: leadChars,
+        wordTimes: List.of(wordTimes),
+        dimColor: dimColor,
+        // <<< V3-C
       );
 
   Map<String, dynamic> toJson() => {
@@ -168,6 +206,16 @@ class TextData {
         if (outline > 0) 'outline': outline,
         if (extrude > 0) 'extrude': extrude,
         if (extrude > 0) 'extrudeColor': extrudeColor,
+        // V3-C >>>
+        if (stroke > 0) 'stroke': stroke,
+        if (stroke > 0) 'strokeColor': strokeColor,
+        if (italic) 'italic': true,
+        if (letterSpacing != 0) 'letterSpacing': letterSpacing,
+        if (leadColor != 0) 'leadColor': leadColor,
+        if (leadChars > 0) 'leadChars': leadChars,
+        if (wordTimes.isNotEmpty) 'wordTimes': wordTimes,
+        if (dimColor != 0) 'dimColor': dimColor,
+        // <<< V3-C
       };
 
   static TextData fromJson(Map<String, dynamic> j) => TextData(
@@ -188,6 +236,16 @@ class TextData {
         outline: (j['outline'] as num? ?? 0).toDouble(),
         extrude: (j['extrude'] as num? ?? 0).toDouble(),
         extrudeColor: j['extrudeColor'] as int? ?? 0xFF8A8A8A,
+        // V3-C >>>
+        stroke: (j['stroke'] as num? ?? 0).toDouble(),
+        strokeColor: j['strokeColor'] as int? ?? 0xFFFFFFFF,
+        italic: j['italic'] as bool? ?? false,
+        letterSpacing: (j['letterSpacing'] as num? ?? 0).toDouble(),
+        leadColor: j['leadColor'] as int? ?? 0,
+        leadChars: (j['leadChars'] as num? ?? 0).toInt(),
+        wordTimes: [for (final v in (j['wordTimes'] as List? ?? const [])) (v as num).toDouble()],
+        dimColor: j['dimColor'] as int? ?? 0,
+        // <<< V3-C
       );
 }
 

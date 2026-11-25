@@ -239,6 +239,13 @@ class EffectsCatalog {
       ParamDef('flicker', 'Flicker', [25], 0, 100),
     ], category: 'atmosphere'),
     // <<< V2-D
+    // V3-C >>> (lib/ui/preview/fx/datahud_fx.dart)
+    EffectDef('disintegrate', 'Disintegrate (pixel break-up)', [
+      ParamDef('progress', 'Progress', [0], 0, 100),
+      ParamDef('size', 'Block size px', [14], 2, 120),
+      ParamDef('drift', 'Drift', [50], 0, 100),
+    ], category: 'reveal'),
+    // <<< V3-C
   ];
 
   static const categories = ['keying', 'color', 'blur', 'stylize', 'distort', 'atmosphere', 'reveal']; // CHROMA (Agent M): + keying

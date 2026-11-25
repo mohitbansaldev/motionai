@@ -216,4 +216,33 @@ SHOTS (one command = a whole parallax documentary shot; prefer these over hand-b
 - remove_shot {shot, ripple?: true (closes the gap)}.
 CURRENT PROJECT "shots" lists them (id, start, end, style, layers by role, hero, camera).
 // ---- end V2-B ----
+
+// ---- V3-C DATA, HUD & OVERLAYS ----
+DATA / HUD / OVERLAY COMPONENTS (add_component {type, id?, start?, duration?, x?, y?, sfx?: false, ...}; groups "<id>_g" like the doc kit; x/y in comp px; pop/tick/ui_click/clock_tick sounds are added unless sfx:false):
+  unit_chart {total_label ("45 PASSENGERS"), groups:[{count, color, label, at? (s after start = when narrated)}], icon: person|seat|<vector icon>|media id, cols (10), area:[x0,y0,x1,y1] (0..1 of frame), stagger (0.03)} — WHEN a total and its breakdown is spoken (passengers, soldiers, votes).
+  people_grid {total, alive, alive_color (#C62828), dead_color (#8A8A8A), dead: fade|grey|x, dead_at (1.6), rows (2), names:[{name, role}], count_text, count_at, media? (20% photo underlay), alive_index?:[..]} — WHEN survivors vs casualties are counted.
+  stat_figure {icon: scale|money|clock|fuel|<icon>|media, from, to, steps (6), step_time (0.25) | count (total s), label, unit, prefix, decimals, figure: human|media id|none, color_from (#FFFFFF), color_to (#E53935)} — WHEN a value changes over time (weight lost, money spent, fuel left).
+  calendar_flip {from (1), to, rate (pages/s, 4), header_color (#E0245E), label ("CALENDAR"), size (0.2 = 20% width), tilt [50,0,-20], caption?} — WHEN a duration in days/weeks or "kitne din?".
+  clock_stamp {lines:["DAY 61", "12 DEC 1972", "03:21 PM"] or [{text, at}], x, y, size (0.058 h), cps (13), blink_colon (true), retype:[{text, at, line?}], darken_below (0.3), persist?, font (Share Tech Mono), italic} — WHEN an exact date / time / day count is spoken; retype on a time jump.
+  clock_overlay {opacity (30), scale (140), spin (minute-hand turns/s, 1), style: face|line, enter: fade|rise, glow, blend?: screen|add|lighten, sfx (clock_tick)} — WHEN a duration passes ("8 DAYS"): giant translucent clock behind the stat.
+  split_screen {orientation: vertical|horizontal|diagonal, angle (10 for diagonal), a:{media|layer, label, value, note, color}, b:{...}, max?, unit?, divider:{color (#FFE000), width}, middle?: cut-out media between the halves} — WHEN two clashing numbers / sides are compared.
+  gauge_hud {from (20000), to (12000), step (1000), unit ("FT"), label_every (1), side: right|left (vertical) | top|bottom (orientation: horizontal), pointer_color (#E01010), scroll (s), spacing} — WHEN altitude / speed / depth changes during action.
+  icon_sticker {items:[{icon|media|text, at}], color (#FFE500), icon_color, x (0.8 w), y (0.45 h), size (0.13 h), swap: squash|pop|flip} — WHEN the presenter lists items on camera (one swap per spoken noun).
+  icon_drop {icon: stop|handshake|check|cross|warning|music|heart|… | media, enter: drop|rise, bounce (true), size (0.22 h), color?} — WHEN one concept lands hard (STOP, deal, yes/no, danger).
+    Vector icons (our own drawings): person, seat, scale, money, clock, fuel, stop, handshake, check, cross, warning, music, heart, radio, plane, helicopter, globe.
+  social_cta {platform: youtube|whatsapp|facebook|twitter|x|instagram|telegram|custom, line1 ("JOIN US ON"), line2 (platform name), handle ("Mohitflix", "none" hides), color, x (0.78 w), y (0.7 h), hold (2.8), exit: fade|disintegrate|<animate_out preset>} — WHEN a presenter stint is longer than 5 s (2–3 s in, max once per stint, rotate platforms).
+  social_bug {same as social_cta; exit: disintegrate (pixel break-up 0.3 s)} — WHEN the ~7 s presenter stint per ~40 s needs the channel bug.
+  ui_toggle {from: off|on, to, at (0.5), size (0.1 = 10% width), on_color (#2ECC40), off_color, label?, labels?: true|["OFF","ON"]} — WHEN a device / system starts or stops.
+  audio_wave {width (0.42), height (0.16), bars (40), color (#7FB2FF), bg (#0B1E6B), speed, levels?:[0..1 per bar], label?} — WHEN a broadcast / radio message / announcement plays.
+  flag_badge {country (ISO code or name: IN, US, GB, UY, AR, CL, …; unknown → colour disc + code), size (0.12 h), ring, label?: text | true (country name)} — WHEN a country's people / team / broadcast is named.
+  presenter_stats {lines:[{text, at, color?, lead_color?}], x (0.67 w), y (0.3 h), size (0.03 h), animator (typewriter)} — WHEN the presenter says numbers on camera (typed in the right third as spoken).
+  lower_third {style: "bar_wipe", text, gradient:[c1, c2], kicker?, animator (typewriter)} — WHEN a CTA / chapter line sits at the bottom (gradient bar wipes L→R, slides down on exit).
+  info_card {title, lines:[...], width (0.3), accent (#2EE6E6)} — WHEN an event's title / date / address is shown (dark glass card bottom-left).
+  stat_title {line1, line2 (number line), emphasis (1.6), style: red_outline|yellow|white, size} — WHEN a big stat is the sentence ("HE SURVIVED / 72 DAYS").
+TEXT KEYS (add_layer / update_layer text): stroke (px edge behind FILLED letters, or {width, color}; "none" removes), stroke_color (#FFFFFF), italic, letter_spacing (px), lead_color + lead_chars (3) (typewriter: newest letters coloured, e.g. "#E53935"), word_times:[s after layer start, one per word] + dim_color (word_fade_grey).
+TEXT ANIMATORS (V3): typewriter_soft (letters fade in from a blur, 0.12 s each), letter_drop (letters drop with a small bounce, 0.08 s stagger — put the layer BELOW cut-out silhouettes for "stat behind silhouettes"), word_fade_grey (whole line grey, each word turns its colour in 0.2 s at word_times — sync to narration).
+TEXT STYLES (V3): caption_red_outline (Poppins 800 red + white edge, word pop — rare emotional line), stat_red_outline (crimson + white edge, typewriter_soft), osd_timestamp (italic Share Tech Mono VCR stamp), label_yellow_outline (Baloo 2 yellow + dark edge), stat_yellow (yellow Poppins Black, letter_drop). Fonts added: Share Tech Mono (digital/HUD), Comic Neue (comic bubbles), Poppins 800.
+BLEND: update_layer {layer, blend: normal|screen|add|lighten|multiply|overlay|darken|soft_light|hard_light|color_dodge|difference} — real blend over everything below (double exposure = screen a photo/clock over footage; multiply for paper/grunge). Not with a track matte on the same layer.
+EFFECT: disintegrate {progress 0-100 (keyframe it), size (block px, 14), drift} — the layer breaks into pixel blocks (exit).
+// ---- end V3-C ----
 ''';

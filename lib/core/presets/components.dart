@@ -6,10 +6,13 @@ import '../model/easing.dart'; // SCENE (Agent D)
 import '../model/layer.dart';
 import '../model/project.dart';
 import 'world_map.dart';
+import 'vector_icons.dart'; // V3-C
+import 'flags.dart'; // V3-C
 
 part 'components_doc.dart';
 part 'components_article.dart';
 part 'map_kit.dart'; // SCENE (Agent D): maps + 3D room/board
+part 'components_datahud.dart'; // V3-C: data, HUD & overlays
 
 /// Documentary kit: ready-made, fully editable groups of layers built from
 /// ordinary edit commands. Every component is a null "group" layer (anchor at
@@ -24,6 +27,7 @@ class Components {
     'title_slam', 'foreground_wipe', 'icon_stream', 'icon_badge', 'scanner', 'silhouette_crowd',
     'number_tiles', 'date_title', 'article',
     ..._sceneTypes, // SCENE (Agent D)
+    ..._dataHudTypes, // V3-C
   ];
 
   static String label(String t) => const {
@@ -60,6 +64,7 @@ class Components {
         'article': 'Article Highlight',
       }[t] ??
       _sceneLabels[t] ?? // SCENE (Agent D)
+      _dataHudLabels[t] ?? // V3-C
       t;
 
   static List<Map<String, dynamic>> build(Project p, Map<String, dynamic> c, double now) {
@@ -71,6 +76,8 @@ class Components {
     final b = _B(comp.width, comp.height, c, now, '${c['id'] ?? Ids.next(type)}');
     final scene = _sceneBuild(p, c, b); // SCENE (Agent D)
     if (scene != null) return scene;
+    final dataHud = _dataHudBuild(p, c, b); // V3-C
+    if (dataHud != null) return dataHud;
     switch (type) {
       case 'source_card':
         return _sourceCard(b);
@@ -184,6 +191,7 @@ class Components {
   }
 
   static List<Map<String, dynamic>> _lowerThird(_B b) {
+    if (b.str('style', '') == 'bar_wipe') return _lowerThirdBarWipe(b); // V3-C
     final w = b.n('width', b.w * 0.5);
     final fs = b.n('size', b.h * 0.026);
     final x = b.n('x', b.w * 0.05), y = b.n('y', b.h * 0.84);

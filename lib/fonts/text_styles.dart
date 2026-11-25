@@ -5,6 +5,8 @@
 /// given explicitly in the same command wins over the preset value.
 library;
 
+import 'text_styles_v3.dart'; // V3-C
+
 class TextStylePreset {
   final String id;
   final String label;
@@ -119,6 +121,7 @@ class TextStylePresets {
       'text_color': '#FFFFFF',
       'shadow': true,
     }, sample: 'मोहित'),
+    ...DataHudStyles.all, // V3-C
   ];
 
   static List<String> get ids => [for (final p in all) p.id];
