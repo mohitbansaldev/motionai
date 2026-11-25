@@ -24,14 +24,14 @@ class RemoteExport {
   }
 
   /// Called by ExportScreen when its run ends (phase done / failed / setup = cancelled).
-  void finished(String phase, String? result, String? error) {
+  void finished(String phase, String? result, String? error, {String? cancelledBy}) {
     switch (phase) {
       case 'done':
         job.done({'file': result}, message: 'Exported to $result');
       case 'failed':
         job.fail(error ?? 'Export failed');
       default:
-        job.cancelled();
+        job.cancelled(cancelledBy == null ? 'Cancelled (export screen closed or stopped)' : 'Cancelled by $cancelledBy');
     }
   }
 }

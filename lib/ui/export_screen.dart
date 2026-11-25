@@ -45,6 +45,25 @@ class _ExportScreenState extends State<ExportScreen> {
   double _time = 0;
   Map<String, ui.Image> _videoFrames = {};
   bool _cancel = false;
+  String? _cancelSource; // win-30: who stopped the export (reported to MCP)
+
+  Future<void> _confirmCancel() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Stop the export?'),
+        content: const Text('The video rendered so far will be discarded.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep exporting')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Stop')),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      _cancelSource = 'Cancel button';
+      _cancel = true;
+    }
+  }
   String? _result; // gallery uri or path
   String? _error;
   final _sw = Stopwatch();
@@ -132,9 +151,12 @@ class _ExportScreenState extends State<ExportScreen> {
       _high = r.high;
       _fpsChoice = r.fps;
       r.job.probe = () => {'phase': _phase.name, 'frame': _frame + 1, 'frames': _frames, if (_result != null) 'file': _result};
-      r.job.onCancel = () => _cancel = true;
+      r.job.onCancel = () {
+        _cancelSource = 'cancel_job (MCP)';
+        _cancel = true;
+      };
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _run().whenComplete(() => r.finished(_phase.name, _result, _error));
+        if (mounted) _run().whenComplete(() => r.finished(_phase.name, _result, _error, cancelledBy: _cancelSource));
       });
     }
     // <<< MCP (Agent P)
@@ -476,7 +498,9 @@ class _ExportScreenState extends State<ExportScreen> {
       const SizedBox(height: 4),
       const Text('Keep the app open while exporting.', style: TextStyle(color: Colors.white38, fontSize: 12)),
       if (_phase == _Phase.rendering)
-        TextButton(onPressed: () => _cancel = true, child: const Text('Cancel')),
+        // win-30: no keyboard focus (a stray Enter/Space from dictation or
+        // typing elsewhere used to cancel exports) and a confirmation.
+        ExcludeFocus(child: TextButton(onPressed: _confirmCancel, child: const Text('Cancel'))),
     ];
   }
 
