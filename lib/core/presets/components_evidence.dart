@@ -672,6 +672,24 @@ List<Map<String, dynamic>> _evDrawMark(_B b, _EvInk ink, String part, Map<String
         }
         break;
       }
+      case 'counter_box': {
+        // A number in the document counts from → to inside a red box.
+        if (j > 0) break;
+        final steps = ((mk['steps'] as num?) ?? 6).toInt().clamp(1, 60);
+        final from = (mk['from'] as num?)?.toDouble() ?? 0.0, to = (mk['to'] as num?)?.toDouble() ?? 100.0;
+        cmds.add(inContent(b.shape(pj, 'rect', bw * 1.12, bh * 1.35, cx, cy, fill: ink.paper, stroke: _evOpaque(color), strokeWidth: sw), lt));
+        cmds.add(_evKf(id, 'trim', lt, [0, 0], 'ease_out'));
+        cmds.add(_evKf(id, 'trim', lt + 0.3, [0, 100]));
+        cmds.add({
+          ...b.text('${pj}_n', '', bw * 1.1, bh * 1.3, cx, cy, bh * 0.85, color: ink.dark ? '#E8F07A' : '#141414', weight: 900),
+          'parent': parent, 'start': lt, 'duration': math.max(0.1, t2 - lt),
+          'counter': {
+            'from': from, 'to': to, 'decimals': ((mk['decimals'] as num?) ?? 0).toInt(), 'prefix': '${mk['prefix'] ?? ''}',
+            'suffix': '${mk['suffix'] ?? ''}', 'delay': 0.25, 'duration': steps * 0.25,
+          },
+        });
+        break;
+      }
       default: // highlight
         if (multiply) {
           cmds.addAll(inkCopy(pj, lt, '#000000', _evOpaque(color)));
@@ -700,7 +718,7 @@ bool _evArticleWanted(Map<String, dynamic> c) {
   if (c['enter'] == 'slide_up_over') return true;
   for (final m in (c['marks'] as List? ?? const [])) {
     if (m is! Map) continue;
-    if (const ['pen_circle', 'brush', 'text_color'].contains(m['style'])) return true;
+    if (const ['pen_circle', 'brush', 'text_color', 'counter_box'].contains(m['style'])) return true;
     for (final k in const ['at_word', 'at', 'zoom', 'done', 'blend', 'id', 'lines', 'ellipse_style']) {
       if (m.containsKey(k)) return true;
     }

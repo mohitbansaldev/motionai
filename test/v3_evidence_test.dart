@@ -238,6 +238,20 @@ void main() {
       expect(emb.prop(Props.position).staticValue[1], greaterThan(0.21 * 4200));
     });
 
+    test('counter_box: a number in the page counts inside a red box', () {
+      final p = project();
+      run(p, {
+        'op': 'add_component', 'type': 'article', 'id': 'ar', 'start': 0, 'duration': 5, 'media': 'shot2', 'backdrop': 'none',
+        'marks': [{'box': [0.4, 0.5, 0.5, 0.53], 'style': 'counter_box', 'from': 10, 'to': 45, 'steps': 4, 'suffix': '%', 'delay': 1}],
+      });
+      final box = layer(p, 'ar_a0_m0_0');
+      expect(box.shape!.stroke, 0xFFE0201B);
+      final n = layer(p, 'ar_a0_m0_0_n');
+      expect(n.parentId, 'ar_a0_img');
+      expect(n.text!.counter!.valueAt(1.0), '10%');
+      expect(n.text!.counter!.valueAt(3), '45%');
+    });
+
     test('newspaper_collage backdrop is blurred clippings', () {
       final p = project();
       run(p, {'op': 'add_component', 'type': 'article', 'id': 'ar', 'start': 0, 'duration': 4, 'backdrop': 'newspaper_collage'});
