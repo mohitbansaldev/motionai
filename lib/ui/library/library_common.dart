@@ -16,6 +16,7 @@ class LibUi {
     'building': 'Buildings', 'plant': 'Plants', 'grass_strip': 'Grass strips', 'sky': 'Skies', 'ground': 'Ground',
     'prop': 'Props', 'person': 'People', 'animal': 'Animals', 'vehicle': 'Vehicles', 'icon': 'Icons', 'texture': 'Textures',
     'interior': 'Interiors', 'map': 'Maps', 'document': 'Documents', 'logo': 'Logos',
+    'plate': 'Plates', 'overlay': 'Overlays', 'set_piece': 'Set pieces', // V2-F
   };
 
   static final Map<String, Uint8List?> _videoThumbs = {};

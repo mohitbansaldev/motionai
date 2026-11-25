@@ -13,8 +13,8 @@ import 'asset_library.dart';
 class LibraryTagger {
   static const prompt = '''
 You tag reusable assets for a documentary motion-graphics library. For each attached image (in order, matching "images"), return ONLY JSON:
-{"items":[{"id":"<id>","kind":"building|plant|grass_strip|sky|ground|prop|person|animal|vehicle|icon|texture|interior|map|document|logo","era":"<e.g. ancient, medieval, 1800s, 1940s, modern, or empty>","region":"<country/region style, e.g. India, Rajasthan, Europe, or empty>","mood":"<1-2 words: calm, dramatic, dark, warm…>","transparent":<true if the picture is a cut-out on a transparent/checkerboard/plain removed background>,"tags":["<3-8 short lowercase words>"],"desc":"<max 18 words: what it is, colours, angle>"}]}
-grass_strip = a horizontal strip of grass/bushes used to hide the bottom of buildings. Do not guess names of private people.''';
+{"items":[{"id":"<id>","kind":"building|plant|grass_strip|sky|ground|prop|person|animal|vehicle|icon|texture|interior|map|document|logo|plate|overlay|set_piece","era":"<e.g. ancient, medieval, 1800s, 1940s, modern, or empty>","region":"<country/region style, e.g. India, Rajasthan, Europe, or empty>","mood":"<1-2 words: calm, dramatic, dark, warm…>","transparent":<true if the picture is a cut-out on a transparent/checkerboard/plain removed background>,"tags":["<3-8 short lowercase words>"],"desc":"<max 18 words: what it is, colours, angle>"}]}
+grass_strip = a horizontal strip of grass/bushes used to hide the bottom of buildings. plate = a full background scene; overlay = smoke/fire/dust/light fx to screen over a shot; set_piece = a cut-out scenery piece (house, wall, tree line). Do not guess names of private people.''';
 
   /// Tags [assets] (default: every untagged image/video). Returns how many were tagged.
   static Future<int> tag(AssetLibrary lib, {List<LibraryAsset>? assets, void Function(String status)? status}) async {

@@ -1,8 +1,10 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../ai/ai_client.dart';
 import '../../core/model/project.dart';
 import '../../library/asset_library.dart';
+import '../../library/library_ops.dart'; // V2-F
 import '../../library/library_tagger.dart';
 import '../../services/media_importer.dart';
 import '../../state/editor_controller.dart';
@@ -135,6 +137,68 @@ class _LibrarySheetState extends State<LibrarySheet> {
       if (assets.isNotEmpty && mounted) showSnack(context, 'Added ${assets.length} to the library.');
     });
   }
+
+  // V2-F >>> folder import (Google Flow kits) + green screen / mark clean-up
+  Future<({bool green, bool mark})?> _cleanOptions(String title, {bool mark = false}) {
+    var green = true, removeMark = mark;
+    return showDialog<({bool green, bool mark})>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text(title),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            CheckboxListTile(
+              value: green,
+              title: const Text('Remove flat green / blue screens'),
+              subtitle: const Text('Keeps the original; makes a transparent PNG cut-out'),
+              onChanged: (v) => setD(() => green = v ?? true),
+            ),
+            CheckboxListTile(
+              value: removeMark,
+              title: const Text('Remove the corner sparkle mark'),
+              subtitle: const Text('Only when a small white star is found bottom-right'),
+              onChanged: (v) => setD(() => removeMark = v ?? false),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, (green: green, mark: removeMark)), child: const Text('Go')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addFolder() async {
+    final dir = await FilePicker.getDirectoryPath(dialogTitle: 'Asset folder (e.g. a Google Flow kit)');
+    if (dir == null || !mounted) return;
+    final opt = await _cleanOptions('Import "${LibraryOps.kitName(dir)}"');
+    if (opt == null) return;
+    await _work('Importing folder…', (lib) async {
+      final r = await LibraryOps.importFolder(lib, {'path': dir, 'green_screen': opt.green ? 'auto' : 'false', 'remove_mark': opt.mark},
+          status: (s) {
+        if (mounted) setState(() => _status = s);
+      });
+      final kit = r['kit'];
+      if (kit is Map) _kit = '${kit['id']}';
+      if (mounted) {
+        showSnack(context,
+            'Imported ${r['imported']} (${r['duplicates']} already there, ${r['green_screen_keyed']} keyed, ${r['marks_removed']} marks removed) into kit "${kit is Map ? kit['name'] : '-'}".');
+      }
+    });
+  }
+
+  Future<void> _clean(List<String> ids) async {
+    final opt = await _cleanOptions('Clean ${ids.length} asset(s)', mark: true);
+    if (opt == null) return;
+    await _work('Cleaning…', (lib) async {
+      final r = await LibraryOps.clean(lib, {'ids': ids, 'green_screen': opt.green ? 'true' : 'false', 'remove_mark': opt.mark}, status: (s) {
+        if (mounted) setState(() => _status = s);
+      });
+      if (mounted) showSnack(context, 'Cleaned ${r['changed']} of ${ids.length}.');
+    });
+  }
+  // <<< V2-F
 
   Future<void> _tag({bool selected = false}) async {
     await _work('AI is looking at your assets…', (lib) async {
@@ -283,12 +347,14 @@ class _LibrarySheetState extends State<LibrarySheet> {
             enabled: lib != null && !_busy,
             onSelected: (v) => switch (v) {
               'project' => _addFromProject(),
+              'folder' => _addFolder(), // V2-F
               'images' => _addFromFiles(MediaType.image),
               'videos' => _addFromFiles(MediaType.video),
               _ => _addFromFiles(MediaType.audio),
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'project', child: Text('From this project…')),
+              PopupMenuItem(value: 'folder', child: Text('Folder / Google Flow kit…')), // V2-F
               PopupMenuItem(value: 'images', child: Text('Images / cut-outs from files…')),
               PopupMenuItem(value: 'videos', child: Text('Videos from files…')),
               PopupMenuItem(value: 'audio', child: Text('Sounds / music from files…')),
@@ -357,6 +423,7 @@ class _LibrarySheetState extends State<LibrarySheet> {
                 child: const Padding(padding: EdgeInsets.all(8), child: Text('Add to kit ▾')),
               ),
             OutlinedButton(onPressed: _busy ? null : () => _tag(selected: true), child: const Text('AI tag')),
+            OutlinedButton(onPressed: _busy ? null : () => _clean(_sel.toList()), child: const Text('Clean')), // V2-F
             TextButton(
               onPressed: _busy
                   ? null

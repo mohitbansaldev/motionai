@@ -147,4 +147,11 @@ MANY LAYERS AT ONCE (CURRENT PROJECT "selected_layers" = what the user selected;
 - paste_layers {layers: [layer JSON], media?, comps?, time?, index?} (the editor's copy/paste format) · paste_effects {layer, effects: [effect JSON], replace?} · paste_animation {layer, props, from_start?}
 - precompose {layers: [ids]} groups the selection into one comp layer.
 // ---- end BULK ----
+// ---- V2-F >>> asset pipeline (library tools, not edit commands) ----
+ASSET LIBRARY PIPELINE (MCP tools; NOT run_commands ops):
+- library_import_folder {path, recursive?: true, kit?: name (default: the folder name, "Tulip_Library" → kit "Tulip Library"), tags?: [...], green_screen?: auto|true|false (auto keys only flat, saturated green/blue screens and never plates/overlays), remove_mark?: false} — imports every image/video/audio of a folder (e.g. Google Flow output: cutouts/ = alpha PNGs, plates/ = backgrounds, fx/ = overlays). Roles from the file prefix or folder: char_ → character (kind person), prop_ → object, plate_/bg_ → plate (background), fx_ → overlay, cut_ → set_piece (cut-out); name words become tags. Same-named JPEG (green screen) + PNG (clean) → the PNG is used. Duplicates (same file) are reused. Returns the kit id and lib:<id> per asset.
+- library_clean {ids?: ["lib:<id>"], kit?: id or name, all?: true, green_screen?: auto|true|false, remove_mark?: true, restore?: true} — batch: keys a flat green/blue screen into a transparent PNG and/or inpaints the small white sparkle mark in the bottom-right corner (only when one is detected). The original is kept; restore:true goes back to it.
+- library_search {query?, role?: character|object|plate|overlay|set_piece|audio (synonyms: background, prop, fx, cutout…), tags?, kit?, type?, transparent?, limit?} — fuzzy, ranked ("merchnt" finds char_merchant).
+- library_suggest {brief: what the shot shows, roles?: [character, object, plate, overlay, set_piece], kit?, limit? (per role, 5)} — ranked lib:<id> assets per role for a shot (keyword/tag scoring); a role with no match lists its newest assets with score 0. Use plates as the back layer, characters/objects/set pieces (transparent cut-outs) above, overlays on top, then make_3d.
+// ---- <<< V2-F ----
 ''';

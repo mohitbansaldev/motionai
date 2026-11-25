@@ -96,6 +96,30 @@ New effects: glow {amount, radius}, grain {amount, size}, light_leak {amount, sp
 
 Audio: `add_layer` with `type: "audio"` and an audio media id. Every layer has a `volume` property (0–200).
 
+## V2-F: asset library pipeline (MCP tools, not edit commands)
+
+Library operations work on the cross-project asset library (files on disk), so they are tools / library APIs
+(`lib/library/library_ops.dart`: `LibraryOps.importFolder / clean / search / suggest`, JSON in → JSON out), not
+undoable project ops.
+
+| tool | fields |
+|---|---|
+| `library_import_folder` | `path`, `recursive`? (true), `kit`? (default folder name), `tags`? [..], `green_screen`? auto\|true\|false (auto), `remove_mark`? (false) |
+| `library_clean` | `ids`? ["lib:<id>"] \| `kit`? \| `all`?, `green_screen`? (auto), `remove_mark`? (true), `restore`? |
+| `library_search` | `query`?, `role`?/`roles`? (character, object, plate, overlay, set_piece, audio + synonyms), `tags`?, `kit`?, `type`?, `transparent`?, `limit`? |
+| `library_suggest` | `brief`, `roles`? [..], `kit`?, `limit`? (per role, 5) |
+
+Roles from file prefixes / folders: `char_` → character (kind person), `prop_` → object (prop), `plate_`/`bg_` → plate,
+`fx_` → overlay, `cut_` → set_piece; folders `plates/`, `fx/`, `props/`, `characters/`. A JPEG and a PNG with the same
+name (`char_x.jpg` on green, `cutouts/char_x.png`) → the PNG is imported. Same file twice → the existing asset.
+Green-screen keying reuses the chroma_key maths (tolerance 40, softness 16, spill 70, light choke) and keeps the
+original (`LibraryAsset.original`, `cleaned: [green_screen, mark]`). The mark remover only acts on a small, isolated,
+star-shaped bright blob 0.5–9 % in from the bottom-right corner and inpaints just that patch.
+
+Text animators `scramble`, `random_pop`, `typewriter` (and the typewriter SFX, number tiles) work on whole letters:
+grapheme clusters with Indic conjuncts kept together ("स्था", "क्ष", "श्री"); settled text renders exactly like a plain
+text layer.
+
 ## Composition
 
 | op | fields |
