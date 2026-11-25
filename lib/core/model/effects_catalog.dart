@@ -239,6 +239,11 @@ class EffectsCatalog {
       ParamDef('flicker', 'Flicker', [25], 0, 100),
     ], category: 'atmosphere'),
     // <<< V2-D
+    // V3-A >>> satellite map base (lib/ui/preview/fx/map_texture.dart; bundled NASA Blue Marble, public domain)
+    EffectDef('map_texture', 'Map Texture (satellite)', [
+      ParamDef('amount', 'Opacity', [100], 0, 100),
+    ], category: 'stylize'),
+    // <<< V3-A
   ];
 
   static const categories = ['keying', 'color', 'blur', 'stylize', 'distort', 'atmosphere', 'reveal']; // CHROMA (Agent M): + keying

@@ -10,6 +10,7 @@ import 'world_map.dart';
 part 'components_doc.dart';
 part 'components_article.dart';
 part 'map_kit.dart'; // SCENE (Agent D): maps + 3D room/board
+part 'map_geo.dart'; // V3-A: maps & geo patterns
 
 /// Documentary kit: ready-made, fully editable groups of layers built from
 /// ordinary edit commands. Every component is a null "group" layer (anchor at
@@ -24,6 +25,7 @@ class Components {
     'title_slam', 'foreground_wipe', 'icon_stream', 'icon_badge', 'scanner', 'silhouette_crowd',
     'number_tiles', 'date_title', 'article',
     ..._sceneTypes, // SCENE (Agent D)
+    ..._geoTypes, // V3-A
   ];
 
   static String label(String t) => const {
@@ -60,6 +62,7 @@ class Components {
         'article': 'Article Highlight',
       }[t] ??
       _sceneLabels[t] ?? // SCENE (Agent D)
+      _geoLabels[t] ?? // V3-A
       t;
 
   static List<Map<String, dynamic>> build(Project p, Map<String, dynamic> c, double now) {
@@ -69,6 +72,8 @@ class Components {
     }
     final comp = p.editComp; // PRECOMP (Agent L): the comp being edited
     final b = _B(comp.width, comp.height, c, now, '${c['id'] ?? Ids.next(type)}');
+    final geo = _geoBuild(p, c, b); // V3-A: satellite maps, routes, rings, geo labels
+    if (geo != null) return geo; // V3-A
     final scene = _sceneBuild(p, c, b); // SCENE (Agent D)
     if (scene != null) return scene;
     switch (type) {

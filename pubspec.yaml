@@ -37,6 +37,8 @@ flutter:
     - shaders/chroma_key.frag
   assets:
     - assets/world_countries.json
+    # V3-A: dark satellite map base (NASA Blue Marble, public domain; ocean graded dark teal)
+    - assets/maps/blue_marble_dark.jpg
     # FONTS (Agent I): font licences (shown from the font picker)
     - assets/fonts/anton/OFL.txt
     - assets/fonts/bebasneue/OFL.txt

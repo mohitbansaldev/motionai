@@ -11,6 +11,7 @@ import 'ui/home_screen.dart';
 import 'ui/theme.dart';
 import 'core/presets/doc_transitions.dart'; // V2-lead
 import 'core/presets/transition_registry.dart'; // V2-lead
+import 'ui/preview/fx/map_texture.dart'; // V3-A
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,7 @@ void main() {
   ));
   // Country outlines for the map kit (loaded in the background).
   rootBundle.loadString('assets/world_countries.json').then(WorldMap.load).catchError((_) {});
+  MapTexture.load(); // V3-A: satellite map texture (maps fall back to the dark style without it)
   RemoteControl.instance.init().catchError((_) {}); // MCP (Agent P): Claude control server (if enabled)
   DepthTools.install(); // V2-E: photo_to_3d / depth_map background jobs
   TransitionRegistry.addRegistrar(DocTransitions.registerAll); // V2-lead: documentary transitions for sequence

@@ -24,6 +24,7 @@ import 'fx/realism_painters.dart'; // V2-D
 import '../../core/presets/realism.dart'; // V2-D
 import 'fx/text_fx.dart';
 import 'fx/transition_painters.dart'; // V2-C
+import 'fx/map_texture.dart'; // V3-A
 import 'precomp_view.dart'; // PRECOMP (Agent L)
 import 'shape_painter.dart';
 
@@ -687,6 +688,10 @@ class LayerView extends StatefulWidget {
         return PageCurlFx(
             progress: p('progress') / 100, angle: p('angle'), shadow: p('shadow') / 100, back: rgb('back'), size: Size(l.width, l.height), child: child);
       // <<< V2-C
+      // V3-A >>> satellite map texture
+      case 'map_texture':
+        return MapTextureFx(amount: p('amount'), draft: draft, child: child);
+      // <<< V3-A
       default:
         return realismEffect(e, child, l, time, draft: draft, playing: playing) ?? child; // V2-D
     }

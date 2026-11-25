@@ -21,6 +21,7 @@ import 'transition_commands.dart'; // V2-C
 import 'depth_commands.dart'; // V2-E (depth from photo)
 import 'realism_commands.dart'; // V2-D
 import 'shot_commands.dart'; // V2-B
+import 'map_commands.dart'; // V3-A
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -98,6 +99,7 @@ class EditCommands {
     ...DepthCommands.ops, // V2-E: photo_to_3d, depth_map
     ...RealismCommands.ops, // V2-D: match_colour, camera_shake, set_dof
     ...ShotCommands.ops, // V2-B: add_shot, update_shot, remove_shot, sequence
+    ...MapCommands.ops, // V3-A: geo component aliases (status_ring, signal_rings, …), map_tilt
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -173,6 +175,21 @@ class EditCommands {
         TransitionCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
         break;
       // <<< V2-C
+      // V3-A >>> maps & geo → map_commands.dart
+      case 'status_ring':
+      case 'signal_rings':
+      case 'pulse_rings':
+      case 'geo_label':
+      case 'path_text':
+      case 'terrain_label':
+      case 'map_watermark':
+      case 'search_sweep':
+      case 'sketch_map':
+      case 'route_follow':
+      case 'map_tilt':
+        MapCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
+        break;
+      // <<< V3-A
       // V2-B >>> shots & sequences → shot_commands.dart
       case 'add_shot':
       case 'update_shot':
@@ -333,6 +350,7 @@ class EditCommands {
         break;
 
       case 'camera_move':
+        if (MapCommands.cameraMove(project, c, now, (c2) => _run(project, c2, now, r))) break; // V3-A: punch_in
         final preset = c['preset'] as String? ?? '';
         CameraPresets.apply(
           comp,
