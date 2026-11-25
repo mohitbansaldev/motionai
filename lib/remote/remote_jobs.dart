@@ -6,7 +6,10 @@ class RemoteJob {
   final String kind; // export | director | captions
   final DateTime started = DateTime.now();
   String state = 'running'; // running | done | failed | cancelled
-  String message = '';
+  String _message = '';
+
+  /// How many times [message] changed (progress for jobs without a frame count).
+  int updates = 0;
   Object? result;
   String? error;
   DateTime? finished;
@@ -20,6 +23,28 @@ class RemoteJob {
   RemoteJob(this.id, this.kind);
 
   bool get running => state == 'running';
+
+  String get message => _message;
+  set message(String v) {
+    if (v == _message) return;
+    _message = v;
+    updates++;
+  }
+
+  /// Progress for MCP notifications: frames for exports (total = frames + 1,
+  /// the last step is finishing the file), else the count of status changes.
+  (num, num?, String) progress() {
+    final live = probe?.call();
+    final frame = live?['frame'], frames = live?['frames'];
+    if (frame is num && frames is num && frames > 0) {
+      final phase = '${live?['phase'] ?? ''}';
+      final done = !running || phase == 'done';
+      final p = done ? frames + 1 : (phase == 'finishing' ? frames + 0.5 : frame.clamp(0, frames));
+      final msg = phase == 'rendering' ? 'Rendering frame ${frame.round()} of ${frames.round()}' : (message.isEmpty ? phase : message);
+      return (p, frames + 1, msg);
+    }
+    return (updates + (running ? 0 : 1), null, message);
+  }
 
   void done(Object? r, {String message = 'Done'}) {
     if (!running) return;

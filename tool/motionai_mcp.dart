@@ -14,7 +14,7 @@ import 'dart:io';
 
 import 'package:motionai/remote/mcp_protocol.dart';
 
-String _controlPath = '';
+List<String> _controlPaths = [];
 String? _appOverride;
 bool _verbose = false;
 final HttpClient _http = HttpClient()
@@ -31,11 +31,11 @@ void _out(Object? message) => stdout.writeln(BridgeFraming.encode(message));
 Future<void> main(List<String> args) async {
   for (var i = 0; i < args.length; i++) {
     if (args[i] == '--app' && i + 1 < args.length) _appOverride = args[++i];
-    if (args[i] == '--control' && i + 1 < args.length) _controlPath = args[++i];
+    if (args[i] == '--control' && i + 1 < args.length) _controlPaths = [args[++i]];
     if (args[i] == '--verbose') _verbose = true;
   }
-  if (_controlPath.isEmpty) _controlPath = mcpControlFilePath(Platform.environment, windows: Platform.isWindows);
-  _log('control file $_controlPath');
+  if (_controlPaths.isEmpty) _controlPaths = mcpControlFilePaths(Platform.environment, windows: Platform.isWindows);
+  _log('control files $_controlPaths');
 
   final pending = <Future<void>>[];
   await for (final line in stdin.transform(utf8.decoder).transform(const LineSplitter())) {
@@ -114,14 +114,17 @@ Future<Object?> _answer(Object? m) async {
 
 // ---------------------------------------------------------------- app connection
 
+/// The newest of the control files (the app writes two: inside the
+/// Microsoft Store build of Claude Desktop %APPDATA% may show a stale copy).
 McpControlInfo? _readControl() {
-  try {
-    final f = File(_controlPath);
-    if (!f.existsSync()) return null;
-    return McpControlInfo.parse(f.readAsStringSync());
-  } catch (_) {
-    return null;
+  final all = <McpControlInfo?>[];
+  for (final path in _controlPaths) {
+    try {
+      final f = File(path);
+      if (f.existsSync()) all.add(McpControlInfo.parse(f.readAsStringSync()));
+    } catch (_) {}
   }
+  return newestControl(all);
 }
 
 Future<bool> _healthy(McpControlInfo info) async {
@@ -194,9 +197,26 @@ Future<McpControlInfo> _ensureApp() async {
   if (exe == null) throw StateError('MotionAI is not running and motionai.exe was not found. Please open MotionAI.');
   _log('starting $exe');
   final started = DateTime.now();
-  await Process.start(exe, const [], mode: ProcessStartMode.detached, workingDirectory: File(exe).parent.path);
+  // Windows: start it through Explorer, so MotionAI does not run inside
+  // Claude Desktop's Microsoft Store package (whose file virtualisation
+  // would hide its projects and settings). Directly if that fails.
+  var direct = !Platform.isWindows;
+  if (!direct) {
+    try {
+      await Process.start('explorer.exe', [exe], mode: ProcessStartMode.detached);
+    } catch (e) {
+      _log('explorer start failed: $e');
+      direct = true;
+    }
+  }
+  if (direct) await Process.start(exe, const [], mode: ProcessStartMode.detached, workingDirectory: File(exe).parent.path);
   for (var i = 0; i < 120; i++) {
     await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (!direct && i == 24 && _readControl()?.written == info?.written) {
+      _log('no sign of MotionAI after 12 s: starting it directly');
+      direct = true;
+      await Process.start(exe, const [], mode: ProcessStartMode.detached, workingDirectory: File(exe).parent.path);
+    }
     final now = _readControl();
     if (now == null) continue;
     final fresh = DateTime.tryParse(now.written)?.isAfter(started.subtract(const Duration(seconds: 2))) ?? false;
@@ -207,7 +227,9 @@ Future<McpControlInfo> _ensureApp() async {
   throw StateError('MotionAI did not start in time. Open it and try again.');
 }
 
-/// Forwards one message to POST /mcp; returns the parsed response (null for 202).
+/// Forwards one message to POST /mcp; returns the parsed response (null for
+/// 202). A `text/event-stream` answer (progress) is relayed as it arrives:
+/// notifications go straight to stdout, the response is returned.
 Future<Object?> _post(McpControlInfo info, Map m) async {
   final req = await _http.postUrl(Uri.parse(info.url));
   req.headers
@@ -217,6 +239,26 @@ Future<Object?> _post(McpControlInfo info, Map m) async {
     ..set('MCP-Protocol-Version', kMcpProtocolVersion);
   req.add(utf8.encode(jsonEncode(m)));
   final res = await req.close().timeout(const Duration(minutes: 10));
+  if (res.statusCode == 200 && res.headers.contentType?.mimeType == 'text/event-stream') {
+    final sse = SseParser();
+    Object? answer;
+    void take(String data) {
+      try {
+        final j = jsonDecode(data);
+        if (JsonRpc.isNotification(j)) {
+          _out(j);
+        } else {
+          answer = j;
+        }
+      } catch (_) {}
+    }
+
+    await for (final chunk in res.transform(utf8.decoder).timeout(const Duration(minutes: 10))) {
+      sse.add(chunk).forEach(take);
+    }
+    sse.close().forEach(take);
+    return answer;
+  }
   final body = await res.transform(utf8.decoder).join();
   if (res.statusCode == 202 || body.trim().isEmpty) return null;
   if (res.statusCode == 401) throw StateError('MotionAI rejected the token (it was changed in Settings).');

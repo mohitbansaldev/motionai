@@ -4,6 +4,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../ai/agent.dart';
@@ -23,10 +25,12 @@ import '../library/asset_library.dart';
 import '../services/captions.dart';
 import '../services/project_storage.dart';
 import '../state/editor_controller.dart';
+import 'contact_sheet.dart';
 import 'mcp_protocol.dart';
 import 'mcp_server.dart';
 import 'remote_export.dart';
 import 'remote_jobs.dart';
+import 'scene_check.dart';
 
 /// What the tools need from the running app (navigation, rendering). The
 /// real one is RemoteControl; tests use an in-memory fake.
@@ -58,6 +62,13 @@ abstract class RemoteHost {
 
   /// The project list changed / the open project was renamed.
   void projectsChanged();
+}
+
+/// V2-A: hosts that can render several frames in one go (one offscreen
+/// canvas, images decoded once) and any composition. Optional: without it
+/// preview_shot renders PNGs one by one through [RemoteHost.renderPng].
+abstract class RemoteFrameHost {
+  Future<List<RawFrame>> renderFrames(EditorController c, List<double> times, int width, {Composition? comp});
 }
 
 class _Fail implements Exception {
@@ -117,7 +128,7 @@ class RemoteTools implements McpBackend {
   // ------------------------------------------------------------ dispatch
 
   @override
-  Future<McpToolResult> callTool(String name, Map<String, dynamic> args) async {
+  Future<McpToolResult> callTool(String name, Map<String, dynamic> args, {McpProgress? progress}) async {
     if (!kMcpToolNames.contains(name)) throw McpUnknownTool(name);
     try {
       if (kMcpEditTools.contains(name)) {
@@ -127,7 +138,7 @@ class RemoteTools implements McpBackend {
               'Wait for it (${b.kind == 'export' ? 'export_status' : 'job_status'}) or cancel_job first.');
         }
       }
-      final r = await _call(name, args);
+      final r = await _call(name, args, progress);
       onAction?.call(name, r.isError ? _firstText(r) : _summary(name, args), !r.isError);
       return r;
     } on McpUnknownTool {
@@ -168,6 +179,16 @@ class RemoteTools implements McpBackend {
         return 'to ${a['time']} s';
       case 'render_frame':
         return 'at ${a['time'] ?? 'playhead'}';
+      case 'preview_shot':
+      case 'check_scene':
+        return '${a['from'] ?? 0}–${a['to'] ?? 'end'} s';
+      case 'batch':
+        final calls = a['calls'];
+        if (calls is List) {
+          final names = [for (final c in calls) if (c is Map) '${c['name']}'];
+          return '${names.length} calls: ${names.take(4).join(', ')}${names.length > 4 ? '…' : ''}';
+        }
+        return '';
       case 'open_project':
         return '${a['id']}';
       case 'new_project':
@@ -184,13 +205,21 @@ class RemoteTools implements McpBackend {
     return '';
   }
 
-  Future<McpToolResult> _call(String name, Map<String, dynamic> a) async {
+  Future<McpToolResult> _call(String name, Map<String, dynamic> a, McpProgress? progress) async {
     switch (name) {
+      case 'preview_shot':
+        return _previewShot(a);
+      case 'check_scene':
+        return _checkScene(a);
+      case 'batch':
+        return _batch(a, progress);
       case 'get_state':
         return McpToolResult.json(await state());
       case 'get_command_spec':
         return McpToolResult.text('NOTE (MCP): you are connected through tools. Pass the "commands" array to run_commands '
-            'and talk to the user normally; the "reply"/JSON output format below is for the in-app assistant only.\n\n$commandSpec');
+            'and talk to the user normally; the "reply"/JSON output format below is for the in-app assistant only. '
+            'Save round trips with batch (e.g. run_commands + check_scene + preview_shot in one call); look at shots with '
+            'preview_shot (one contact sheet) rather than many render_frame calls.\n\n$commandSpec');
       case 'run_commands':
         return _runCommands(a);
       case 'get_layer':
@@ -269,7 +298,7 @@ class RemoteTools implements McpBackend {
         }
         return McpToolResult.json({'ok': true, 'comp': c.comp.id});
       case 'export_video':
-        return _export(a);
+        return _export(a, progress);
       case 'export_status':
         final id = _str(a, 'job');
         final j = id == null ? jobs.latest('export') : jobs.byId(id);
@@ -288,9 +317,9 @@ class RemoteTools implements McpBackend {
         j.message = 'Stopping…';
         return McpToolResult.json({'ok': true, 'message': 'Asked ${j.id} to stop.'});
       case 'director_run':
-        return _director(a);
+        return _director(a, progress);
       case 'captions_generate':
-        return _captions(a);
+        return _captions(a, progress);
       case 'list_templates':
         return McpToolResult.json({'templates': [for (final t in await _templates(_str(a, 'category'))) _template(t)]});
       case 'apply_template':
@@ -527,7 +556,7 @@ class RemoteTools implements McpBackend {
 
   // ------------------------------------------------------------ export
 
-  Future<McpToolResult> _export(Map<String, dynamic> a) async {
+  Future<McpToolResult> _export(Map<String, dynamic> a, McpProgress? progress) async {
     final c = _editor();
     final res = (_num(a, 'resolution') ?? 1080).round();
     if (![720, 1080, 1440, 2160].contains(res)) throw _Fail('resolution must be 720, 1080, 1440 or 2160.');
@@ -551,12 +580,191 @@ class RemoteTools implements McpBackend {
       job.fail(e);
       rethrow;
     }
-    return McpToolResult.json({'ok': true, 'job': job.id, 'message': 'Export started. Poll export_status until state is done.'});
+    if (_bool(a, 'wait') == true) return _waitJob(job, a, progress);
+    return McpToolResult.json({'ok': true, 'job': job.id, 'message': 'Export started. Poll export_status until state is done (or use wait:true).'});
+  }
+
+  /// Blocks until [job] ends or the timeout passes, sending progress
+  /// notifications when the client asked for them. Without a progress token
+  /// the default wait is short (clients time out requests after ~60 s).
+  Future<McpToolResult> _waitJob(RemoteJob job, Map<String, dynamic> a, McpProgress? progress) async {
+    final limit = (_num(a, 'timeout') ?? (progress != null ? 540 : 50)).clamp(1, 540).toDouble();
+    final sw = Stopwatch()..start();
+    var tick = 0;
+    while (job.running && sw.elapsedMilliseconds < limit * 1000) {
+      if (progress != null) {
+        final (p, total, msg) = job.progress();
+        progress.report(p, total: total, message: msg);
+        // Keep-alive: the elapsed seconds while the job reports nothing new.
+        if (++tick % 20 == 0 && total == null) progress.report(p + tick / 1e6, message: msg);
+      }
+      await Future<void>.delayed(Duration(milliseconds: tick < 8 ? 100 : 250));
+    }
+    if (progress != null) {
+      final (p, total, msg) = job.progress();
+      progress.report(job.running ? p : math.max(p, total ?? p), total: total, message: msg);
+    }
+    final j = job.toJson();
+    switch (job.state) {
+      case 'done':
+        return McpToolResult.json({'ok': true, ...j});
+      case 'running':
+        return McpToolResult.json({
+          'ok': true,
+          ...j,
+          'note': 'Still running after ${limit.round()} s. Call ${job.kind == 'export' ? 'export_status' : 'job_status'} '
+              '{"job":"${job.id}"} later (or call it with wait:true and a progress token).',
+        });
+      default:
+        return McpToolResult(McpToolResult.json(j).content, isError: true, structured: j);
+    }
+  }
+
+  // ------------------------------------------------------------ V2-A: preview_shot / check_scene / batch
+
+  Composition _compArg(EditorController c, Map<String, dynamic> a) {
+    final id = _str(a, 'comp');
+    if (id == null) return c.comp;
+    return c.project.compById(id) ?? (throw _Fail('No composition "$id". Ids are in get_state "comps" (or "main").'));
+  }
+
+  /// Even samples over [from, to], the last one just before [to] (a shot's
+  /// end frame belongs to the next shot).
+  static List<double> sampleTimes(double from, double to, int count, double frame) {
+    if (count <= 1 || to - from < frame) return [from];
+    final last = math.max(from, to - frame * 0.5);
+    return [for (var i = 0; i < count; i++) from + (last - from) * i / (count - 1)];
+  }
+
+  Future<McpToolResult> _previewShot(Map<String, dynamic> a) async {
+    final c = _editor();
+    final comp = _compArg(c, a);
+    final gif = (_str(a, 'format') ?? 'png').toLowerCase() == 'gif';
+    final from = (_num(a, 'from') ?? 0).clamp(0.0, comp.duration).toDouble();
+    final to = (_num(a, 'to') ?? comp.duration).clamp(from, comp.duration).toDouble();
+    final count = (_num(a, 'count') ?? (gif ? 12 : 6)).round().clamp(1, gif ? 20 : 12);
+    final width = (_num(a, 'width') ?? (gif ? 360 : 480)).round().clamp(160, gif ? 480 : 960);
+    final times = sampleTimes(from, to, count, comp.frameDuration);
+    final Object fast = host;
+    List<RawFrame> frames;
+    if (fast is RemoteFrameHost) {
+      frames = await fast.renderFrames(c, times, width, comp: comp);
+    } else {
+      if (comp != c.comp) throw _Fail('open_comp "${comp.id}" first, then preview_shot.');
+      frames = [];
+      for (final t in times) {
+        try {
+          frames.add(RawFrame.fromPng(await host.renderPng(c, t, width)));
+        } on FormatException catch (e) {
+          throw _Fail('Could not read the rendered frame: ${e.message}');
+        }
+      }
+    }
+    if (frames.length != times.length) throw _Fail('Rendered ${frames.length} of ${times.length} frames.');
+    final tiles = [for (var i = 0; i < times.length; i++) SheetTile(times[i], frames[i])];
+    final list = [for (var i = 0; i < times.length; i++) '#${i + 1} ${_r(times[i])} s'].join(', ');
+    if (gif) {
+      final delay = ContactSheet.gifDelay(to - from, tiles.length);
+      final bytes = await _gifInIsolate(tiles, width, delay);
+      return McpToolResult.image(bytes,
+          mimeType: 'image/gif',
+          caption: 'Animated GIF of "${comp.name}" ${_r(from)}–${_r(to)} s: ${tiles.length} frames, ${delay * 10} ms each '
+              '(${(delay * tiles.length / 100).toStringAsFixed(1)} s loop). Times: $list. If you only see one frame, use the PNG contact sheet.');
+    }
+    final cols = ContactSheet.columnsFor(tiles.length);
+    final bytes = await _pngInIsolate(tiles, width, cols);
+    return McpToolResult.image(bytes,
+        caption: 'Contact sheet of "${comp.name}" ${_r(from)}–${_r(to)} s: ${tiles.length} frames in $cols columns '
+            '(left→right, top→bottom), tiles ${width}px wide. Times: $list.');
+  }
+
+  // Static: the isolate closure must capture only the frames, never the editor.
+  static Future<Uint8List> _pngInIsolate(List<SheetTile> tiles, int width, int cols) =>
+      Isolate.run(() => ContactSheet.png(tiles, tileWidth: width, columns: cols));
+  static Future<Uint8List> _gifInIsolate(List<SheetTile> tiles, int width, int delay) =>
+      Isolate.run(() => ContactSheet.gif(tiles, width: width, delay: delay));
+
+  McpToolResult _checkScene(Map<String, dynamic> a) {
+    final c = _editor();
+    final comp = _compArg(c, a);
+    final from = _num(a, 'from'), to = _num(a, 'to');
+    final issues = SceneCheck.run(c.project, comp, from: from, to: to, playhead: c.time);
+    final counts = <String, int>{};
+    for (final i in issues) {
+      counts[i.severity] = (counts[i.severity] ?? 0) + 1;
+    }
+    final fixes = SceneCheck.fixAll(issues);
+    return McpToolResult.json({
+      'comp': comp.id,
+      'range': [_r((from ?? 0).clamp(0.0, comp.duration).toDouble()), _r((to ?? comp.duration).clamp(0.0, comp.duration).toDouble())],
+      'ok': issues.isEmpty,
+      'counts': counts,
+      'issues': [for (final i in issues.take(60)) i.toJson()],
+      if (issues.length > 60) 'more': issues.length - 60,
+      if (fixes.isNotEmpty) 'fix_all': fixes,
+      if (fixes.isNotEmpty) 'how_to_fix': 'run_commands {"commands": <fix_all>} (one undo step), then check_scene again. Review heuristic ones (floating, overlap) with preview_shot.',
+    });
+  }
+
+  Future<McpToolResult> _batch(Map<String, dynamic> a, McpProgress? progress) async {
+    var raw = a['calls'];
+    if (raw is String) {
+      try {
+        raw = jsonDecode(raw);
+      } catch (_) {
+        throw _Fail('"calls" must be an array of {"name","arguments"} objects.');
+      }
+    }
+    if (raw is! List || raw.isEmpty) throw _Fail('"calls" must be a non-empty array of {"name":"tool","arguments":{...}}.');
+    if (raw.length > 50) throw _Fail('At most 50 calls per batch.');
+    final keepGoing = _bool(a, 'continue_on_error') ?? false;
+    final content = <Map<String, dynamic>>[];
+    final results = <Map<String, dynamic>>[];
+    var failed = 0;
+    for (final (i, x) in raw.indexed) {
+      final n = i + 1;
+      String name = '';
+      McpToolResult r;
+      if (x is! Map) {
+        r = McpToolResult.error('Call #$n must be an object {"name","arguments"}.');
+      } else {
+        name = '${x['name'] ?? x['tool'] ?? ''}';
+        final args = x['arguments'] ?? x['args'] ?? const <String, dynamic>{};
+        if (name == 'batch') {
+          r = McpToolResult.error('batch cannot contain batch.');
+        } else if (args is! Map) {
+          r = McpToolResult.error('"arguments" of call #$n must be an object.');
+        } else {
+          try {
+            r = await callTool(name, Map<String, dynamic>.from(args));
+          } on McpUnknownTool {
+            r = McpToolResult.error('Unknown tool "$name".');
+          } catch (e) {
+            r = McpToolResult.error('$name failed: $e');
+          }
+        }
+      }
+      content.add({'type': 'text', 'text': '[#$n $name] ${r.isError ? 'ERROR' : 'ok'}'});
+      content.addAll(r.content);
+      results.add({'call': n, 'name': name, 'ok': !r.isError});
+      progress?.report(n, total: raw.length, message: name);
+      if (r.isError) {
+        failed++;
+        if (!keepGoing) break;
+      }
+    }
+    final skipped = raw.length - results.length;
+    content.add({
+      'type': 'text',
+      'text': 'batch: ${results.length - failed} ok, $failed failed${skipped > 0 ? ', $skipped not run (stopped at the first error)' : ''}.',
+    });
+    return McpToolResult(content,
+        isError: failed > 0, structured: {'results': results, 'failed': failed, if (skipped > 0) 'skipped': skipped});
   }
 
   // ------------------------------------------------------------ Director
 
-  Future<McpToolResult> _director(Map<String, dynamic> a) async {
+  Future<McpToolResult> _director(Map<String, dynamic> a, McpProgress? progress) async {
     final c = _editor();
     final s = await AiSettings.load();
     if (!s.isConfigured) {
@@ -623,6 +831,7 @@ class RemoteTools implements McpBackend {
     job.onCancel = cancel.cancel;
     job.message = 'Starting…';
     unawaited(_runDirector(c, o, job, cancel));
+    if (_bool(a, 'wait') == true) return _waitJob(job, a, progress);
     return McpToolResult.json({
       'ok': true,
       'job': job.id,
@@ -699,7 +908,7 @@ class RemoteTools implements McpBackend {
 
   // ------------------------------------------------------------ captions
 
-  McpToolResult _captions(Map<String, dynamic> a) {
+  Future<McpToolResult> _captions(Map<String, dynamic> a, McpProgress? progress) async {
     final c = _editor();
     bool src(Layer l) => (l.type == LayerType.video || l.type == LayerType.audio) && c.project.media[l.mediaId] != null;
     final id = _str(a, 'layer');
@@ -740,7 +949,8 @@ class RemoteTools implements McpBackend {
         job.fail(e is AiException ? e.message : e);
       }
     }());
-    return McpToolResult.json({'ok': true, 'job': job.id, 'layer': source.id, 'message': 'Transcribing. Poll job_status.'});
+    if (_bool(a, 'wait') == true) return _waitJob(job, a, progress);
+    return McpToolResult.json({'ok': true, 'job': job.id, 'layer': source.id, 'message': 'Transcribing. Poll job_status (or use wait:true).'});
   }
 
   // ------------------------------------------------------------ templates
