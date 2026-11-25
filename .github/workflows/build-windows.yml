@@ -6,7 +6,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main, feat/windows, integ/v1, feat/mcp] # TEMP feat/mcp (Agent P): verify bundling, remove before merge
+    branches: [main, feat/windows, integ/v1]
   workflow_dispatch:
 
 permissions:
@@ -164,7 +164,6 @@ jobs:
           Get-ChildItem MotionAI-* | Format-Table Name, Length
 
       - uses: softprops/action-gh-release@v2
-        if: github.ref_name != 'feat/mcp' # TEMP (Agent P): no release from the test branch
         with:
           tag_name: win-${{ github.run_number }}
           name: MotionAI for Windows · build ${{ github.run_number }}
