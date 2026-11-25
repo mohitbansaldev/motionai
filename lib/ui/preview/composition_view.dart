@@ -58,6 +58,8 @@ class _CompositionViewState extends State<CompositionView> {
                     time: t,
                     videos: c.videos,
                     items: _items,
+                    draft: true,
+                    playing: c.playing,
                     overlay: selected != null && !c.playing
                         ? CustomPaint(painter: _SelectionPainter(selected, 1 / _viewScale))
                         : null,

@@ -7,7 +7,9 @@ import '../model/layer.dart';
 import '../model/project.dart';
 
 const double _deg = math.pi / 180;
-const double kNearPlane = 1.0;
+/// Layers closer to the camera than this (px) are culled: a layer almost
+/// touching the lens projects to a gigantic size and can stall the GPU.
+const double kNearPlane = 25.0;
 
 /// A layer ready to draw at one moment in time.
 class RenderItem {

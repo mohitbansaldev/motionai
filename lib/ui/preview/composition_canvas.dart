@@ -25,7 +25,15 @@ class CompositionCanvas extends StatelessWidget {
     this.videoFrames,
     this.items,
     this.overlay,
+    this.draft = false,
+    this.playing = false,
   });
+
+  /// Live editor preview: decode images at screen size, cache each layer's
+  /// pixels so camera moves only re-composite, and lighten depth blur.
+  /// Export and Director renders keep full quality.
+  final bool draft;
+  final bool playing;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +55,8 @@ class CompositionCanvas extends StatelessWidget {
                 videos: videos,
                 time: time,
                 videoFrames: videoFrames,
+                draft: draft,
+                playing: playing,
               ),
             if (overlay != null) Positioned.fill(child: IgnorePointer(child: overlay!)),
           ],

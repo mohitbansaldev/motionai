@@ -31,7 +31,15 @@ class LayerView extends StatelessWidget {
     required this.videos,
     required this.time,
     this.videoFrames,
+    this.draft = false,
+    this.playing = false,
   });
+
+  final bool draft;
+  final bool playing;
+
+  /// Longest side images are decoded at in the live preview.
+  static const draftImageSize = 1280;
 
   @override
   Widget build(BuildContext context) {
@@ -43,8 +51,13 @@ class LayerView extends StatelessWidget {
     for (final m in l.masks) {
       child = _mask(m, child);
     }
-    if (item.dofBlur > 0.3) {
-      final s = math.min(item.dofBlur, 40.0);
+    // Cache the layer's pixels: when only its 3D/camera transform changes,
+    // the GPU re-composites the cached picture instead of repainting it.
+    if (draft) child = RepaintBoundary(child: child);
+    // Depth-of-field blur is the most expensive thing in 3D: lighter in the
+    // preview and skipped while playing (full quality on export).
+    if (item.dofBlur > 0.3 && !(draft && playing)) {
+      final s = math.min(item.dofBlur, draft ? 12.0 : 40.0);
       child = ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal), child: child);
     }
     if (item.opacity < 0.999) child = Opacity(opacity: item.opacity, child: child);
@@ -68,8 +81,8 @@ class LayerView extends StatelessWidget {
           height: l.height,
           fit: BoxFit.fill,
           gaplessPlayback: true,
-          filterQuality: FilterQuality.medium,
-          cacheWidth: math.min(l.width.round(), 2560),
+          filterQuality: draft && playing ? FilterQuality.low : FilterQuality.medium,
+          cacheWidth: math.min(l.width.round(), draft ? draftImageSize : 2560),
           errorBuilder: (_, e, _) => ColoredBox(
             color: const Color(0xFF3A1010),
             child: Center(
