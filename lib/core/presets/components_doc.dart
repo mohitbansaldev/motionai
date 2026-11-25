@@ -51,8 +51,8 @@ List<double>? _screenPointOf(Composition comp, String layerId, double t, List<do
 List<Map<String, dynamic>> _nameTag(_B b) {
   final name = b.str('name', 'Name Surname');
   final role = b.str('role', 'Role or title');
-  final fs = b.n('size', b.h * 0.055);
-  final cmds = b.group('Name Tag', x: b.n('x', b.w * 0.07), y: b.n('y', b.h * 0.76));
+  final fs = b.f('size', b.h * 0.055, b.h);
+  final cmds = b.group('Name Tag', x: b.f('x', b.w * 0.07, b.w), y: b.f('y', b.h * 0.76, b.h));
   final nw = math.max(fs * 3, name.length * fs * 0.6 + fs * 0.6);
   cmds.add({
     ...b.text('name', name, nw, fs * 1.3, nw / 2, 0, fs, color: b.str('name_color', '#FFFFFF'), weight: 900, align: 'left'),
@@ -79,7 +79,7 @@ List<Map<String, dynamic>> _nameTag(_B b) {
 
 /// Black (or red) tag pinned to a point (or to a layer via "attach").
 List<Map<String, dynamic>> _characterLabel(_B b, Project p) {
-  var x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.3);
+  var x = b.f('x', b.w * 0.5, b.w), y = b.f('y', b.h * 0.3, b.h);
   final attach = b.c['attach'];
   if (attach is String) {
     final pt = _screenPointOf(p.editComp /* PRECOMP (Agent L) */, attach, b.start, b.vec('at', [0.5, 0.12]));
@@ -89,7 +89,7 @@ List<Map<String, dynamic>> _characterLabel(_B b, Project p) {
     }
   }
   final text = b.str('text', 'NAME').toUpperCase();
-  final fs = b.n('size', b.h * 0.028);
+  final fs = b.f('size', b.h * 0.028, b.h);
   final right = b.str('side', x > b.w * 0.7 ? 'left' : 'right') != 'left';
   final red = b.str('style', 'black') == 'red';
   final accent = b.str('color', '#E53935');
@@ -148,7 +148,7 @@ List<Map<String, dynamic>> _arrowCallout(_B b) {
   cmds.add(b.fx(ring, 'glow', {'amount': 75, 'radius': 18}));
   final text = b.str('text', '');
   if (text.isNotEmpty) {
-    final fs = b.n('size', b.h * 0.04);
+    final fs = b.f('size', b.h * 0.04, b.h);
     final tw = math.max(fs * 4, text.length * fs * 0.6 + fs);
     cmds.add({...b.text('text', text, tw, fs * 1.4, from[0], from[1] + fs * 0.9, fs, color: '#FFFFFF', weight: 800), 'shadow': true, 'animator': 'fade_up'});
   }
@@ -157,8 +157,8 @@ List<Map<String, dynamic>> _arrowCallout(_B b) {
 
 /// Glowing bar over the eyes.
 List<Map<String, dynamic>> _censorBar(_B b) {
-  final bw = b.n('width', b.w * 0.16), bh = b.n('height', b.h * 0.04);
-  final cmds = b.group('Censor Bar', x: b.n('x', b.w / 2), y: b.n('y', b.h * 0.38), tilt: b.n('rotation', 0));
+  final bw = b.f('width', b.w * 0.16, b.w), bh = b.f('height', b.h * 0.04, b.h);
+  final cmds = b.group('Censor Bar', x: b.f('x', b.w / 2, b.w), y: b.f('y', b.h * 0.38, b.h), tilt: b.n('rotation', 0));
   final glow = b.flag('glow', true);
   final bar = b.id('bar');
   cmds.add(b.shape('bar', 'rect', bw, bh, 0, 0,
@@ -188,14 +188,14 @@ List<List<double>> _gravestone(double w, double h, double cx, double cy) {
 
 /// Gravestone / plaque with engraved text.
 List<Map<String, dynamic>> _plaque(_B b) {
-  final pw = b.n('width', b.w * 0.26), ph = pw * 1.3;
+  final pw = b.f('width', b.w * 0.26, b.w), ph = pw * 1.3;
   final style = b.str('style', 'stone');
   final colors = switch (style) {
     'bronze' => ['#A07C3C', '#5B4219', '#F6DE9C', '#3D2C10'],
     'wood' => ['#8A5A2E', '#4E3016', '#F3E2C0', '#2E1C0C'],
     _ => ['#A2A29C', '#5E5E5A', '#2B2B29', '#46463F'],
   };
-  final cmds = b.group('Plaque', y: b.n('y', b.h * 0.55));
+  final cmds = b.group('Plaque', y: b.f('y', b.h * 0.55, b.h));
   cmds.add({...b.shape('ground', 'ellipse', pw * 1.5, pw * 0.16, 0, ph / 2, fill: '#66000000')});
   cmds.add(b.fx(b.id('ground'), 'blur', {'amount': 16}));
   final stone = b.id('stone');
@@ -264,7 +264,7 @@ List<Map<String, dynamic>> _poster(_B b, Project p) {
   final items = b.specs('items', 'title');
   final cmds = b.group('Poster');
   if (items.isEmpty) {
-    cmds.addAll(_posterParts(b, p, '', b.g, {...b.c, 'width': b.n('width', b.w * 0.3)}, 0, 0, b.n('tilt', -3), b.start));
+    cmds.addAll(_posterParts(b, p, '', b.g, {...b.c, 'width': b.f('width', b.w * 0.3, b.w)}, 0, 0, b.n('tilt', -3), b.start));
     return b.finish(cmds, enter: 'none');
   }
   final n = items.length;
@@ -281,7 +281,7 @@ List<Map<String, dynamic>> _poster(_B b, Project p) {
 /// Curved glossy glass screen on a carbon grid, light-leak sweeps hide cuts.
 List<Map<String, dynamic>> _glassScreen(_B b, Project p) {
   final medias = b.mediaList(p, 'media');
-  final sw = b.n('width', b.w * 0.62), sh = sw * 9 / 16;
+  final sw = b.f('width', b.w * 0.62, b.w), sh = sw * 9 / 16;
   final bend = b.n('bend', 22);
   final color = b.str('color', '#FF8A1F');
   final cmds = <Map<String, dynamic>>[];
@@ -359,10 +359,10 @@ List<Map<String, dynamic>> _titleSlam(_B b, Project p) {
   cmds.add(b.fx(b.id('bg'), 'vignette', {'amount': 70}));
   cmds.addAll(b.atmos('bokeh', 'bokeh', amount: 45, speed: 0.4, color: '#FFB27A'));
   cmds.addAll(b.atmos('streaks', 'streaks', amount: 30, speed: 1.4, color: '#FFC94A', direction: 35));
-  cmds.addAll(b.group('Title Slam', y: b.n('y', b.h * 0.46)));
+  cmds.addAll(b.group('Title Slam', y: b.f('y', b.h * 0.46, b.h)));
   final title = b.str('title', 'VIRAL 3D').toUpperCase();
   final sub = b.str('subtitle', 'ANIMATION').toUpperCase();
-  final fs = b.n('size', b.h * 0.17), sfs = fs * 0.62;
+  final fs = b.f('size', b.h * 0.17, b.h), sfs = fs * 0.62;
   cmds.add({
     ...b.text('title', title, b.w * 0.95, fs * 1.3, 0, -fs * 0.45, fs, color: b.str('title_color', '#FFFFFF'), weight: 900),
     'extrude': {'depth': fs * 0.09, 'color': b.str('edge_color', '#8C8C8C')},
@@ -383,7 +383,7 @@ List<Map<String, dynamic>> _titleSlam(_B b, Project p) {
   cmds.add(b.kf(zig, 'trim', t0 + 0.3, [0, 0], 'ease_out'));
   cmds.add(b.kf(zig, 'trim', t0 + 1.0, [0, 100]));
   // Slam in, small shake, punch on the drop.
-  final g = b.g, cx = b.n('x', b.w / 2), cy = b.n('y', b.h * 0.46);
+  final g = b.g, cx = b.f('x', b.w / 2, b.w), cy = b.f('y', b.h * 0.46, b.h);
   cmds.add(b.kf(g, 'scale', t0, [190, 190, 100], 'ease_out'));
   cmds.add(b.kf(g, 'scale', t0 + 0.22, [100, 100, 100], 'linear'));
   cmds.add(b.kf(g, 'scale', t0 + drop - 0.02, [100, 100, 100], 'ease_out'));
@@ -434,7 +434,7 @@ List<Map<String, dynamic>> _foregroundWipe(_B b, Project p) {
   final at = b.start + b.n('at', 0);
   final len = b.n('length', 0.7);
   final left = b.str('direction', 'left') != 'right';
-  final y = b.n('y', b.h * 0.5);
+  final y = b.f('y', b.h * 0.5, b.h);
   final id = b.id('wipe');
   final double iw;
   final Map<String, dynamic> layer;
@@ -491,7 +491,7 @@ List<Map<String, dynamic>> _badgeParts(_B b, Project p, String pre, String paren
 }
 
 List<Map<String, dynamic>> _iconBadge(_B b, Project p) {
-  final size = b.n('size', b.h * 0.16);
+  final size = b.f('size', b.h * 0.16, b.h);
   final cmds = b.group('Icon Badge');
   cmds.addAll(_badgeParts(b, p, 'b', b.g, b.c, 0, 0, size, b.start, b.dur));
   final label = b.str('label_below', '');
@@ -526,7 +526,7 @@ List<Map<String, dynamic>> _iconStream(_B b, Project p) {
   final mid = [(from[0] + to[0]) / 2 + dy * bend, (from[1] + to[1]) / 2 - dx * bend];
   final count = b.n('count', 8).round().clamp(1, 60);
   final interval = b.n('interval', 0.35), travel = b.n('travel', 2.4);
-  final size = b.n('size', b.h * 0.1);
+  final size = b.f('size', b.h * 0.1, b.h);
   final shape = b.str('shape', 'rounded');
   final cmds = b.group('Icon Stream', x: 0, y: 0);
   for (int i = 0; i < count; i++) {
@@ -606,7 +606,7 @@ List<Map<String, dynamic>> _scanner(_B b, Project p) {
     if (i < n - 1) cmds.add(b.kf(rig, 'rotation', t, [0, 0, angle(pts[i])], 'easy_ease'));
   }
   // Labels.
-  final fs = b.n('label_size', b.h * 0.026);
+  final fs = b.f('label_size', b.h * 0.026, b.h);
   for (int i = 0; i < n; i++) {
     final label = '${targets[i]['label'] ?? ''}'.toUpperCase();
     if (label.isEmpty || arrive[i] >= b.end) continue;
@@ -630,7 +630,7 @@ List<Map<String, dynamic>> _silhouetteCrowd(_B b, Project p) {
   final count = b.n('count', medias.isEmpty ? 7 : math.max(medias.length, 5)).round().clamp(1, 30);
   final color = b.str('color', '#FFC107');
   final glow = b.n('glow', 60);
-  final hgt = b.n('height', b.h * 0.5), base = b.n('y', b.h * 1.0);
+  final hgt = b.f('height', b.h * 0.5, b.h), base = b.f('y', b.h * 1.0, b.h);
   final stagger = b.n('stagger', 0.12), rise = b.n('rise', 0.6);
   final highlight = b.c['highlight'] is num ? (b.c['highlight'] as num).toInt() : -1;
   final labels = b.list('labels');
@@ -674,7 +674,7 @@ List<Map<String, dynamic>> _silhouetteCrowd(_B b, Project p) {
       cmds.add(b.kf(bid, 'position', st + rise, [bx, rest + by, 0]));
     }
     if (i < labels.length && labels[i].trim().isNotEmpty) {
-      final fs = b.n('label_size', b.h * 0.03);
+      final fs = b.f('label_size', b.h * 0.03, b.h);
       final text = labels[i].trim().toUpperCase();
       final t1 = st + rise;
       if (t1 < b.end) {
@@ -693,7 +693,7 @@ List<Map<String, dynamic>> _silhouetteCrowd(_B b, Project p) {
 /// Slot-machine characters rolling on tiles ("200 Y"), optional word after.
 List<Map<String, dynamic>> _numberTiles(_B b) {
   final text = b.str('text', '200 Y');
-  final fs = b.n('size', b.h * 0.15);
+  final fs = b.f('size', b.h * 0.15, b.h);
   final tw = fs * 0.82, th = fs * 1.2, gap = fs * 0.1;
   final roll = b.n('roll', 1.2), stagger = b.n('stagger', 0.12);
   final chars = TextClusters.split(text); // V2-F: whole letters (Devanagari conjuncts stay intact)
@@ -702,7 +702,7 @@ List<Map<String, dynamic>> _numberTiles(_B b) {
     width += (ch == ' ' ? tw * 0.45 : tw) + gap;
   }
   width -= gap;
-  final cmds = b.group('Rolling Tiles', y: b.n('y', b.h * 0.45));
+  final cmds = b.group('Rolling Tiles', y: b.f('y', b.h * 0.45, b.h));
   const digits = '0123456789';
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   var x = -width / 2;
@@ -759,7 +759,7 @@ List<Map<String, dynamic>> _numberTiles(_B b) {
 /// Big serif date/year; a shooting streak flies in and lights it up.
 List<Map<String, dynamic>> _dateTitle(_B b) {
   final text = b.str('text', '1831');
-  final fs = b.n('size', b.h * 0.3);
+  final fs = b.f('size', b.h * 0.3, b.h);
   final color = b.str('color', '#F4E6C8');
   final cmds = b.group('Date Title');
   final streak = b.flag('streak', true);
@@ -816,12 +816,12 @@ List<Map<String, dynamic>> _yearRuler(_B b) {
   final from = b.n('from', 1930).round(), to = math.max(b.n('to', 1970).round(), from + 1);
   final step = math.max(1, b.n('step', 10).round());
   final marker = b.n('marker', (from + to) / 2);
-  final fs = b.n('size', b.h * 0.03);
+  final fs = b.f('size', b.h * 0.03, b.h);
   final spacing = b.n('spacing', b.w * 0.16);
   final pxYear = spacing / step;
   final slide = b.n('slide', 2.2);
   final color = b.str('color', '#E53935');
-  final cmds = b.group('Timeline', x: b.n('x', b.w / 2), y: b.n('y', b.h * 0.82));
+  final cmds = b.group('Timeline', x: b.f('x', b.w / 2, b.w), y: b.f('y', b.h * 0.82, b.h));
   cmds.add(b.shape('band', 'rect', b.w * 1.3, fs * 4.4, 0, fs * 0.7, fill: '#B0000000'));
   cmds.addAll(b.nul('ruler', 0, 0, name: 'Ruler'));
   final ruler = b.id('ruler');

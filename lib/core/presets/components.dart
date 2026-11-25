@@ -160,7 +160,7 @@ class Components {
   // ------------------------------------------------------------------ parts
 
   static List<Map<String, dynamic>> _sourceCard(_B b) {
-    final cw = b.n('width', b.w * 0.42);
+    final cw = b.f('width', b.w * 0.42, b.w);
     final pad = cw * 0.06;
     final fsSrc = cw * 0.034, fsHead = cw * 0.05, fsBody = cw * 0.038;
     final source = b.str('source', 'Source: example.com');
@@ -204,9 +204,9 @@ class Components {
 
   static List<Map<String, dynamic>> _lowerThird(_B b) {
     if (b.str('style', '') == 'bar_wipe') return _lowerThirdBarWipe(b); // V3-C
-    final w = b.n('width', b.w * 0.5);
-    final fs = b.n('size', b.h * 0.026);
-    final x = b.n('x', b.w * 0.05), y = b.n('y', b.h * 0.84);
+    final w = b.f('width', b.w * 0.5, b.w);
+    final fs = b.f('size', b.h * 0.026, b.h);
+    final x = b.f('x', b.w * 0.05, b.w), y = b.f('y', b.h * 0.84, b.h);
     final cmds = b.group('Source Line', x: x, y: y);
     final source = b.str('source', 'Source: example.com');
     final text = b.str('text', '');
@@ -222,7 +222,7 @@ class Components {
   }
 
   static List<Map<String, dynamic>> _badge(_B b, Project p) {
-    final r = b.n('size', b.w * 0.07);
+    final r = b.f('size', b.w * 0.07, b.w);
     final label = b.str('label', '');
     final cmds = b.group('Badge');
     cmds.add(b.shape('disc', 'ellipse', r * 2, r * 2, 0, 0, fill: b.str('color', '#C62828')));
@@ -257,7 +257,7 @@ class Components {
     final mid = b.c['media'];
     final m = mid == null ? null : p.media['$mid'];
     if (m == null) throw ArgumentError('photo_card needs "media" = an image or video id');
-    final pw = b.n('width', b.w * 0.24);
+    final pw = b.f('width', b.w * 0.24, b.w);
     final ph = m.height * pw / m.width;
     final border = pw * 0.04;
     final caption = b.str('caption', '');
@@ -278,7 +278,7 @@ class Components {
   }
 
   static List<Map<String, dynamic>> _pin(_B b, String? parent) {
-    final r = b.n('size', b.w * 0.009);
+    final r = b.f('size', b.w * 0.009, b.w);
     final label = b.str('label', '');
     final cmds = b.group('Pin', parent: parent);
     cmds.add(b.shape('pulse', 'ellipse', r * 2, r * 2, 0, 0, fill: 'none', stroke: b.str('color', '#FF3B30'), strokeWidth: r * 0.3));
@@ -288,7 +288,7 @@ class Components {
     cmds.add({'op': 'set_keyframe', 'target': b.id('pulse'), 'prop': 'opacity', 'time': b.start + 1.4, 'value': 0});
     cmds.add(b.shape('dot', 'ellipse', r * 2, r * 2, 0, 0, fill: b.str('color', '#FF3B30'), stroke: '#FFFFFF', strokeWidth: r * 0.35));
     if (label.isNotEmpty) {
-      final fs = b.n('label_size', b.h * 0.024);
+      final fs = b.f('label_size', b.h * 0.024, b.h);
       final pw = label.length * fs * 0.6 + fs * 1.2;
       cmds.add(b.shape('tag', 'rect', pw, fs * 1.7, 0, -r - fs * 1.3, fill: '#FFFFFF', corner: fs * 0.3));
       cmds.add(b.text('label', label, pw, fs * 1.7, 0, -r - fs * 1.3, fs, color: '#111111', weight: 800));
@@ -320,7 +320,7 @@ class Components {
 
   static List<Map<String, dynamic>> _bubble(_B b) {
     final text = b.str('text', '"Quote"');
-    final w = b.n('width', b.w * 0.18);
+    final w = b.f('width', b.w * 0.18, b.w);
     final fs = b.n('size', w * 0.09);
     final h = math.max(fs * 2.6, (text.length * fs * 0.55 / (w * 0.85)).ceil() * fs * 1.3 + fs * 1.2);
     final cmds = b.group('Speech Bubble');
@@ -335,9 +335,9 @@ class Components {
 
   static List<Map<String, dynamic>> _cta(_B b) {
     final text = b.str('text', 'SUBSCRIBE');
-    final fs = b.n('size', b.h * 0.03);
+    final fs = b.f('size', b.h * 0.03, b.h);
     final pw = text.length * fs * 0.68 + fs * 2;
-    final cmds = b.group('Subscribe Pop-up', x: b.n('x', b.w * 0.84), y: b.n('y', b.h * 0.86));
+    final cmds = b.group('Subscribe Pop-up', x: b.f('x', b.w * 0.84, b.w), y: b.f('y', b.h * 0.86, b.h));
     cmds.add(b.shape('pill', 'rect', pw, fs * 2, 0, 0, fill: b.str('color', '#E53935'), corner: fs));
     cmds.add(b.text('txt', text, pw, fs * 2, 0, 0, fs, color: '#FFFFFF', weight: 900));
     return b.finish(cmds, enter: 'slide_left', exit: 'slide_right');
@@ -350,9 +350,9 @@ class Components {
     final from = b.n('from', 1930).round(), to = b.n('to', 1970).round();
     final step = math.max(1, b.n('step', 10).round());
     final marker = b.n('marker', (from + to) / 2);
-    final w = b.n('width', b.w * 0.7);
-    final fs = b.n('size', b.h * 0.022);
-    final cmds = b.group('Timeline', x: b.n('x', b.w / 2), y: b.n('y', b.h * 0.88));
+    final w = b.f('width', b.w * 0.7, b.w);
+    final fs = b.f('size', b.h * 0.022, b.h);
+    final cmds = b.group('Timeline', x: b.f('x', b.w / 2, b.w), y: b.f('y', b.h * 0.88, b.h));
     double xOf(num year) => -w / 2 + (year - from) / math.max(1, to - from) * w;
     cmds.add({'op': 'add_layer', 'type': 'shape', 'id': b.id('axis'), 'parent': b.g, 'start': b.start, 'duration': b.dur,
       'points': [[-w / 2, 0], [w / 2, 0]], 'fill': 'none', 'stroke': '#FFFFFF', 'stroke_width': 3});
@@ -376,7 +376,7 @@ class Components {
   }
 
   static List<Map<String, dynamic>> _counter(_B b) {
-    final fs = b.n('size', b.h * 0.12);
+    final fs = b.f('size', b.h * 0.12, b.h);
     final cmds = b.group('Counter');
     final id = b.id('num');
     cmds.add({
@@ -393,7 +393,7 @@ class Components {
   }
 
   static List<Map<String, dynamic>> _glowWord(_B b, Project p) {
-    final fs = b.n('size', b.h * 0.16);
+    final fs = b.f('size', b.h * 0.16, b.h);
     final text = b.str('text', 'WORD').toUpperCase();
     final cmds = b.group('Glow Word');
     final id = b.id('word');
@@ -410,7 +410,7 @@ class Components {
   }
 
   static List<Map<String, dynamic>> _tv(_B b) {
-    final w = b.n('width', b.w * 0.42);
+    final w = b.f('width', b.w * 0.42, b.w);
     final h = w * 0.78;
     final cmds = b.group('TV Frame');
     cmds.add(b.shape('body', 'rect', w, h, 0, 0, fill: '#4A3A2C', fill2: '#2A2019', corner: w * 0.05));
@@ -548,6 +548,14 @@ class _B {
   double get start => (c['start'] as num?)?.toDouble() ?? now;
   double get dur => (c['duration'] as num?)?.toDouble() ?? 5;
   double n(String k, num d) => (c[k] as num?)?.toDouble() ?? d.toDouble();
+
+  /// win-30: a length or position given as a fraction (0–1) of [base] or in px.
+  double f(String k, num d, double base) {
+    final v = c[k];
+    if (v is! num) return d.toDouble();
+    final x = v.toDouble();
+    return x > 0 && x <= 1 ? x * base : x;
+  }
   String str(String k, String d) => c[k] == null ? d : '${c[k]}';
   List<String> list(String k) => [for (final v in (c[k] as List? ?? const [])) '$v'];
   List<double> vec(String k, List<double> d) {

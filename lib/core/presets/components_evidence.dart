@@ -734,7 +734,7 @@ List<Map<String, dynamic>> _evArticle(_B b, Project p) {
   final bg = b.str('backdrop', full ? 'none' : 'stars');
   final dark = b.str('theme', 'light') == 'dark';
   final overEnter = b.str('enter', 'slide_up') == 'slide_up_over';
-  final gx = b.n('x', b.w / 2), gy = b.n('y', b.h / 2);
+  final gx = b.f('x', b.w / 2, b.w), gy = b.f('y', b.h / 2, b.h);
 
   // Backdrop (under a null so it can slide in with the page).
   if (bg != 'none') {
@@ -860,7 +860,7 @@ List<Map<String, dynamic>> _evArticlePage(_B b, Project p, _EvInk ink, int i, Me
   final pre = 'a$i';
   final full = b.flag('fullbleed', false);
   final dark = ink.dark;
-  final pw = full ? b.w : b.n('width', b.w * 0.5);
+  final pw = full ? b.w : b.f('width', b.w * 0.5, b.w);
   final margin = full ? 0.0 : pw * 0.04;
   final iw0 = pw - margin * 2;
   final double mw = m?.width ?? iw0, mh = m?.height ?? iw0 * 1.3;
@@ -1125,7 +1125,7 @@ List<Map<String, dynamic>> _evCircleMark(_B b0, Project p) {
   final draw = b0.n('draw', 0.5), hold = b0.n('hold', 0.9);
   final undraw = b0.flag('undraw', true);
   final b = _evWithDur(b0, draw + hold + (undraw ? 0.4 : 0.6));
-  var x = b.n('x', b.w / 2), y = b.n('y', b.h / 2);
+  var x = b.f('x', b.w / 2, b.w), y = b.f('y', b.h / 2, b.h);
   final attach = b.c['attach'];
   if (attach is String) {
     final pt = _screenPointOf(p.editComp, attach, b.start, b.vec('at', [0.5, 0.5]));
@@ -1134,7 +1134,7 @@ List<Map<String, dynamic>> _evCircleMark(_B b0, Project p) {
       y = pt[1];
     }
   }
-  final cw = b.n('width', b.h * 0.22), ch = b.n('height', cw);
+  final cw = b.f('width', b.h * 0.22, b.h), ch = b.n('height', cw);
   final color = b.str('color', '#F01818');
   final sw = _evSize(b, 'stroke', 0.012, b.h, limit: 0.2);
   final cmds = b.group('Circle Mark', x: 0, y: 0);
@@ -1159,7 +1159,7 @@ List<Map<String, dynamic>> _evCircleMark(_B b0, Project p) {
 List<Map<String, dynamic>> _evInsetCircle(_B b0, Project p) {
   final b = _evWithDur(b0, 4);
   final d = _evSize(b, 'size', 0.3, b.h);
-  final x = b.n('x', b.w * 0.74), y = b.n('y', b.h * 0.4);
+  final x = b.f('x', b.w * 0.74, b.w), y = b.f('y', b.h * 0.4, b.h);
   final from = b.vec('from', [x, y + d * 0.6]);
   final ring = b.c['ring'] is Map ? Map<String, dynamic>.from(b.c['ring'] as Map) : const <String, dynamic>{};
   final rc = '${ring['color'] ?? b.str('ring_color', '#FFFFFF')}';
@@ -1176,7 +1176,7 @@ List<Map<String, dynamic>> _evInsetCircle(_B b0, Project p) {
   cmds.add(b.shape('ring', 'ellipse', d + rw, d + rw, 0, 0, fill: 'none', stroke: rc, strokeWidth: rw));
   final label = b.str('label', '');
   if (label.isNotEmpty) {
-    final fs = b.n('label_size', b.h * 0.042);
+    final fs = b.f('label_size', b.h * 0.042, b.h);
     final tw = math.max(d, label.length * fs * 0.68 + fs);
     final t1 = b.start + 0.35;
     final yellow = b.str('label_style', 'yellow_outline') == 'yellow_outline';
@@ -1475,7 +1475,7 @@ List<Map<String, dynamic>> _evNoteCard(_B b0) {
   final paper = b.str('paper', 'notebook');
   final cw = _evSize(b, 'width', 0.32, b.w, limit: 1);
   final ch = b.c['height'] is num ? _evSize(b, 'height', 0.4, b.h, limit: 1) : (paper == 'sticky' ? cw : cw * 1.25);
-  final x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.5);
+  final x = b.f('x', b.w * 0.5, b.w), y = b.f('y', b.h * 0.5, b.h);
   final tilt = b.n('tilt', -6);
   final text = b.str('text', 'PLAN');
   final cmds = b.group('Note Card', x: x, y: y, tilt: tilt);
@@ -1556,7 +1556,7 @@ List<Map<String, dynamic>> _evSheet(_B b, Project p, double cw, double ch, Strin
   cmds.add(b.fx(sheet, 'shadow', {'distance': 16, 'blur': 22, 'opacity': 50}));
   cmds.add(b.fx(sheet, 'paper', {'amount': 50}));
   if (paper == 'notebook') {
-    final gap = b.n('size', b.h * 0.042) * 1.5;
+    final gap = b.f('size', b.h * 0.042, b.h) * 1.5;
     cmds.add(_evRings(b, 'rule', [
       for (var ly = -ch / 2 + gap * 1.45; ly < ch / 2 - gap * 0.3; ly += gap) [-cw / 2 + cw * 0.03, ly, cw / 2 - cw * 0.03, ly],
     ], stroke: '#9DB7D9', width: math.max(1.5, ch * 0.0035)));
@@ -1569,7 +1569,7 @@ List<Map<String, dynamic>> _evSheet(_B b, Project p, double cw, double ch, Strin
 
 List<Map<String, dynamic>> _evListCard(_B b0, Project p) {
   final items = b0.specs('items', 'text');
-  final fs = b0.n('size', b0.h * 0.042);
+  final fs = b0.f('size', b0.h * 0.042, b0.h);
   final cps = b0.n('write_cps', 16);
   final interval = b0.n('item_interval', 0.4);
   final writes = [for (final it in items) ('${it['text'] ?? ''}'.length / cps).clamp(0.3, 1.6).toDouble()];
@@ -1584,7 +1584,7 @@ List<Map<String, dynamic>> _evListCard(_B b0, Project p) {
   final pad = cw * 0.12;
   final rows = items.length + (title.isEmpty ? 0 : 1);
   final ch = b.c['height'] is num ? _evSize(b, 'height', 0.6, b.h, limit: 1) : math.max(cw * 0.9, lineH * (rows + 1.2) + pad);
-  final x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.5), tilt = b.n('tilt', -3);
+  final x = b.f('x', b.w * 0.5, b.w), y = b.f('y', b.h * 0.5, b.h), tilt = b.n('tilt', -3);
   final cmds = b.group('List Card', x: x, y: y, tilt: tilt);
   cmds.addAll(_evSheet(b, p, cw, ch, b.str('paper', 'notebook')));
   final font = b.str('font', 'Kalam');
@@ -1654,7 +1654,7 @@ List<Map<String, dynamic>> _evHandwriteCard(_B b0, Project p) {
   final write = text.length / cps;
   final pen = b0.mediaOf(p, 'pen');
   final b = _evWithDur(b0, 0.5 + write + (pen != null ? 0.5 : 0) + 1.5 + 0.3);
-  final fs = b.n('size', b.h * 0.042);
+  final fs = b.f('size', b.h * 0.042, b.h);
   final cw = _evSize(b, 'width', 0.42, b.w, limit: 1);
   final pad = cw * 0.1;
   final tw = cw - pad * 2;
@@ -1662,7 +1662,7 @@ List<Map<String, dynamic>> _evHandwriteCard(_B b0, Project p) {
   final nLines = math.max(1, (text.length / cpl).ceil());
   final lineH = fs * 1.5;
   final ch = b.c['height'] is num ? _evSize(b, 'height', 0.5, b.h, limit: 1) : math.max(cw * 0.62, pad * 2 + nLines * lineH + fs);
-  final x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.5), tilt = b.n('tilt', -2);
+  final x = b.f('x', b.w * 0.5, b.w), y = b.f('y', b.h * 0.5, b.h), tilt = b.n('tilt', -2);
   final cmds = b.group('Handwritten Note', x: x, y: y, tilt: tilt);
   cmds.addAll(_evSheet(b, p, cw, ch, b.str('paper', 'notebook')));
   final t1 = b.start + 0.5;
@@ -1778,9 +1778,9 @@ List<Map<String, dynamic>> _evQuoteHole(_B b0, Project p) {
 List<Map<String, dynamic>> _evSourceTag(_B b0, Project p) {
   final b = _evWithDur(b0, 3.5);
   final text = b.str('text', 'Source – example.com');
-  final fs = b.n('size', b.h * 0.024);
+  final fs = b.f('size', b.h * 0.024, b.h);
   final pw = text.length * fs * 0.52 + fs * 1.8, ph = fs * 1.9;
-  var x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.88);
+  var x = b.f('x', b.w * 0.5, b.w), y = b.f('y', b.h * 0.88, b.h);
   final attach = b.c['attach'];
   if (attach is String) {
     final pt = _screenPointOf(p.editComp, attach, b.start, b.vec('at', [0.5, 1.0]));
@@ -1908,7 +1908,7 @@ List<Map<String, dynamic>> _evObjectReveal(_B b0, Project p) {
   final comp = p.editComp;
   final m = b.mediaOf(p, 'media');
   final size = _evSize(b, 'size', 0.22, b.h);
-  final y = b.n('y', b.h * 0.6);
+  final y = b.f('y', b.h * 0.6, b.h);
   final path = b.str('path', 'roll_lr');
   final ltr = !path.endsWith('_rl');
   final roll = path.startsWith('roll');
@@ -2035,7 +2035,7 @@ List<Map<String, dynamic>> _evPhotoWall(_B b0, Project p) {
 List<Map<String, dynamic>> _evStain(_B b0) {
   final b = _evWithDur(b0, 4);
   final size = _evSize(b, 'size', 0.45, b.h);
-  final x = b.n('x', b.w / 2), y = b.n('y', b.h / 2);
+  final x = b.f('x', b.w / 2, b.w), y = b.f('y', b.h / 2, b.h);
   final color = b.str('color', '#D00010');
   final tones = b.n('tones', 2).round().clamp(1, 3);
   final grow = math.max(0.05, b.n('grow', 0.5));
@@ -2155,7 +2155,7 @@ List<Map<String, dynamic>> _evDoodle(_B b0) {
 /// Plain / printed label: small red role over a big heavy name, no box.
 List<Map<String, dynamic>> _evPlainLabel(_B b0, Project p) {
   final b = _evWithDur(b0, 4);
-  var x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.3);
+  var x = b.f('x', b.w * 0.5, b.w), y = b.f('y', b.h * 0.3, b.h);
   final attach = b.c['attach'];
   if (attach is String) {
     final pt = _screenPointOf(p.editComp, attach, b.start, b.vec('at', [0.5, 0.12]));
@@ -2167,7 +2167,7 @@ List<Map<String, dynamic>> _evPlainLabel(_B b0, Project p) {
   final printed = b.str('style', 'plain') == 'print';
   final name = b.str('name', b.str('text', 'NAME')).toUpperCase();
   final role = b.str('role', '').toUpperCase();
-  final fs = b.n('size', b.h * 0.05);
+  final fs = b.f('size', b.h * 0.05, b.h);
   final on = b.c['on'];
   final parent = on is String && p.editComp.layerById(on) != null ? on : null;
   final cmds = b.group('Label', x: x, y: y, tilt: b.n('tilt', 0), parent: parent);
@@ -2228,7 +2228,7 @@ List<Map<String, dynamic>> _evArrowLabel(_B b0) {
   cmds.add(_evKf(id, 'trim', t0 + 0.25, [0, 100]));
   final name = b.str('name', b.str('text', '')).toUpperCase();
   final role = b.str('role', '').toUpperCase();
-  final fs = b.n('size', b.h * 0.05);
+  final fs = b.f('size', b.h * 0.05, b.h);
   final above = from[1] - fs * 0.5;
   if (name.isNotEmpty) {
     final nw = math.max(fs * 3, name.length * fs * 0.64 + fs);

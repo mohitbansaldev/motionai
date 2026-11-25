@@ -267,7 +267,7 @@ class _MapKit {
     cmds.addAll(_pinGroup(b, map, place.pt, 'Avatar Pin'));
     final t0 = math.min(b.start + delay, b.end - 0.2);
     final du = b.end - t0;
-    final r = b.n('size', b.h * 0.055);
+    final r = b.f('size', b.h * 0.055, b.h);
     cmds.addAll(b.nul('body', 0, 0, st: t0, du: du, name: 'Avatar'));
     cmds.addAll(_avatarBody(b, p, b.id('body'), r, t0, du, label: b.str('label', '')));
     cmds.add({'op': 'animate_in', 'layer': b.id('body'), 'preset': 'pop', 'duration': 0.5});
@@ -540,7 +540,7 @@ class _SceneKit {
   /// Curved board (wood or glass) with a picture that pops out with overshoot.
   static List<Map<String, dynamic>> board(_B b, Project p) {
     final m = b.mediaOf(p, 'media');
-    final bw = b.n('width', b.w * 0.46);
+    final bw = b.f('width', b.w * 0.46, b.w);
     final inset = bw * 0.07;
     final pw = bw - inset * 2;
     final ph = m == null ? pw * 0.62 : pw * m.height / math.max(1, m.width);

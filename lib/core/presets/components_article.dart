@@ -81,7 +81,7 @@ List<Map<String, dynamic>> _article(_B b, Project p) {
 
 List<Map<String, dynamic>> _articlePage(_B b, int i, MediaAsset? m, double st, double du, List<Map<String, dynamic>> marks, String enter) {
   final pre = 'a$i';
-  final pw = b.n('width', b.w * 0.5);
+  final pw = b.f('width', b.w * 0.5, b.w);
   final margin = pw * 0.04;
   final iw = pw - margin * 2;
   // Page content in its own pixels (mw × mh) shown at scale s.

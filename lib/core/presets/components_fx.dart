@@ -42,7 +42,7 @@ List<Map<String, dynamic>> _bubbleV3(_B b0, Project p, Composition comp) {
   final start = b.start, end = b.start + dur;
 
   // Size from the longest message.
-  final w = b.n('width', b.w * 0.22);
+  final w = b.f('width', b.w * 0.22, b.w);
   final fs = b.n('size', w * 0.085);
   var longest = 0;
   for (final (t, _) in msgs) {
@@ -76,7 +76,7 @@ List<Map<String, dynamic>> _bubbleV3(_B b0, Project p, Composition comp) {
     target = topOf(attach);
   }
   // Bubble centre: given, else up and to the side of the target, inside the frame.
-  var cx = b.n('x', b.w / 2), cy = b.n('y', b.h / 2);
+  var cx = b.f('x', b.w / 2, b.w), cy = b.f('y', b.h / 2, b.h);
   if (target != null && c['x'] == null && c['y'] == null) {
     final side = target.$1 > b.w * 0.62 ? -1.0 : 1.0;
     cx = (target.$1 + side * (w * 0.45 + b.w * 0.04)).clamp(w / 2 + 12, b.w - w / 2 - 12).toDouble();

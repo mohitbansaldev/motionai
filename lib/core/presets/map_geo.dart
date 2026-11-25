@@ -683,7 +683,7 @@ class _Geo {
       cmds.addAll(_MapKit._pinGroup(b, map, pl.pt, name));
       return cmds;
     }
-    final xy = at is List && at.length >= 2 ? b.vec('at', [b.w / 2, b.h / 2]) : [b.n('x', b.w / 2), b.n('y', b.h / 2)];
+    final xy = at is List && at.length >= 2 ? b.vec('at', [b.w / 2, b.h / 2]) : [b.f('x', b.w / 2, b.w), b.f('y', b.h / 2, b.h)];
     return b.group(name, x: xy[0], y: xy[1]);
   }
 

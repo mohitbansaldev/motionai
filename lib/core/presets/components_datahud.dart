@@ -258,7 +258,7 @@ List<Map<String, dynamic>> _unitChart(_B b, Project p) {
   final gridW = cols * cell;
   final gx = x0 + ((x1 - x0) - gridW) / 2;
   final lid = b.id('total');
-  final fs = b.n('label_size', b.h * 0.055);
+  final fs = b.f('label_size', b.h * 0.055, b.h);
   cmds.add({...b.text('total', totalLabel, gridW * 1.2, fs * 1.4, gx + gridW / 2, y0 + fs * 0.6, fs, color: '#FFFFFF', weight: 900), 'shadow': true, 'font': 'Poppins'});
   cmds.add(b.fx(lid, 'blur', {'amount': 30}, '${lid}_blur'));
   cmds.add({'op': 'set_keyframe', 'target': lid, 'effect': '${lid}_blur', 'prop': 'amount', 'time': b.start, 'value': 30, 'ease': 'ease_out'});
@@ -440,8 +440,8 @@ String _dhNumber(double v, int decimals) {
 /// Icon with a number above that steps (rolling digits) and turns red, a
 /// typed small-caps label, and a figure silhouette tinting grey → red.
 List<Map<String, dynamic>> _statFigure(_B b, Project p) {
-  final size = b.n('size', b.h * 0.18);
-  final x = b.n('x', b.w * 0.4), y = b.n('y', b.h * 0.55);
+  final size = b.f('size', b.h * 0.18, b.h);
+  final x = b.f('x', b.w * 0.4, b.w), y = b.f('y', b.h * 0.55, b.h);
   final from = b.n('from', 0), to = b.n('to', 100);
   final steps = b.n('steps', 6).round().clamp(1, 40);
   final decimals = b.n('decimals', 0).round().clamp(0, 4);
@@ -544,7 +544,7 @@ List<Map<String, dynamic>> _calendarFlip(_B b) {
   final tilt = b.c['tilt'] is List && (b.c['tilt'] as List).length >= 3
       ? [for (final v in (b.c['tilt'] as List).take(3)) (v as num).toDouble()]
       : [50.0, 0.0, -20.0];
-  final x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.48);
+  final x = b.f('x', b.w * 0.5, b.w), y = b.f('y', b.h * 0.48, b.h);
   final cmds = b.group('Calendar', x: x, y: y);
   cmds.add({'op': 'update_layer', 'layer': b.g, 'is3d': true});
   cmds.add(b.setp(b.g, 'rotation', tilt));
@@ -612,7 +612,7 @@ List<Map<String, dynamic>> _calendarFlip(_B b) {
   }
   final caption = b.str('caption', '');
   if (caption.isNotEmpty) {
-    final cfs = b.n('caption_size', b.h * 0.05);
+    final cfs = b.f('caption_size', b.h * 0.05, b.h);
     final ct = t0 + (n - 1) / rate + flip * 0.5;
     if (ct < b.end - 0.1) {
       cmds.add({
@@ -643,8 +643,8 @@ List<Map<String, dynamic>> _calendarFlip(_B b) {
 List<Map<String, dynamic>> _clockStamp(_B b) {
   var lines = b.specs('lines', 'text');
   if (lines.isEmpty) lines = [{'text': b.str('text', '12 DEC 1972')}];
-  final size = b.n('size', b.h * 0.058);
-  final x = b.n('x', b.w * 0.045);
+  final size = b.f('size', b.h * 0.058, b.h);
+  final x = b.f('x', b.w * 0.045, b.w);
   final gap = size * 1.28;
   final y = b.n('y', b.h * 0.9 - gap * (lines.length - 1));
   final cps = b.n('cps', 13).clamp(2, 80).toDouble();
@@ -727,7 +727,7 @@ List<Map<String, dynamic>> _clockStamp(_B b) {
 List<Map<String, dynamic>> _clockOverlay(_B b) {
   final dia = b.n('scale', 140) / 100 * b.h * 0.75;
   final r = dia / 2;
-  final x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.5);
+  final x = b.f('x', b.w * 0.5, b.w), y = b.f('y', b.h * 0.5, b.h);
   final opacity = b.n('opacity', 30).clamp(0, 100).toDouble();
   final spin = b.n('spin', b.n('speed', 1)); // minute-hand turns per second
   final color = b.str('color', '#FFFFFF');
@@ -951,9 +951,9 @@ List<Map<String, dynamic>> _gaugeHud(_B b) {
   final unit = b.str('unit', 'FT');
   final pColor = b.str('pointer_color', '#E01010');
   final color = b.str('color', '#FFFFFF');
-  final win = vertical ? b.n('height', b.h * 0.7) : b.n('width', b.w * 0.6);
+  final win = vertical ? b.f('height', b.h * 0.7, b.h) : b.f('width', b.w * 0.6, b.w);
   final spacing = b.n('spacing', (vertical ? b.h : b.w) * 0.09);
-  final fs = b.n('label_size', b.h * 0.022);
+  final fs = b.f('label_size', b.h * 0.022, b.h);
   final x = b.n('x', vertical ? (side == 'left' ? b.w * 0.105 : b.w * 0.895) : b.w * 0.5);
   final y = b.n('y', vertical ? b.h * 0.5 : (side == 'top' ? b.h * 0.1 : b.h * 0.9));
   final t0 = b.start + b.n('delay', 0.3);
@@ -1024,11 +1024,11 @@ List<Map<String, dynamic>> _gaugeHud(_B b) {
 List<Map<String, dynamic>> _iconSticker(_B b, Project p) {
   var items = b.specs('items', 'icon');
   if (items.isEmpty) items = [{'icon': 'plane'}, {'icon': 'radio', 'at': 1.4}];
-  final size = b.n('size', b.h * 0.13);
+  final size = b.f('size', b.h * 0.13, b.h);
   final color = b.str('color', '#FFE500');
   final iconColor = b.str('icon_color', '#111111');
   final swap = b.str('swap', 'squash');
-  final cmds = b.group('Icon Sticker', x: b.n('x', b.w * 0.8), y: b.n('y', b.h * 0.45));
+  final cmds = b.group('Icon Sticker', x: b.f('x', b.w * 0.8, b.w), y: b.f('y', b.h * 0.45, b.h));
   final disc = b.id('disc');
   cmds.add(b.shape('disc', 'ellipse', size, size, 0, 0, fill: color, fill2: _shade(color, 0.86)));
   cmds.add(b.fx(disc, 'shadow', {'distance': size * 0.05, 'blur': size * 0.12, 'opacity': 45}));
@@ -1081,8 +1081,8 @@ List<Map<String, dynamic>> _iconSticker(_B b, Project p) {
 
 /// Big vector icon dropping from the top with a bounce (or rising).
 List<Map<String, dynamic>> _iconDrop(_B b, Project p) {
-  final size = b.n('size', b.h * 0.22);
-  final x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.5);
+  final size = b.f('size', b.h * 0.22, b.h);
+  final x = b.f('x', b.w * 0.5, b.w), y = b.f('y', b.h * 0.5, b.h);
   final icon = b.c['media'] ?? b.c['preset'] ?? b.str('icon', 'stop');
   final rise = b.str('enter', 'drop') == 'rise';
   final bounce = b.flag('bounce', true);
@@ -1170,8 +1170,8 @@ List<Map<String, dynamic>> _socialCta(_B b0, {required bool bug}) {
   final hold = b0.n('hold', 2.8);
   final b = b0.c['duration'] == null ? _B(b0.w, b0.h, {...b0.c, 'duration': 0.4 + hold + 0.3}, b0.now, b0.root) : b0;
   final color = b.str('color', info?.$2 ?? '#E53935');
-  final s = b.n('size', b.h * 0.075);
-  final cmds = b.group(bug ? 'Social Bug' : 'Social Call-out', x: b.n('x', b.w * 0.78), y: b.n('y', b.h * 0.7));
+  final s = b.f('size', b.h * 0.075, b.h);
+  final cmds = b.group(bug ? 'Social Bug' : 'Social Call-out', x: b.f('x', b.w * 0.78, b.w), y: b.f('y', b.h * 0.7, b.h));
   // swoosh behind the text
   final line1 = b.str('line1', info?.$3 ?? 'FOLLOW US ON').toUpperCase();
   final line2 = b.str('line2', info?.$1 ?? b.str('platform', 'Custom'));
@@ -1344,7 +1344,7 @@ List<Map<String, dynamic>> _audioWave(_B b) {
 
 /// Round country flag badge (simple drawn flag, else colour disc + code).
 List<Map<String, dynamic>> _flagBadge(_B b) {
-  final size = b.n('size', b.h * 0.12);
+  final size = b.f('size', b.h * 0.12, b.h);
   final country = b.str('country', 'IN');
   final flag = Flags.find(country);
   final cmds = b.group('Flag Badge');
@@ -1389,8 +1389,8 @@ List<Map<String, dynamic>> _flagBadge(_B b) {
 List<Map<String, dynamic>> _presenterStats(_B b) {
   var lines = b.specs('lines', 'text');
   if (lines.isEmpty) lines = [{'text': '72 DAYS'}, {'text': '16 SURVIVORS', 'at': 1.4}];
-  final size = b.n('size', b.h * 0.03);
-  final x = b.n('x', b.w * 0.67), y = b.n('y', b.h * 0.3);
+  final size = b.f('size', b.h * 0.03, b.h);
+  final x = b.f('x', b.w * 0.67, b.w), y = b.f('y', b.h * 0.3, b.h);
   final gap = b.n('gap', 1.6);
   final color = b.str('color', '#FFFFFF');
   final cps = b.n('cps', 22).clamp(4, 80).toDouble();
@@ -1421,8 +1421,8 @@ List<Map<String, dynamic>> _presenterStats(_B b) {
 
 /// Gradient bar wiping L→R (0.25 s) with typed text; slides down on exit.
 List<Map<String, dynamic>> _lowerThirdBarWipe(_B b) {
-  final w = _dhFrac(b.n('width', 0.42), b.w), h = b.n('height', b.h * 0.062);
-  final x = b.n('x', b.w * 0.05), y = b.n('y', b.h * 0.86);
+  final w = _dhFrac(b.n('width', 0.42), b.w), h = b.f('height', b.h * 0.062, b.h);
+  final x = b.f('x', b.w * 0.05, b.w), y = b.f('y', b.h * 0.86, b.h);
   final grad = b.c['gradient'] is List && (b.c['gradient'] as List).length >= 2
       ? ['${(b.c['gradient'] as List)[0]}', '${(b.c['gradient'] as List)[1]}']
       : [b.str('color', '#E53935'), b.str('color2', '#7A0F2B')];
@@ -1466,7 +1466,7 @@ List<Map<String, dynamic>> _infoCard(_B b) {
   var lines = b.list('lines');
   if (lines.isEmpty) lines = ['13 OCT 1972', 'MONTEVIDEO, URUGUAY'];
   final w = _dhFrac(b.n('width', 0.3), b.w);
-  final tfs = b.n('title_size', b.h * 0.032), lfs = b.n('size', b.h * 0.022);
+  final tfs = b.f('title_size', b.h * 0.032, b.h), lfs = b.f('size', b.h * 0.022, b.h);
   final pad = tfs * 0.8;
   final h = pad * 2 + tfs * 1.3 + lines.length * lfs * 1.55;
   final x = b.n('x', b.w * 0.04 + w / 2), y = b.n('y', b.h * 0.92 - h / 2);
@@ -1502,10 +1502,10 @@ List<Map<String, dynamic>> _statTitle(_B b) {
   final line1 = b.str('line1', 'HE SURVIVED');
   final line2 = b.str('line2', '72 DAYS');
   final emphasis = b.n('emphasis', 1.6).clamp(0.5, 4).toDouble();
-  final fs = b.n('size', b.h * 0.06);
+  final fs = b.f('size', b.h * 0.06, b.h);
   final style = b.str('style', 'red_outline');
   final textStyle = switch (style) { 'yellow' => 'stat_yellow', 'red' || 'red_outline' => 'stat_red_outline', _ => null };
-  final cmds = b.group('Stat Title', x: b.n('x', b.w * 0.5), y: b.n('y', b.h * 0.5));
+  final cmds = b.group('Stat Title', x: b.f('x', b.w * 0.5, b.w), y: b.f('y', b.h * 0.5, b.h));
   final f2 = fs * emphasis;
   final y1 = -(f2 * 1.15) / 2 - fs * 0.2, y2 = fs * 0.55;
   Map<String, dynamic> line(String part, String text, double size, double y, double t) {

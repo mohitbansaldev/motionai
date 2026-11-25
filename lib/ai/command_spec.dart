@@ -40,7 +40,7 @@ set_comp {name?, width?, height?, fps?, duration?, background?}
 SHAPES: add_layer {type:"shape", kind: rect|ellipse|polygon|star|line|path, width, height, fill, fill2, stroke, stroke_width, corner, sides, inner, dash:[on,off], arrow_end, arrow_start, points:[[x,y],...] (composition px, for line/path), smooth, closed}. Animate drawing with set_keyframe prop "trim" [start%, end%] e.g. [0,0] -> [0,100].
 TEXT EXTRAS (add_layer/update_layer text): marks:[{phrase, style: highlight|circle|underline|color, delay (s after layer start), duration, color}], counter:{from,to,prefix,suffix,decimals,delay,duration}, outline (stroke width for outline-only text).
 EFFECTS (more): outline{width,color}, shadow{distance,angle,blur,opacity}, dust{amount,size}, shatter{progress 0-100,color}, paper{amount}, grunge{amount}, flicker{amount}, flash{amount 0-100 (keyframe it), color}, glitch{amount}. Transition preset "shatter" also exists. An effect only accepts its own params (unknown names are an error).
-COMPONENTS (documentary kit) — add_component {type, id?, start?, duration?, x?, y?, scale?, enter?, exit?, ...}:
+COMPONENTS (documentary kit) — add_component {type, id?, start?, duration?, x?, y?, scale?, enter?, exit?, ...} (x, y, size, width, height, *_size: a fraction 0–1 of the frame or px):
   source_card {source, headline, body, highlights:[phrases in body], circle:"word/date", underline, style: white|paper, width, tilt}
   lower_third {source, text, highlights}
   badge {label, color, media?, size, break_at? (seconds → shatters)}
@@ -298,7 +298,7 @@ MOOD & CHARACTER FX (edit ops, one undo step each):
 // ---- end V3-D ----
 
 // ---- V3-C DATA, HUD & OVERLAYS ----
-DATA / HUD / OVERLAY COMPONENTS (add_component {type, id?, start?, duration?, x?, y?, sfx?: false, ...}; groups "<id>_g" like the doc kit; x/y in comp px; pop/tick/ui_click/clock_tick sounds are added unless sfx:false):
+DATA / HUD / OVERLAY COMPONENTS (add_component {type, id?, start?, duration?, x?, y?, sfx?: false, ...}; groups "<id>_g" like the doc kit; x/y in comp px or 0–1 fractions; pop/tick/ui_click/clock_tick sounds are added unless sfx:false):
   unit_chart {total_label ("45 PASSENGERS"), groups:[{count, color, label, at? (s after start = when narrated)}], icon: person|seat|<vector icon>|media id, cols (10), area:[x0,y0,x1,y1] (0..1 of frame), stagger (0.03)} — WHEN a total and its breakdown is spoken (passengers, soldiers, votes).
   people_grid {total, alive, alive_color (#C62828), dead_color (#8A8A8A), dead: fade|grey|x, dead_at (1.6), rows (2), names:[{name, role}], count_text, count_at, media? (20% photo underlay), alive_index?:[..]} — WHEN survivors vs casualties are counted.
   stat_figure {icon: scale|money|clock|fuel|<icon>|media, from, to, steps (6), step_time (0.25) | count (total s), label, unit, prefix, decimals, figure: human|media id|none, color_from (#FFFFFF), color_to (#E53935)} — WHEN a value changes over time (weight lost, money spent, fuel left).
