@@ -50,3 +50,14 @@ rebuilds them with its own graphics, not their footage, logos or artwork.
 5. **AI script mode**: paste the script; the AI tags each sentence (place → map, citation →
    source card, organisation → badge, number → counter, date → timeline) and builds the
    B-roll automatically, cutting between A-roll and B-roll.
+
+## Reference analysis — "Balochistan Issue Explained" (20 clips, ~14 min sampled, win-30)
+
+Screen time (approx.): presenter A-roll 35–40 % · maps 25–30 % · evidence (articles, quote cards, documents) ~25 % · illustrated story scenes 20–25 % · archival photo frames / symbolic graphics ~10 %.
+Pacing: B-roll shots 3–8 s, presenter returns every 10–20 s, a new element every 1–2 s, the camera never stops.
+
+- **Maps**: oblique 3D terrain (hill-shade relief), flat bold fills (yellow / purple / maroon / teal / green), thick light borders, huge standing 3D labels with shadow ("WEST PAKISTAN"), condensed caps place names, red pins dropping, leader-line callouts ("1871 Goldsmid Line" red year badge), dotted routes, emblems and evidence cards placed on the map, stamp slamming "INDEPENDENT", low continuous flyover.
+- **Evidence**: browser screenshots with dark vignette + blur edges, slow push / scroll, yellow highlight sweeping word by word; quote cards (source logo, title, highlighted body) over illustrated scenes; torn-paper strips (DAWN); newspaper front pages; documents falling onto a wooden desk under a spotlight.
+- **Story scenes**: rich warm AI illustrations (treaty signing, council, fighters in mountains), faces anonymised with black / red bars, name label in a colour box + year, crowd cut-outs layered in rows sliding in (parallax), slow push.
+- **A-roll overlays**: timeline ruler with a dated marker (8 DEC 1876), "Join us on" social CTA, handle bug.
+- **Look**: warm tungsten A-roll, dark vignettes, high contrast, light grain; heavy condensed white caps, highlighter yellow, red accents. Very little free text — labels and highlighted sources carry the words.
