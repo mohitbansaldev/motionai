@@ -1037,7 +1037,7 @@ class _Ctx {
     }
     key(b.prop(Props.scale), t0, [bScale[0] * 1.05, bScale[1] * 1.05, bScale[2]], _outCubic);
     key(b.prop(Props.scale), t1, bScale, _outCubic);
-    this.v3InkDuo(); // V3-D: incoming "duotone_of_outgoing"
+    v3InkDuo(); // V3-D: incoming "duotone_of_outgoing"
   }
 
   // 11d. Smoke reveal with drifting smoke over the cut.
