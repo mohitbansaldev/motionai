@@ -326,7 +326,8 @@ void main() {
         0x00, 0x00, 0x00, 0x00, // no next IFD
       ];
       final jpg = Uint8List.fromList([...plain.sublist(0, 2), ...app1, ...plain.sublist(2)]);
-      expect(img.decodeJpg(jpg)!.exif.imageIfd.orientation, 6);
+      // package:image applies the orientation while decoding JPEGs.
+      expect(img.decodeJpg(jpg)!.width, 20);
       final (bytes, w, h) = ImageIo.normalizeBytes(jpg, 'out.jpg');
       expect((w, h), (20, 60));
       expect(img.decodeJpg(bytes)!.width, 20);
@@ -513,25 +514,24 @@ void main() {
   });
 
   group('model store', () {
-    test('downloads once, checks the hash and reports progress', () async {
-      final data = Uint8List.fromList(List.generate(300000, (i) => (i * 31) & 0xFF));
-      var hits = 0;
-      final oldClient = ModelStore.httpClient;
+    final data = Uint8List.fromList(List.generate(300000, (i) => (i * 31) & 0xFF));
+    var hits = 0;
+    late Directory dir;
+    const base = 'https://models.example';
+    setUp(() {
+      hits = 0;
+      dir = Directory.systemTemp.createTempSync('winai_models');
+      ModelStore.modelsDir = () async => dir;
       ModelStore.httpClient = () => MockClient.streaming((req, body) async {
             hits++;
             if (req.url.path == '/bad') return http.StreamedResponse(const Stream.empty(), 404);
             final chunks = [for (var i = 0; i < data.length; i += 65536) data.sublist(i, math.min(data.length, i + 65536))];
             return http.StreamedResponse(Stream.fromIterable(chunks), 200, contentLength: data.length);
           });
-      final dir = Directory.systemTemp.createTempSync('winai_models');
-      final old = ModelStore.modelsDir;
-      ModelStore.modelsDir = () async => dir;
-      addTearDown(() {
-        ModelStore.modelsDir = old;
-        ModelStore.httpClient = oldClient;
-        dir.deleteSync(recursive: true);
-      });
-      const base = 'https://models.example';
+    });
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    test('downloads once, checks the hash and reports progress', () async {
       final spec = ModelSpec(
         fileName: 'm.bin',
         urls: ['$base/bad', '$base/m.bin'],
@@ -545,15 +545,23 @@ void main() {
       expect(File(path).readAsBytesSync(), data);
       expect(progress.last, 1);
       expect(hits, 2);
+      expect(File('$path.ok').existsSync(), isTrue);
       await ModelStore.ensure(spec);
       expect(hits, 2, reason: 'second call uses the cached file');
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
+    test('rejects a damaged download', () async {
       final wrong = ModelSpec(
           fileName: 'w.bin', urls: ['$base/w.bin'], bytes: data.length, hashKind: HashKind.sha1, hash: '0' * 40, label: 'broken model');
       await expectLater(ModelStore.ensure(wrong), throwsA(isA<HttpException>()));
       expect(File('${dir.path}/w.bin').existsSync(), isFalse);
-      expect(await ModelStore.hashFile(path, HashKind.sha1), sha1.convert(data).toString());
-    }, timeout: const Timeout(Duration(minutes: 2)));
+      expect(File('${dir.path}/w.bin.part').existsSync(), isFalse);
+    }, timeout: const Timeout(Duration(seconds: 60)));
+
+    test('hashes files in a background isolate', () async {
+      final f = File('${dir.path}/h.bin')..writeAsBytesSync(data);
+      expect(await ModelStore.hashFile(f.path, HashKind.sha1), sha1.convert(data).toString());
+    }, timeout: const Timeout(Duration(seconds: 60)));
   });
 
   // Real engines; the Windows CI build sets these after bundling binaries.
