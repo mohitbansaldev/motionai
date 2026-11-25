@@ -234,3 +234,34 @@ Transitions come from `TransitionRegistry` (lib/core/presets/transition_registry
   {"plate": "vault", "style": "slow_push_detail", "duration": 5, "layers": [{"media": "gold", "role": "front"}, {"media": "bulb", "role": "mid", "hero": true}]}
 ]}
 ```
+
+## V3-A: maps & geo (documentary map grammar)
+
+All of these are one command = one undo step. The geo ops are also
+`add_component` types (`{"op":"status_ring",...}` ==
+`{"op":"add_component","type":"status_ring",...}`). Sizes ≤ 1 are a
+fraction of the frame height, larger numbers are pixels. Map places are
+`[lat, lon]`, `{lat, lon}` or a country name / ISO code.
+
+| op / component | fields | when to use |
+|---|---|---|
+| `map` `style: "satellite"` | `countries` [name \| ISO \| `{code, fill, label, at, label_rotate}`], `focus`, `bounds` `[[lat,lon],[lat,lon]]`, `zoom`, `fill_opacity` (0.62), `stroke_width` (screen px, 1.6), `label_size` (0.06), `label_opacity`, `label_rotate` (`"auto"` default on satellite \| degrees \| 0), `label_animator` (`pop` 120→100 % in 0.25 s \| `typewriter` \| `fade_up`), `label_stagger` (0.6 s), `focus_dim` (60), `cities` `[{name, lat, lon, at, side}]`, `tilt` (+ `tilt_at`, `roll`), `zoom_rotation` (degrees turned during the zoom; map-only shots), `texture_opacity`, `border_width` | a country/city is named: reveal it on the word with `at` |
+| `map_pin` `tag_style: "box"` | `map`?, `lat`, `lon` \| `country`, `label`, `side`, `label_size` | a city/site is named (white box, black caps, constant screen size) |
+| `route_follow` | `from`, `to`, `map`?, `style` (satellite), `arrow_head` (true), `line_style` (`solid` \| `dashed`), `draw` (2.2 s), `vehicle` (cut-out id, faces right), `orient` (true), `vehicle_angle`, `vehicle_size`, `trail_fade` (true \| 0..1), `land_highlight` (`{fill, label}` \| false), `from_highlight`, `label` + `label_at` (0.5) + `follow_tangent` (true), `follow` (0.35), `push` (0.08), `fill` (0.62) | "went from X to Y": white arc draws A→B, map keeps the tip in frame, B fills + label pops on arrival |
+| `map_route` | `map`, `from`, `to`, `label`, `label_at`, `follow_tangent`, `line_style`, `arrow_head`, `draw`, `line_width`, `label_size` | travel time / distance label ("11 MINS") wiping in along the arc |
+| `camera_move` `preset: "punch_in"` | `point` [x,y] \| `target` layer, `amount` (×2.6), `duration` (0.45), `start`, `ease` (ease_in), `layer` \| `map` (punch a layer / map group instead of the 2D camera — required when the camera is 3D), `center`, `blur` (true), `sound` (true \| sfx kind \| false) | emphasis / right before a twist (motion blur + whoosh) |
+| `map_tilt` | `map`?, `tilt` (38), `roll` (−10), `at`, `duration` (0.6), `scale` | mountains, rivers, borders: the map pitches back in 3D (moved into precomp `<map>_tilt`, comp layer `<map>_tilted`; later map ops on it need `in_comp`) |
+| `terrain_label` | `map`?, `text`, `along` `[[lat,lon],…]`, `size` (0.045), `spread` (0.8), `stagger`, `glyphs` (`peaks` \| `none`), `opacity` | a mountain range / river / border is named (letters along the feature + peak hatches) |
+| `map_watermark` | `map`?, `code`, `text`, `size` (0.35), `opacity` (60), `rotate` (`auto` \| degrees) | establishing the country: giant ghost word along its axis |
+| `status_ring` | `attach` \| `lat`+`lon` \| `x`,`y` \| `at`, `size` (0.06), `color` (#D0202A), `dashed`, `dashes`, `spin` (4 s/turn), `glow` | marking the tracked vehicle / subject |
+| `signal_rings` | `attach` \| place \| point, `color` (red), `count` (3), `period` (0.75), `flatten` (0.35), `max_radius` (0.12), `opacity`, `delay` | radio calls, distress signals |
+| `pulse_rings` | same; white, 4 rings, 1.2 s, round | "here", epicentre, a location pinging |
+| `geo_label` | `text`, `at` [x,y] (comp px) \| `lat`+`lon` \| `at:{lat,lon}` \| `attach`, `pointer` (`hook` \| `line` \| `none`), `side`, `length`, `size` (0.04), `animator` (typewriter), `color` | a specific spot on the ground ("CRASH SITE") |
+| `path_text` | `text`, `path_layer` (shape layer with points) \| `points`, `offset`, `size`, `spacing`, `lift`, `typing` (true), `cps` (14), `color` | naming a planned route along a (dashed) line |
+| `search_sweep` | `place`, `label`, `vehicle` (top-down cut-out, else vector helicopter), `ground` (media, else slate snow), `beam_size` (0.12), `path` [[x,y] 0..1], `snow` (true), `duration` (4.5) | "a search began over X" |
+| `sketch_map` | `items` `[{icon: mountain\|camp\|crash\|x\|river\|dot, x, y, label, arrow, at}]`, `compass` (`{x, y, size, heading:[{at, deg}]}` \| false), `directions` `[{label, side, at, reveal: photo}]`, `paper`, `duration` (7) | directions / "which way": parchment sketch, chrome compass, red block arrows, photo reveals |
+
+The satellite texture is NASA Blue Marble (public domain), bundled as
+`assets/maps/blue_marble_dark.jpg` (4096×2048, ocean graded dark teal) and
+drawn by the `map_texture {amount}` effect on the map's `<id>_sat` layer.
+If it cannot be loaded the dark vector map underneath stays visible.
