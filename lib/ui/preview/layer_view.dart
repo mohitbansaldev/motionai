@@ -91,6 +91,10 @@ class LayerView extends StatefulWidget {
       if (e.enabled && e.type == 'contact_shadow') child = _effect(e, child, l);
     }
     // <<< V2-D
+    // win-30: a mask hides everything outside it — also what an effect drew
+    // past the layer's edges (lens distortion bulged a rectangle outline
+    // around the eye_reflection pupil: the "square box").
+    if (l.masks.any((m) => !m.invert)) child = ClipRect(child: child);
     for (final m in l.masks) {
       child = _mask(m, child);
     }
