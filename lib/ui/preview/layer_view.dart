@@ -20,6 +20,7 @@ import 'fx/layer_cache.dart'; // PERF (Agent O)
 import 'fx/offscreen.dart';
 import 'fx/particles.dart';
 import 'fx/text_fx.dart';
+import 'fx/transition_painters.dart'; // V2-C
 import 'precomp_view.dart'; // PRECOMP (Agent L)
 import 'shape_painter.dart';
 
@@ -669,6 +670,15 @@ class LayerView extends StatefulWidget {
           ),
           Transform.translate(offset: Offset(jx, 0), child: child),
         ]);
+      // V2-C >>> transition effects
+      case 'burn_edge':
+        return BurnEdgeFx(
+            progress: p('progress') / 100, cx: p('cx') / 100, cy: p('cy') / 100, color: rgb('color'), embers: p('embers') / 100,
+            seed: stableHash(e.id) & 0xFFFF, size: Size(l.width, l.height), draft: draft, child: child);
+      case 'page_curl':
+        return PageCurlFx(
+            progress: p('progress') / 100, angle: p('angle'), shadow: p('shadow') / 100, back: rgb('back'), size: Size(l.width, l.height), child: child);
+      // <<< V2-C
       default:
         return child;
     }

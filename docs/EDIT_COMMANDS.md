@@ -96,6 +96,36 @@ New effects: glow {amount, radius}, grain {amount, size}, light_leak {amount, sp
 
 Audio: `add_layer` with `type: "audio"` and an audio media id. Every layer has a `volume` property (0–200).
 
+<!-- V2-C >>> -->
+## V2-C: documentary transitions
+
+| op | fields |
+|---|---|
+| `transition` | `from` (outgoing layer), `to` (incoming layer) — or `layers: [from, to]`; `type`; `duration`?; `at`? (cut, default `to.start`); `sound`? (`true` = default SFX with its peak on the cut, `false`, a kind, or a list); `snap_to_beat`? (`true`: cut moves to the nearest analysed music beat within `beat_tolerance` (0.25 s); `beats`: [s] overrides the analysis); `params`? (per type, below; unknown top-level keys are passed as params too) |
+| `list_transitions` | — logs the catalog JSON (`id`, `label`, `best_for`, `default_duration`, `cut_at`, `sound`, `params`) |
+
+The op extends/trims both layers so they overlap around the cut (uses source handles; a shot without a handle is shifted and the log says so), writes eased keyframes, masks, effects and helper layers (`tr_<to>_*`), adds the SFX and is one undo step. Running it again on the same pair replaces the old transition (effects `<from>_trout_*`, `<to>_trin_*`).
+
+| type | default s | params |
+|---|---|---|
+| push_through | 1.2 | `target` (door/window layer here or inside the outgoing precomp) or `point`+`size`, `shape` rect/ellipse |
+| foreground_wipe | 0.8 | `direction`, `media` (cut-out), `shape` pillar/tree/person, `width` (0.55) |
+| zoom_into_photo | 1.6 | `layer` (picture) or `point`+`size` |
+| map_drop | 1.5 | `target`/`point`, `push` (1.06: the incoming ends 6 % closer) |
+| match_cut | 0.6 | `from_point`, `to_point`, `from_size`, `to_size` |
+| whip_pan, parallax_slide, paper_tear | 0.45 / 1.0 / 0.9 | `direction` left/right/up/down |
+| burn_edge | 1.6 | `cx`, `cy` (%), `tone` |
+| page_turn | 1.2 | `angle` (200) |
+| focus_pull, dolly_zoom | 1.0 / 1.6 | — |
+| film_burn, light_leak_wipe, ink_bleed, smoke_reveal | 1.0 / 1.0 / 1.2 / 1.4 | `tone` warm/cold/neutral (ink: `cx`, `cy`) |
+| bw_to_colour | 2.0 | `cx`, `cy` |
+| glitch_cut, flash_cut, dip_to_black | 0.6 / 0.5 / 0.9 | flash: `color`/`tone`; dip: `color` |
+
+Example: `{"op":"transition","from":"shot1","to":"shot2","type":"push_through","params":{"target":"door"},"snap_to_beat":true}`
+
+New effects: `burn_edge` {progress, cx, cy, color, embers}, `page_curl` {progress, angle, shadow, back}.
+<!-- <<< V2-C -->
+
 ## Composition
 
 | op | fields |
