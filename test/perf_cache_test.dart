@@ -11,7 +11,6 @@ import 'package:motionai/core/model/layer.dart';
 import 'package:motionai/core/model/project.dart';
 import 'package:motionai/ui/preview/composition_canvas.dart';
 import 'package:motionai/ui/preview/fx/layer_cache.dart';
-import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 import 'perf_test.dart' show bench3D;
 

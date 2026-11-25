@@ -148,17 +148,23 @@ class LayerRaster extends SingleChildRenderObjectWidget {
   /// Playing: cheaper sampling of the cached image.
   final bool fast;
 
-  const LayerRaster({super.key, required this.enabled, this.ratio = 1, this.fast = false, super.child});
+  /// Depth-of-field blur sigma in layer pixels (in steps of 20%). Baked into
+  /// the cached image, so scrubbing re-blurs a small image now and then
+  /// instead of blurring the layer every frame; a blur layer otherwise.
+  final double blur;
+
+  const LayerRaster({super.key, required this.enabled, this.ratio = 1, this.fast = false, this.blur = 0, super.child});
 
   @override
-  RenderLayerRaster createRenderObject(BuildContext context) => RenderLayerRaster(enabled, ratio, fast);
+  RenderLayerRaster createRenderObject(BuildContext context) => RenderLayerRaster(enabled, ratio, fast)..blur = blur;
 
   @override
   void updateRenderObject(BuildContext context, RenderLayerRaster renderObject) {
     renderObject
       ..enabled = enabled
       ..ratio = ratio
-      ..fast = fast;
+      ..fast = fast
+      ..blur = blur;
   }
 }
 
@@ -235,6 +241,38 @@ class RenderLayerRaster extends RenderProxyBox {
     if (_enabled) markNeedsPaint();
   }
 
+  double _blurQ = 0; // quantised sigma (layer px), 0 = sharp
+  ui.Image? _blurred;
+  ui.Image? _blurredFrom;
+  double _blurredQ = 0;
+
+  /// Quantised blur: 0 below 0.3 px, else 1.2^k.
+  static double quantizeBlur(double s) {
+    if (!(s > 0.3)) return 0;
+    final k = (math.log(s) / math.log(1.2)).round();
+    return math.pow(1.2, k).toDouble();
+  }
+
+  set blur(double v) {
+    final q = quantizeBlur(v);
+    if (q == _blurQ) return;
+    _blurQ = q;
+    if (_enabled && _image != null) {
+      _redrawOnly = true;
+      markNeedsPaint();
+      _redrawOnly = false;
+    } else {
+      markNeedsPaint();
+    }
+  }
+
+  void _dropBlurred() {
+    _blurred?.dispose();
+    _blurred = null;
+    _blurredFrom = null;
+    _blurredQ = 0;
+  }
+
   set fast(bool v) {
     if (v == _fast) return;
     _fast = v;
@@ -257,6 +295,7 @@ class RenderLayerRaster extends RenderProxyBox {
     _image?.dispose();
     _image = null;
     _imageRatio = 0;
+    _dropBlurred();
     _watchLayers.clear();
     _watchFirst.clear();
   }
@@ -355,6 +394,11 @@ class RenderLayerRaster extends RenderProxyBox {
 
   void _paintDirect(PaintingContext context, Offset offset, RenderBox child) {
     _contentDirty = false;
+    if (_blurQ > 0) {
+      final f = ImageFilterLayer(imageFilter: ui.ImageFilter.blur(sigmaX: _blurQ, sigmaY: _blurQ, tileMode: TileMode.decal));
+      context.pushLayer(f, (ctx, o) => ctx.paintChild(child, o), offset);
+      return;
+    }
     context.paintChild(child, offset);
   }
 
@@ -406,6 +450,34 @@ class RenderLayerRaster extends RenderProxyBox {
     _contentDirty = false;
     final img = _image!;
     _paint.filterQuality = _fast ? FilterQuality.low : FilterQuality.medium;
+    if (_blurQ > 0) {
+      // Blurred copy with a 3σ margin (the blur spills past the layer edge).
+      final k = img.width / size.width; // image px per layer px
+      final pad = (3 * _blurQ * k).ceilToDouble();
+      if (_blurred == null || !identical(_blurredFrom, img) || _blurredQ != _blurQ) {
+        _blurred?.dispose();
+        final rec = ui.PictureRecorder();
+        Canvas(rec).drawImage(
+          img,
+          Offset(pad, pad),
+          Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: _blurQ * k, sigmaY: _blurQ * k, tileMode: TileMode.decal),
+        );
+        final pic = rec.endRecording();
+        _blurred = pic.toImageSync(img.width + 2 * pad.toInt(), img.height + 2 * pad.toInt());
+        pic.dispose();
+        _blurredFrom = img;
+        _blurredQ = _blurQ;
+      }
+      final b = _blurred!;
+      context.canvas.drawImageRect(
+        b,
+        Rect.fromLTWH(0, 0, b.width.toDouble(), b.height.toDouble()),
+        (offset & size).inflate(pad / k),
+        _paint,
+      );
+      return;
+    }
+    if (_blurred != null) _dropBlurred();
     context.canvas.drawImageRect(
       img,
       Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),

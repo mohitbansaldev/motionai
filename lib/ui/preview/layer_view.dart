@@ -85,12 +85,16 @@ class LayerView extends StatefulWidget {
   }
 
   /// Depth blur → opacity → transform → motion blur around the content.
-  Widget wrap(Widget child) {
+  /// Depth-of-field blur sigma (layer px) for this frame, 0 = none.
+  double get dofSigma => item.dofBlur > 0.3 && !(draft && playing) ? math.min(item.dofBlur, draft ? 12.0 : 40.0) : 0;
+
+  Widget wrap(Widget child, {bool dof = true}) {
     final l = item.layer;
     // Depth-of-field blur is the most expensive thing in 3D: lighter in the
-    // preview and skipped while playing (full quality on export).
-    if (item.dofBlur > 0.3 && !(draft && playing)) {
-      final s = math.min(item.dofBlur, draft ? 12.0 : 40.0);
+    // preview and skipped while playing (full quality on export). A cached
+    // layer has it baked into its image instead (dof: false).
+    if (dof && dofSigma > 0) {
+      final s = dofSigma;
       child = ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal), child: child);
     }
     if (item.opacity < 0.999) child = Opacity(opacity: item.opacity, child: child);
@@ -756,7 +760,10 @@ class _LayerViewState extends State<LayerView> {
     final raster = scale != null && sig != null && _stable >= 1 && l.is3D && !w.asMatte && LayerSig.worthRaster(l);
     // Cache the layer's pixels: when only its 3D/camera transform changes,
     // the GPU re-composites the cached picture (or image) instead of repainting it.
-    return w.wrap(LayerRaster(enabled: raster, ratio: ratio, fast: w.playing, child: _content!));
+    // In the editor the depth blur is applied by LayerRaster too (baked into
+    // the cached image), so the widget tree keeps the same shape.
+    return w.wrap(LayerRaster(enabled: raster, ratio: ratio, fast: w.playing, blur: scale != null ? w.dofSigma : 0, child: _content!),
+        dof: scale == null);
   }
 }
 // <<< PERF (Agent O)
