@@ -420,8 +420,18 @@ class _SceneKit {
     return '#${out.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
   }
 
-  /// 3D room: back wall, side walls and floor as 3D planes (textures from
-  /// `wall` / `floor` media), optional cut-outs (`items`) standing inside.
+  /// 3D room / set (win-30): back wall, left + right walls, floor, optional
+  /// ceiling as real 3D planes (each from its own media), people / props
+  /// standing ON the floor at their depth (feet on the floor line, contact
+  /// shadow, size by real height), and foreground objects close to the
+  /// camera. Camera moves then give true parallax. Keys:
+  ///   back|wall, left, right, floor, ceiling: media ids (else tinted planes)
+  ///   items: [media id | {media, x (0..1 across the floor, or comp px > 2),
+  ///          z (0 front..1 back), height (px at the front; default 62% of
+  ///          the frame height for people), role: person|prop, shadow: bool}]
+  ///   foreground: [{media, x (0..1), z (-0.6..0: in front of the room),
+  ///          height, y (0 top..1 bottom of frame)}]
+  ///   width, depth, height (px), color, floor_color, shadows (default true)
   static List<Map<String, dynamic>> room(_B b, Project p) {
     final w = b.w, h = b.h, cx = w / 2;
     final z0 = w * 1.38889; // home camera distance (defaultZoomFor)
@@ -430,13 +440,15 @@ class _SceneKit {
     final floorY = b.n('floor_y', h / 2 + 0.22 * h * (zBack + z0) / z0);
     final color = b.str('color', '#8A6A4F');
     final floorColor = b.str('floor_color', _shade(color, 0.62));
+    final shadows = b.c['shadows'] != false;
     final cmds = <Map<String, dynamic>>[
       {'op': 'set_camera_mode', 'mode': '3d'},
       {'op': 'add_layer', 'type': 'null', 'id': b.g, 'name': 'Room', 'start': b.start, 'duration': b.dur, 'is3d': true, 'position': [0, 0, 0]},
       b.setp(b.g, 'anchor', [0, 0, 0]),
     ];
-    void plane(String part, String mediaKey, double pw, double ph, List<double> pos, List<double> rot, String fill, String fill2) {
-      final m = b.mediaOf(p, mediaKey);
+    void plane(String part, String mediaKey, double pw, double ph, List<double> pos, List<double> rot, String fill, String fill2,
+        {String? altKey}) {
+      final m = b.mediaOf(p, mediaKey) ?? (altKey == null ? null : b.mediaOf(p, altKey));
       final id = b.id(part);
       if (m != null) {
         cmds.add({
@@ -453,17 +465,20 @@ class _SceneKit {
       if (rot.any((v) => v != 0)) cmds.add(b.setp(id, 'rotation', rot));
     }
 
-    plane('back', 'wall', rw, rh, [cx, floorY - rh / 2, zBack], [0, 0, 0], color, _shade(color, 0.8));
+    plane('back', 'back', rw, rh, [cx, floorY - rh / 2, zBack], [0, 0.01, 0], color, _shade(color, 0.8), altKey: 'wall');
     plane('floor', 'floor', rw, rd, [cx, floorY, zMid], [-90, 0, 0], floorColor, _shade(floorColor, 0.6));
-    plane('left', 'wall', rd, rh, [cx - rw / 2, floorY - rh / 2, zMid], [0, 90, 0], _shade(color, 0.72), _shade(color, 0.5));
-    plane('right', 'wall', rd, rh, [cx + rw / 2, floorY - rh / 2, zMid], [0, -90, 0], _shade(color, 0.72), _shade(color, 0.5));
+    plane('left', 'left', rd, rh, [cx - rw / 2, floorY - rh / 2, zMid], [0, 90, 0], _shade(color, 0.72), _shade(color, 0.5), altKey: 'wall');
+    plane('right', 'right', rd, rh, [cx + rw / 2, floorY - rh / 2, zMid], [0, -90, 0], _shade(color, 0.72), _shade(color, 0.5), altKey: 'wall');
+    if (b.c['ceiling'] != null) {
+      plane('ceiling', 'ceiling', rw, rd, [cx, floorY - rh, zMid], [90, 0, 0], _shade(color, 0.4), _shade(color, 0.3));
+    }
     // A flat (invisible) separator: things added above it are always drawn
     // in front of the walls and floor (3D layers sort only between flat ones).
     cmds.add({
       'op': 'add_layer', 'type': 'solid', 'id': b.id('sep'), 'name': 'Room front', 'color': '#00000000', 'width': 2, 'height': 2,
       'start': b.start, 'duration': b.dur, 'position': [0, 0, 0],
     });
-    // Cut-outs standing on the floor: media ids or {media, x (comp px), z (0 front … 1 back wall), height px}.
+    // Cut-outs standing on the floor, back to front (people and props).
     final specs = b.specs('items', 'media');
     final items = <(MediaAsset, Map<String, dynamic>)>[
       for (final it in specs)
@@ -471,18 +486,53 @@ class _SceneKit {
     ];
     for (int i = 0; i < items.length; i++) {
       final (m, it) = items[i];
-      final ih = (it['height'] as num?)?.toDouble() ?? rh * 0.5;
+      final person = '${it['role'] ?? 'person'}' == 'person';
+      final ih = (it['height'] as num?)?.toDouble() ?? (person ? h * 0.62 : h * 0.3);
       final s = ih / math.max(1, m.height) * 100;
-      final zf = ((it['z'] as num?)?.toDouble() ?? 0.7).clamp(0.0, 1.0);
+      final zf = ((it['z'] as num?)?.toDouble() ?? 0.55).clamp(0.0, 1.0);
       final z = zFront + rd * zf;
       final depthK = (z + z0) / z0;
       final sx = (it['x'] as num?)?.toDouble();
-      final x = sx != null ? cx + (sx - cx) * depthK : cx + (i + 1 - (items.length + 1) / 2) * rw / (items.length + 1);
+      final double x;
+      if (sx == null) {
+        x = cx + (i + 1 - (items.length + 1) / 2) * rw / (items.length + 1);
+      } else if (sx <= 2) {
+        x = cx + (sx - 0.5) * rw * 0.9; // fraction across the floor
+      } else {
+        x = cx + (sx - cx) * depthK; // comp px at the front plane
+      }
+      final id = b.id('item$i');
       cmds.add({
-        'op': 'add_layer', 'type': m.type == MediaType.video ? 'video' : 'image', 'media': m.id, 'id': b.id('item$i'), 'name': m.name,
+        'op': 'add_layer', 'type': m.type == MediaType.video ? 'video' : 'image', 'media': m.id, 'id': id, 'name': m.name,
         'parent': b.g, 'start': b.start, 'duration': b.dur, 'fit': 'none', 'is3d': true,
+        // Feet exactly on the floor plane at this depth (anchor = centre).
         'position': [x, floorY - ih / 2, z], 'scale': [s, s, 100],
       });
+      cmds.add(b.setp(id, 'rotation', [0, 0.01, 0]));
+      if (shadows && it['shadow'] != false) {
+        cmds.add({'op': 'add_effect', 'layer': id, 'effect': 'contact_shadow', 'params': {'opacity': 60, 'softness': 45, 'angle': 90}});
+      }
+    }
+    // Foreground objects between the camera and the room (depth cue + natural wipes).
+    final fg = b.specs('foreground', 'media');
+    for (int i = 0; i < fg.length; i++) {
+      final it = fg[i];
+      final m = p.media['${it['media']}'];
+      if (m == null || m.type == MediaType.audio) continue;
+      final zf = ((it['z'] as num?)?.toDouble() ?? -0.35).clamp(-0.9, 0.0);
+      final z = zFront + zf * z0; // in front of the room
+      final k = (z + z0) / z0;
+      final ih = ((it['height'] as num?)?.toDouble() ?? h * 0.9) * k;
+      final s = ih / math.max(1, m.height) * 100;
+      final fx = ((it['x'] as num?)?.toDouble() ?? (i.isEven ? 0.08 : 0.92));
+      final fy = ((it['y'] as num?)?.toDouble() ?? 1.0);
+      final id = b.id('fg$i');
+      cmds.add({
+        'op': 'add_layer', 'type': 'image', 'media': m.id, 'id': id, 'name': 'FG ${m.name}', 'parent': b.g,
+        'start': b.start, 'duration': b.dur, 'fit': 'none', 'is3d': true,
+        'position': [cx + (fx * w - cx) * k, h / 2 + (fy * h - h / 2) * k - ih / 2 * (fy >= 0.99 ? 1 : 0), z], 'scale': [s, s, 100],
+      });
+      cmds.add(b.setp(id, 'rotation', [0, 0.01, 0]));
     }
     return cmds;
   }
