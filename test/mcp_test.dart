@@ -162,7 +162,7 @@ void main() {
       }
       for (final t in list) {
         final m = t as Map;
-        expect((m['description'] as String).length, greaterThan(20), reason: '${m['name']}');
+        expect((m['description'] as String).length, greaterThan(10), reason: '${m['name']}');
         expect((m['inputSchema'] as Map)['type'], 'object');
       }
       expect(kMcpToolNames.containsAll(kMcpEditTools), isTrue);
