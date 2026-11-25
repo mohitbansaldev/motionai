@@ -18,7 +18,7 @@ CONVENTIONS
 - layers[0] is the TOP layer. add_layer inserts at the top unless "index" is given.
 
 COMMANDS
-add_layer {type: video|image|text|solid|null|audio, id?, name?, media (for video/image/audio), start?, duration?, source_in?, index?, is3d?, fit?: contain|cover|none, position?, scale?, text?, font_size?, font_weight?, text_color?, align?, color?, width?, height?, animator?, anim_duration?, box_color?, highlight_color?, shadow?}
+add_layer {type: video|image|text|solid|null|audio|shape, id?, name?, media (for video/image/audio), start?, duration?, source_in?, index?, is3d?, fit?: contain|cover|none, position?, scale?, text?, font_size?, font_weight?, text_color?, align?, color?, width?, height?, animator?, anim_duration?, box_color?, highlight_color?, shadow?}
 remove_layer {layer} | duplicate_layer {layer, new_id?} | reorder_layer {layer, index}
 update_layer {layer, + any of: name, start (moves keyframes too), duration, source_in, speed, is3d, visible, locked, parent (id or null), color, text, font_size, font_weight, text_color, align, width, height, animator, anim_duration, box_color ("none" to remove), highlight_color, shadow, outline, extrude, matte, path (see RENDER EXTRAS)}
 trim_layer {layer, in?, out?} | split_layer {layer, time, new_id?}

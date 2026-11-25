@@ -101,6 +101,8 @@ class EditCommands {
             _run(project, Map<String, dynamic>.from(list[i] as Map), now, r);
           } on CommandError catch (e) {
             throw CommandError('commands[$i] (${(list[i] as Map)['op']}): ${e.message}');
+          } on ArgumentError catch (e) {
+            throw CommandError('commands[$i] (${(list[i] as Map)['op']}): ${e.message}');
           }
         }
         break;
@@ -114,6 +116,7 @@ class EditCommands {
         comp.layers.remove(l);
         for (final o in comp.layers) {
           if (o.parentId == l.id) o.parentId = null;
+          if (o.matte?.layerId == l.id) o.matte = null; // no dangling track matte
         }
         r.log.add('Removed ${l.name}');
         break;
@@ -348,11 +351,18 @@ class EditCommands {
         break;
 
       case 'add_component':
-        final cmds = Components.build(project, c, now);
+        final List<Map<String, dynamic>> cmds;
+        try {
+          cmds = Components.build(project, c, now);
+        } on ArgumentError catch (e) {
+          throw CommandError('component ${c['type']}: ${e.message}');
+        }
         for (int i = 0; i < cmds.length; i++) {
           try {
             _run(project, cmds[i], now, r);
           } on CommandError catch (e) {
+            throw CommandError('component ${c['type']}: ${e.message}');
+          } on ArgumentError catch (e) {
             throw CommandError('component ${c['type']}: ${e.message}');
           }
         }

@@ -318,6 +318,39 @@ void main() {
     await render(tester, p, 1.0);
   });
 
+  group('command hardening', () {
+    test('removing a matte layer clears the matte that used it', () {
+      final p = project();
+      run(p, {'op': 'add_layer', 'type': 'solid', 'id': 'a'});
+      run(p, {'op': 'add_layer', 'type': 'solid', 'id': 'm', 'width': 100, 'height': 100});
+      run(p, {'op': 'update_layer', 'layer': 'a', 'matte': {'layer': 'm'}});
+      run(p, {'op': 'remove_layer', 'layer': 'm'});
+      expect(p.main.requireLayer('a').matte, isNull);
+    });
+
+    test('errors inside batches and components name the failing command', () {
+      final p = project();
+      for (final (cmd, words) in [
+        ({'op': 'batch', 'commands': [{'op': 'add_layer', 'type': 'solid', 'id': 's'}, {'op': 'animate_in', 'layer': 's', 'preset': 'teleport'}]}, ['commands[1]', 'teleport']),
+        ({'op': 'batch', 'commands': [{'op': 'add_component', 'type': 'photo_card'}]}, ['commands[0]', 'photo_card', 'media']),
+        ({'op': 'add_effect', 'layer': 'nope', 'effect': 'blur'}, ['nope']),
+        ({'op': 'batch', 'commands': [{'op': 'add_layer', 'type': 'solid', 'id': 's'}, {'op': 'add_effect', 'layer': 's', 'effect': 'particles', 'params': {'colour': '#FFFFFF'}}]}, ['colour', 'Params']),
+        ({'op': 'batch', 'commands': [{'op': 'add_layer', 'type': 'solid', 'id': 's'}, {'op': 'add_effect', 'layer': 's', 'effect': 'sparkles'}]}, ['commands[1]', 'sparkles']),
+        ({'op': 'batch', 'commands': [{'op': 'add_layer', 'type': 'solid', 'id': 's'}, {'op': 'set_keyframe', 'target': 's', 'prop': 'path_progress', 'time': 0, 'value': 0}]}, ['path_progress', 'path']),
+      ]) {
+        try {
+          EditCommands.runAtomic(p, cmd);
+          fail('should fail: $cmd');
+        } on CommandError catch (e) {
+          for (final w in words) {
+            expect(e.message, contains(w));
+          }
+        }
+        expect(p.main.layers, isEmpty, reason: 'atomic');
+      }
+    });
+  });
+
   group('Director StoryBuilder builds every new visual', () {
     Map<String, dynamic> directorArgs(String t) => switch (t) {
           'photo_card' => {'media': 'img', 'caption': 'Him'},
