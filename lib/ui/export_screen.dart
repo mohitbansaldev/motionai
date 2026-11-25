@@ -271,6 +271,8 @@ class _ExportScreenState extends State<ExportScreen> {
       await _precacheImages();
       await ChromaKeyer.load(); // CHROMA (Agent M): green screen shader ready before frame 1
       await MediaBridge.encoderStart(outPath: tmp, width: w, height: h, fps: fps, bitrate: bitrate);
+      // win-30: one frame in flight to the encoder while the next one renders.
+      Future<void>? pendingWrite;
       for (int i = 0; i < _frames; i++) {
         if (_cancel) throw _Cancelled();
         final t = i / fps;
@@ -313,8 +315,10 @@ class _ExportScreenState extends State<ExportScreen> {
         final iw = image.width, ih = image.height;
         image.dispose();
         if (iw != w || ih != h) throw StateError('Rendered ${iw}x$ih, expected ${w}x$h');
-        await MediaBridge.encoderFrame(data!.buffer.asUint8List(), w, h);
+        await pendingWrite;
+        pendingWrite = MediaBridge.encoderFrame(data!.buffer.asUint8List(), w, h);
       }
+      await pendingWrite;
       setState(() => _phase = _Phase.finishing);
       final audio = <Map<String, dynamic>>[
         for (final l in comp.layers)
