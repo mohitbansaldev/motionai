@@ -88,6 +88,9 @@ class ContactSheet {
     return img.encodePng(sheet, level: 4);
   }
 
+  /// win-30: one frame as a PNG (render_frame on another comp).
+  static Uint8List encodeFrame(RawFrame f) => img.encodePng(f.toImage(), level: 4);
+
   /// GIF frame delay in 1/100 s: real time between samples, but the whole
   /// loop at most 2 s and at least 4 cs per frame.
   static int gifDelay(double span, int frames) {

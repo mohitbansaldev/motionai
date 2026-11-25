@@ -142,8 +142,19 @@ final List<Map<String, dynamic>> kMcpTools = [
         },
       }, required: ['commands'])),
   _tool('get_layer', 'Get one layer in full',
-      'Complete JSON of one layer of the open composition (keyframes with eases, effect params, masks, text style, shape).',
-      _obj({'layer': _s('Layer id')}, required: ['layer']),
+      'Complete JSON of one layer (keyframes with eases, effect params, masks, text style, shape) of the open composition '
+          'or of "comp" (the user\'s view does not change).',
+      _obj({'layer': _s('Layer id'), 'comp': _s('Composition id (default: the open one; "main" = main)')}, required: ['layer']),
+      readOnly: true),
+  _tool('get_layers', 'List layers of any comp',
+      'Every layer of "comp" (default: the open one) top to bottom: id, name, type, start, end, is3d, parent; full:true '
+          'returns complete layer JSON. Does not change what the user is looking at (no open_comp needed).',
+      _obj({'comp': _s('Composition id ("main" = main)'), 'full': _b('Complete layer JSON (default false)')}),
+      readOnly: true),
+  _tool('editor_screenshot', 'Screenshot of the editor preview',
+      'PNG of the live editor preview exactly as the user sees it (same draw path as the editor, unlike render_frame / '
+          'preview_shot which use the export renderer). Use it to confirm that what you built shows correctly for the user.',
+      _obj({'width': {'type': 'integer', 'minimum': 160, 'maximum': 1920, 'description': 'Image width (default 960)'}}),
       readOnly: true),
   _tool('undo', 'Undo', 'Undoes the last edit step(s) of the open project (Ctrl+Z).',
       _obj({'steps': {'type': 'integer', 'minimum': 1, 'maximum': 50, 'description': 'How many steps (default 1)'}})),
@@ -184,6 +195,7 @@ final List<Map<String, dynamic>> kMcpTools = [
       _obj({
         'time': _n('Seconds (default: playhead)'),
         'width': {'type': 'integer', 'minimum': 160, 'maximum': 1920, 'description': 'Image width in pixels (default 960)'},
+        'comp': _s('Composition id (default: the open one; "main" = main). The user\'s view does not change.'),
       }),
       readOnly: true),
   _tool('preview_shot', 'Preview a shot (contact sheet)',

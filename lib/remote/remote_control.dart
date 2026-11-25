@@ -7,8 +7,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../core/model/project.dart';
@@ -20,6 +22,7 @@ import '../services/updater.dart';
 import '../state/editor_controller.dart';
 import '../ui/editor_screen.dart';
 import '../ui/export_screen.dart';
+import '../ui/preview/composition_view.dart'; // win-30
 import '../ui/library/library_common.dart';
 import 'contact_sheet.dart';
 import 'mcp_protocol.dart';
@@ -35,7 +38,7 @@ class RemoteLogEntry {
   RemoteLogEntry(this.tool, this.summary, this.ok);
 }
 
-class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHost {
+class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHost, RemoteEditorView {
   RemoteControl._();
   static final RemoteControl instance = RemoteControl._();
 
@@ -311,6 +314,22 @@ class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHos
     } finally {
       final export = tools.jobs.latest('export');
       if (export == null || !export.running) unawaited(MediaBridge.readerReleaseAll().catchError((_) {}));
+    }
+  }
+
+  // win-30: the live editor preview, exactly what the user sees.
+  @override
+  Future<Uint8List?> editorScreenshot({int width = 960}) async {
+    if (_editor == null) return null;
+    await WidgetsBinding.instance.endOfFrame;
+    final ro = CompositionView.previewKey.currentContext?.findRenderObject();
+    if (ro is! RenderRepaintBoundary || !ro.attached || ro.size.isEmpty) return null;
+    final image = await ro.toImage(pixelRatio: width / ro.size.width);
+    try {
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      return data?.buffer.asUint8List();
+    } finally {
+      image.dispose();
     }
   }
 

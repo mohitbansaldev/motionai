@@ -73,6 +73,14 @@ abstract class RemoteFrameHost {
   Future<List<RawFrame>> renderFrames(EditorController c, List<double> times, int width, {Composition? comp});
 }
 
+/// win-30: hosts that can capture the live editor preview (the same widget
+/// tree the user sees, not the export renderer).
+abstract class RemoteEditorView {
+  /// PNG of the editor's composition preview, [width] px wide, or null when
+  /// the editor is not on screen.
+  Future<Uint8List?> editorScreenshot({int width = 960});
+}
+
 class _Fail implements Exception {
   final String message;
   _Fail(this.message);
@@ -226,9 +234,40 @@ class RemoteTools implements McpBackend {
         return _runCommands(a);
       case 'get_layer':
         final c = _editor();
-        final l = c.comp.layerById(_need(a, 'layer'));
-        if (l == null) throw _Fail('No layer "${a['layer']}" in ${c.comp.name}. Layer ids are in get_state.');
+        final comp = _compArg(c, a); // win-30: any comp, the user's view stays
+        final l = comp.layerById(_need(a, 'layer'));
+        if (l == null) throw _Fail('No layer "${a['layer']}" in ${comp.name}. Layer ids are in get_state (or get_layers with comp).');
         return McpToolResult.json(l.toJson());
+      case 'get_layers': // win-30: every layer of any comp, top to bottom, without opening it
+        final c = _editor();
+        final comp = _compArg(c, a);
+        final full = _bool(a, 'full') == true;
+        return McpToolResult.json({
+          'comp': comp.id,
+          'name': comp.name,
+          'duration': _r(comp.duration),
+          'layers': [
+            for (final l in comp.layers)
+              full
+                  ? l.toJson()
+                  : {
+                      'id': l.id,
+                      'name': l.name,
+                      'type': l.type.name,
+                      'start': _r(l.start),
+                      'end': _r(l.end),
+                      'is3d': l.is3D,
+                      if (l.parentId != null) 'parent': l.parentId,
+                      if (!l.visible) 'visible': false,
+                    },
+          ],
+        });
+      case 'editor_screenshot': // win-30: the real editor preview, exactly what the user sees
+        final Object h = host;
+        if (h is! RemoteEditorView) throw _Fail('This app version cannot capture the editor preview.');
+        final png = await h.editorScreenshot(width: (_num(a, 'width') ?? 960).round().clamp(160, 1920));
+        if (png == null) throw _Fail('The editor preview is not on screen (screen: ${host.screen}).');
+        return McpToolResult.image(png, caption: 'Editor preview as the user sees it (${host.screen}).');
       case 'undo':
       case 'redo':
         final c = _editor();
@@ -269,11 +308,20 @@ class RemoteTools implements McpBackend {
         return McpToolResult.json({'media': [for (final m in c.project.media.values) _media(m)]});
       case 'render_frame':
         final c = _editor();
-        final t = (_num(a, 'time') ?? c.time).clamp(0.0, c.comp.duration).toDouble();
+        final comp = _compArg(c, a); // win-30: any comp without switching the user's view
+        final t = (_num(a, 'time') ?? (comp == c.comp ? c.time : 0)).clamp(0.0, comp.duration).toDouble();
         final w = (_num(a, 'width') ?? 960).round().clamp(160, 1920);
-        final png = await host.renderPng(c, t, w);
-        final h = (w * c.comp.height / c.comp.width).round();
-        return McpToolResult.image(png, caption: 'Frame at ${_r(t)} s of "${c.comp.name}" (${w}x$h; composition ${c.comp.width.round()}x${c.comp.height.round()}).');
+        final Object fh = host;
+        final Uint8List png;
+        if (comp != c.comp && fh is RemoteFrameHost) {
+          final f = (await fh.renderFrames(c, [t], w, comp: comp)).first;
+          png = ContactSheet.encodeFrame(f);
+        } else {
+          if (comp != c.comp) throw _Fail('open_comp "${comp.id}" first, then render_frame.');
+          png = await host.renderPng(c, t, w);
+        }
+        final h = (w * comp.height / comp.width).round();
+        return McpToolResult.image(png, caption: 'Frame at ${_r(t)} s of "${comp.name}" (${w}x$h; composition ${comp.width.round()}x${comp.height.round()}).');
       case 'seek':
         final c = _editor();
         final t = _num(a, 'time') ?? (throw _Fail('Missing "time" (seconds).'));

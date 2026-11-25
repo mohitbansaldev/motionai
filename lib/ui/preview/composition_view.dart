@@ -17,6 +17,9 @@ class CompositionView extends StatefulWidget {
   final EditorController controller;
   const CompositionView({super.key, required this.controller});
 
+  /// win-30: the preview's repaint boundary (MCP editor_screenshot captures it).
+  static final GlobalKey previewKey = GlobalKey(debugLabel: 'editorPreview');
+
   @override
   State<CompositionView> createState() => _CompositionViewState();
 }
@@ -54,7 +57,9 @@ class _CompositionViewState extends State<CompositionView> {
       final comp = c.comp;
       _viewScale = math.min(box.maxWidth / comp.width, box.maxHeight / comp.height);
       return Center(
-        child: SizedBox(
+        child: RepaintBoundary( // win-30: captured by MCP editor_screenshot
+          key: CompositionView.previewKey,
+          child: SizedBox(
           width: comp.width * _viewScale,
           height: comp.height * _viewScale,
           child: Listener( // BULK (Agent N): pointer kind (rubber band with a mouse), Alt+wheel scale/rotate
@@ -91,6 +96,7 @@ class _CompositionViewState extends State<CompositionView> {
             ),
           ),
           ),
+        ),
         ),
       );
     });
