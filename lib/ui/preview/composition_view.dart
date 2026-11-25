@@ -9,7 +9,6 @@ import '../../state/editor_controller.dart';
 import '../precomp_bar.dart'; // PRECOMP (Agent L)
 import '../bulk/bulk_preview.dart'; // BULK (Agent N)
 import 'composition_canvas.dart';
-import 'preview_quality.dart'; // PERF (Agent O)
 
 /// Live preview of the composition. Tap a layer to select it, drag to move
 /// it, pinch with two fingers to scale and rotate it.
@@ -45,7 +44,6 @@ class _CompositionViewState extends State<CompositionView> {
     return ListenableBuilder(listenable: c, builder: (context, _) => Stack(fit: StackFit.passthrough, children: [
       _view(),
       if (c.inPrecomp) Positioned(left: 8, top: 8, child: PrecompBreadcrumbs(c: c)),
-      const Positioned(right: 8, bottom: 8, child: PreviewHud()), // PERF (Agent O): quality + FPS meter
     ]));
   }
 
@@ -67,10 +65,10 @@ class _CompositionViewState extends State<CompositionView> {
             onScaleUpdate: _onScaleUpdate,
             onScaleEnd: (_) => _onScaleEnd(),
             child: AnimatedBuilder(
-              animation: Listenable.merge([c, c.timeNotifier, c.videos, PreviewQuality.instance]), // PERF (Agent O): + quality
+              animation: Listenable.merge([c, c.timeNotifier, c.videos]),
               builder: (context, _) {
                 final t = c.time;
-                _items = Evaluator.evaluate(comp, t, velocity: !c.playing); // PERF (Agent O): motion blur is not drawn while playing
+                _items = Evaluator.evaluate(comp, t);
                 final selected = _items.where((i) => i.layer.id == c.selectedLayerId).firstOrNull;
                 return FittedBox(
                   fit: BoxFit.contain,
@@ -82,8 +80,6 @@ class _CompositionViewState extends State<CompositionView> {
                     items: _items,
                     draft: true,
                     playing: c.playing,
-                    // PERF (Agent O): on-screen pixels per comp pixel → cached 3D layers, photo decode size
-                    previewScale: _viewScale * (MediaQuery.maybeDevicePixelRatioOf(context) ?? 1) * PreviewQuality.instance.factor(playing: c.playing),
                     overlay: !c.playing ? _bulkOverlay(selected) : null, // BULK (Agent N): all selected layers
                   ),
                 );

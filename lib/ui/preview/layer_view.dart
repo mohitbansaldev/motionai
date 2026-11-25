@@ -16,7 +16,6 @@ import '../../fonts/font_catalog.dart'; // FONTS (Agent I)
 import '../../state/video_pool.dart';
 import 'fx/chroma_key.dart'; // CHROMA (Agent M)
 import 'fx/fx_painters.dart';
-import 'fx/layer_cache.dart'; // PERF (Agent O)
 import 'fx/offscreen.dart';
 import 'fx/particles.dart';
 import 'fx/text_fx.dart';
@@ -27,11 +26,7 @@ import 'shape_painter.dart';
 ///
 /// During export, [videoFrames] supplies exact decoded frames for video
 /// layers instead of the live players.
-///
-/// In the draft preview the content (media, text, shape, effects, masks) is
-/// rebuilt only when its [LayerSig] fingerprint changes, so a static layer
-/// under a moving camera only gets a new transform each frame (Agent O).
-class LayerView extends StatefulWidget {
+class LayerView extends StatelessWidget {
   final RenderItem item;
   final Project project;
   final VideoPool? videos;
@@ -48,7 +43,6 @@ class LayerView extends StatefulWidget {
     this.draft = false,
     this.playing = false,
     this.asMatte = false,
-    this.previewScale,
   });
 
   final bool draft;
@@ -62,31 +56,19 @@ class LayerView extends StatefulWidget {
   /// Longest side images are decoded at in the live preview.
   static const draftImageSize = 1280;
 
-  /// Screen pixels per composition pixel in the live editor preview (view
-  /// scale × device pixel ratio × preview quality); null elsewhere. With it,
-  /// static 3D layers are cached as images at their on-screen size and
-  /// photos are decoded at about the size they are shown.
-  final double? previewScale;
-
   @override
-  State<LayerView> createState() => _LayerViewState();
-
-  /// Content → effects → masks: everything drawn in layer space.
-  Widget buildContent({int? decodeWidth}) {
+  Widget build(BuildContext context) {
     final l = item.layer;
-    Widget child = SizedBox(width: l.width, height: l.height, child: _content(l, decodeWidth: decodeWidth));
+    Widget child = SizedBox(width: l.width, height: l.height, child: _content(l));
     for (final e in l.effects) {
       if (e.enabled) child = _effect(e, child, l);
     }
     for (final m in l.masks) {
       child = _mask(m, child);
     }
-    return child;
-  }
-
-  /// Depth blur → opacity → transform → motion blur around the content.
-  Widget wrap(Widget child) {
-    final l = item.layer;
+    // Cache the layer's pixels: when only its 3D/camera transform changes,
+    // the GPU re-composites the cached picture instead of repainting it.
+    if (draft) child = RepaintBoundary(child: child);
     // Depth-of-field blur is the most expensive thing in 3D: lighter in the
     // preview and skipped while playing (full quality on export).
     if (item.dofBlur > 0.3 && !(draft && playing)) {
@@ -123,7 +105,7 @@ class LayerView extends StatefulWidget {
     return (math.max(0.01, sx), math.max(0.01, sy));
   }
 
-  Widget _content(Layer l, {int? decodeWidth}) {
+  Widget _content(Layer l) {
     // CHROMA (Agent M): green screen keys the source pixels (decoded frames,
     // never the live texture) before every other effect.
     final ck = (l.type == LayerType.video || l.type == LayerType.image) ? chromaEffectOf(l) : null;
@@ -150,7 +132,7 @@ class LayerView extends StatefulWidget {
           fit: BoxFit.fill,
           gaplessPlayback: true,
           filterQuality: draft && playing ? FilterQuality.low : FilterQuality.medium,
-          cacheWidth: decodeWidth ?? math.min(l.width.round(), draft ? draftImageSize : 2560),
+          cacheWidth: math.min(l.width.round(), draft ? draftImageSize : 2560),
           errorBuilder: (_, e, _) => ColoredBox(
             color: const Color(0xFF3A1010),
             child: Center(
@@ -167,12 +149,12 @@ class LayerView extends StatefulWidget {
         final sh = l.shape;
         if (sh == null) return const SizedBox.shrink();
         final tr = l.props[Props.trim]?.valueAt(time) ?? const [0.0, 100.0];
-        final shape = CustomPaint(
-          size: Size(l.width, l.height),
-          painter: ShapePainter(sh, tr[0] / 100, tr[1] / 100),
+        return RepaintBoundary(
+          child: CustomPaint(
+            size: Size(l.width, l.height),
+            painter: ShapePainter(sh, tr[0] / 100, tr[1] / 100),
+          ),
         );
-        // Draft: the layer's own boundary (LayerRaster) caches it.
-        return draft ? shape : RepaintBoundary(child: shape);
       case LayerType.nullObject:
       case LayerType.audio:
         return const SizedBox.shrink();
@@ -719,47 +701,6 @@ class LayerView extends StatefulWidget {
     );
   }
 }
-
-// PERF (Agent O) >>>
-class _LayerViewState extends State<LayerView> {
-  int? _sig;
-  Widget? _content;
-  int _stable = 0; // frames the content fingerprint has not changed
-  int _decodeW = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final w = widget;
-    // Export / Director renders: built fresh, exactly as always.
-    if (!w.draft) return w.wrap(w.buildContent());
-    final l = w.item.layer;
-    final scale = w.previewScale;
-    int? decode;
-    var ratio = 1.0;
-    if (scale != null) {
-      final s = LayerSig.screenScale(w.item.matrix, l.width, l.height) * scale;
-      ratio = s;
-      if (l.type == LayerType.image) {
-        _decodeW = LayerSig.decodeWidth(l.width * s, _decodeW, cap: math.min(l.width.round(), LayerView.draftImageSize));
-        decode = _decodeW;
-      }
-    }
-    final sig = LayerSig.content(w.project, l, w.time, draft: true, playing: w.playing, asMatte: w.asMatte, decodeWidth: decode ?? 0);
-    final content = _content;
-    if (sig != null && sig == _sig && content != null) {
-      _stable++;
-    } else {
-      _content = w.buildContent(decodeWidth: decode);
-      _stable = 0;
-    }
-    _sig = sig;
-    final raster = scale != null && sig != null && _stable >= 1 && l.is3D && !w.asMatte && LayerSig.worthRaster(l);
-    // Cache the layer's pixels: when only its 3D/camera transform changes,
-    // the GPU re-composites the cached picture (or image) instead of repainting it.
-    return w.wrap(LayerRaster(enabled: raster, ratio: ratio, fast: w.playing, child: _content!));
-  }
-}
-// <<< PERF (Agent O)
 
 const List<double> _redOnly = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0];
 const List<double> _cyanOnly = [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
