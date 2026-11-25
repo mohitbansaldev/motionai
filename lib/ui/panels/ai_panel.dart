@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../ai/agent.dart';
 import '../../ai/ai_client.dart';
 import '../../ai/ai_settings.dart';
+import '../../remote/remote_ui.dart'; // MCP (Agent P)
 import '../../ai/chatgpt_auth.dart';
 import '../../state/editor_controller.dart';
 import '../common.dart';
@@ -451,6 +452,10 @@ class _AiSettingsSheetState extends State<AiSettingsSheet> {
                   const Text('The model downloads once on first use. "Accurate" is best for Hindi but slower.',
                       style: TextStyle(fontSize: 11.5, color: Colors.white54)),
                 ],
+                // MCP (Agent P) >>>
+                const Divider(height: 28),
+                const ClaudeControlSection(),
+                // <<< MCP (Agent P)
                 const SizedBox(height: 8),
                 SizedBox(width: double.infinity, child: FilledButton(onPressed: _save, child: const Text('Save'))),
               ]),

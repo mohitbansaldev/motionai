@@ -11,6 +11,8 @@ import '../core/presets/templates.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../platform/win_window.dart';
+import '../remote/remote_control.dart'; // MCP (Agent P)
+import '../remote/remote_ui.dart'; // MCP (Agent P)
 import '../services/project_storage.dart';
 import '../services/updater.dart';
 import 'editor_screen.dart';
@@ -49,6 +51,17 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     // Quiet automatic check on launch.
     Future.delayed(const Duration(seconds: 2), () => _checkUpdate(manual: false));
+    RemoteControl.instance.projectsRevision.addListener(_reloadIfMounted); // MCP (Agent P): projects made/renamed by Claude
+  }
+
+  @override
+  void dispose() {
+    RemoteControl.instance.projectsRevision.removeListener(_reloadIfMounted); // MCP (Agent P)
+    super.dispose();
+  }
+
+  void _reloadIfMounted() {
+    if (mounted) _reload(); // MCP (Agent P): never called during build (see RemoteControl.detach)
   }
 
   Future<void> _checkUpdate({required bool manual}) async {
@@ -334,6 +347,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(color: MA.textDim, fontSize: 13.5)),
             ]),
           ),
+          if (RemoteControl.supported) // MCP (Agent P)
+            IconButton(
+              tooltip: 'Claude control',
+              onPressed: () => ClaudeControlSheet.open(context),
+              icon: const Icon(Icons.smart_toy_outlined, color: MA.textDim),
+            ),
           IconButton(
             tooltip: 'Check for updates',
             onPressed: () => _checkUpdate(manual: true),
