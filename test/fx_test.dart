@@ -516,5 +516,27 @@ void main() {
       expect((px[0] >> 16) & 0xFF, 0);
       expect((px[0] >> 8) & 0xFF, closeTo(54, 3));
     });
+    testWidgets('particles draw sprites; motion blur smears a fast layer', (tester) async {
+      final p = small();
+      run(p, {'op': 'add_layer', 'type': 'solid', 'id': 'sky', 'width': 200, 'height': 100, 'color': '#000000'});
+      run(p, {'op': 'add_effect', 'layer': 'sky', 'effect': 'particles', 'params': {'kind': 'snow', 'amount': 100}});
+      final pts = [for (int y = 2; y < 100; y += 4) for (int x = 2; x < 200; x += 4) [x, y]];
+      final px = await render(tester, p, 1.5, pts);
+      final lit = px.where((v) => (v & 0xFFFFFF) != 0).length;
+      expect(lit, greaterThan(5), reason: 'snow flakes visible');
+
+      final q = small();
+      run(q, {'op': 'add_layer', 'type': 'solid', 'id': 'box', 'width': 40, 'height': 40, 'color': '#FFFFFF'});
+      run(q, {'op': 'set_keyframe', 'target': 'box', 'prop': 'position', 'time': 0, 'value': [0, 50, 0], 'ease': 'linear'});
+      run(q, {'op': 'set_keyframe', 'target': 'box', 'prop': 'position', 'time': 1, 'value': [1800, 50, 0]});
+      // At t=1/18 s the box is centred at x=100 (box spans 80..120), moving 60 px/frame.
+      const t = 1 / 18;
+      final sharp = await render(tester, q, t, [[74, 50], [100, 50]]);
+      expect(sharp[0] & 0xFFFFFF, 0);
+      run(q, {'op': 'set_comp', 'motion_blur': true});
+      final blurred = await render(tester, q, t, [[74, 50], [100, 50], [100, 25]]);
+      expect((blurred[0] >> 16) & 0xFF, greaterThan(20), reason: 'smeared beyond the edge along x');
+      expect(blurred[2] & 0xFFFFFF, lessThan(0x101010), reason: 'no vertical smear for horizontal motion');
+    });
   });
 }
