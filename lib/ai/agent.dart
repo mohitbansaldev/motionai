@@ -162,6 +162,8 @@ class EditAgent {
         'playhead': r(c.time),
         if (c.inPrecomp) 'editing_comp': comp.id, // PRECOMP (Agent L)
       },
+      // BULK (Agent N): what the user has selected ("these", "the selected ones").
+      if (c.selectionCount > 0) 'selected_layers': c.selectedLayerIds,
       // PRECOMP (Agent L): nested comps (precomps) in the project.
       if (c.project.comps.isNotEmpty)
         'comps': [
