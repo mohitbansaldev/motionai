@@ -7,6 +7,7 @@ import '../../services/media_importer.dart';
 import '../../state/editor_controller.dart';
 import '../common.dart';
 import '../doc_kit_sheet.dart';
+import '../audio/sound_sheet.dart'; // Sound (Agent K)
 
 /// Add media, text, solids, nulls and the one-tap parallax rig.
 class AddPanel extends StatefulWidget {
@@ -127,6 +128,7 @@ class _AddPanelState extends State<AddPanel> {
       (Icons.control_camera, 'Null', () => _add({'op': 'add_layer', 'type': 'null', 'name': 'Controller'})),
       (Icons.layers_outlined, 'Parallax', () => _parallax(context)),
       (Icons.view_in_ar_outlined, '3D Photo (AI)', () => _photo3d()),
+      (Icons.graphic_eq, 'Sound FX & Beats', () => SoundSheet.open(context, c)), // Sound (Agent K)
     ];
     return Stack(children: [
       GridView.count(

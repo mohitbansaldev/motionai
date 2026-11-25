@@ -95,4 +95,21 @@ IMPORTANT RULES
 - For documentary style prefer slow easy_ease moves, cinematic_doc style, subtle grain and vignette.
 - Explainer style: when a source is cited use a source_card with highlights; places → map; organisations → badge; big numbers → counter; years → timeline; keep the presenter (A-roll) between visuals.
 - Documentary kit: introduce a person with name_tag over their photo; label people with character_label; quote an article/tweet screenshot with article + marks; dates → date_title or timeline; amounts/years with drama → number_tiles; intros → title_slam; a photo with separate cut-outs → make_3d then camera_shot; journeys → route_follow; hide a cut with foreground_wipe.
+
+// ---- SOUND DESIGN (Agent K: lib/audio) ----
+SOUND (all synthesised on the device — never ask for sound files):
+  add_sfx {kind, time? (default playhead: the sound's PEAK lands here, e.g. on the cut), volume? (0-200, default auto-levelled), duration? (beds: loops to fill it, with fades), id?}
+    kinds — transitions: whoosh, swoosh_short, swoosh_long, swoosh_reverse (sucks in, stops on the cut), whoosh_silence (builds then cuts to dead silence before a reveal), reverse_cymbal, riser;
+    impacts: hit, impact (intro slam decaying to silence), braam (deep cinematic horn), sub_drop; UI/text: tick, pop, ui_click, ding, typewriter, glitch;
+    foley: shutter (photo), paper (documents/articles), pin_drop (map pins: peak = the landing), heartbeat;
+    loopable beds: crowd_bed, wind_bed, room_tone, night_bed, rain_bed, fire_bed, clock_tick.
+  add_sfx {mood: "rain|night|war|crowd|desert|suspense|office…", time, duration} — ambience bed for a scene mood.
+  add_sfx {kind: "typewriter", layer: <text layer with animator typewriter>} — one key click per letter, synced.
+  beat_sync {mode: "cuts", music?: audio layer id, tolerance? (s, default 0.25), layers?: [ids]} — moves every cut onto the nearest music beat (SFX on cuts follow).
+  beat_sync {mode: "pops", layers?: [text/component group ids], downbeats?: true} — moves text pops / cards to start on beats.
+  beat_sync {mode: "drop", music, at (comp seconds, e.g. a title_slam drop), drop? (seconds into the music file), preroll? (s of build-up before), fade_in?} — re-cues the music so its drop hits exactly at "at".
+    Beats come from the analysed music (Sound sheet / Director); otherwise pass "bpm" (+ "offset" = time of the first beat) or "beats": [seconds].
+  auto_mix {roles?: {layerId: voice|music|sfx|ambience|none}, duck?: true, fades?: true, targets?: {voice:-16, music:-28, sfx:-20, ambience:-32}} — loudness-normalises every audio track, ducks music under the voice, fades music/ambience in and out.
+  Good habits: whoosh/swoosh on transitions, pin_drop on map pins, paper on articles, shutter on photo cards, braam or sub_drop under a big reveal, whoosh_silence right before a shocking line, a mood bed under each scene, auto_mix at the end.
+// ---- end SOUND DESIGN ----
 ''';

@@ -11,6 +11,7 @@ import '../presets/camera_presets.dart';
 import '../presets/components.dart';
 import '../presets/motion_presets.dart';
 import 'fx_commands.dart'; // FX (Agent B)
+import '../../audio/sound_commands.dart'; // Sound (Agent K)
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -58,6 +59,7 @@ class EditCommands {
     'set_camera_mode', 'camera_move', 'parallax_rig', 'set_comp', 'batch',
     'animate_in', 'animate_out', 'apply_style', 'add_mask', 'update_mask', 'remove_mask',
     'add_component', 'replace_media',
+    ...SoundCommands.ops, // Sound (Agent K): add_sfx, beat_sync, auto_mix
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -369,6 +371,21 @@ class EditCommands {
         if (c['background'] != null) comp.background = _color(c['background']);
         FxCommands.applyComp(comp, c); // FX (Agent B): motion_blur
         break;
+
+      // ---- Sound (Agent K): add_sfx / beat_sync / auto_mix → lib/audio/sound_commands.dart
+      case 'add_sfx':
+      case 'beat_sync':
+      case 'auto_mix':
+        final sound = SoundCommands.build(project, c, now);
+        for (int i = 0; i < sound.length; i++) {
+          try {
+            _run(project, sound[i], now, r);
+          } on CommandError catch (e) {
+            throw CommandError('$op: ${e.message}');
+          }
+        }
+        break;
+      // ---- end Sound
 
       default:
         throw CommandError('Unknown op "$op". Valid ops: ${ops.join(', ')}');
