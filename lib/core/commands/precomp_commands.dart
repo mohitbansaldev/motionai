@@ -438,7 +438,7 @@ class PrecompCommands {
     final idx = host.indexOf(cl.id);
     host.layers
       ..removeAt(idx)
-      ..insertAll(idx, [...out, if (xform != null) xform]);
+      ..insertAll(idx, [...out, ?xform]);
     for (final o in host.layers) {
       if (o.parentId == cl.id) {
         o.parentId = xform?.id;
