@@ -82,6 +82,7 @@ jobs:
       # Interim: whisper.cpp CLI in a "whisper" sub-folder and ONNX Runtime
       # next to the exe, used by lib/platform/windows_ai/win_ai.dart.
       - name: Bundle Windows AI binaries (whisper.cpp, ONNX Runtime)
+        continue-on-error: true
         shell: pwsh
         run: |
           $ProgressPreference = 'SilentlyContinue'
@@ -104,9 +105,18 @@ jobs:
           Get-ChildItem $dest
           & (Join-Path $dest 'whisper-cli.exe') --help 2>&1 | Select-Object -First 3
 
-          Invoke-WebRequest 'https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip' -OutFile ort.zip
-          Expand-Archive ort.zip -DestinationPath ort_x -Force
-          Get-ChildItem ort_x -Recurse -Filter onnxruntime*.dll | Copy-Item -Destination $env:REL
+          # ONNX Runtime is optional here (photo cut-out arrives with the Windows AI branch).
+          try {
+            $rel = Invoke-RestMethod 'https://api.github.com/repos/microsoft/onnxruntime/releases/latest' -Headers @{ 'User-Agent' = 'motionai-ci' }
+            $asset = $rel.assets | Where-Object { $_.name -match '^onnxruntime-win-x64-[0-9.]+\.zip$' } | Select-Object -First 1
+            if (-not $asset) { throw 'no win-x64 asset' }
+            Write-Host "ONNX Runtime: $($asset.name)"
+            Invoke-WebRequest $asset.browser_download_url -OutFile ort.zip
+            Expand-Archive ort.zip -DestinationPath ort_x -Force
+            Get-ChildItem ort_x -Recurse -Filter onnxruntime*.dll | Copy-Item -Destination $env:REL
+          } catch {
+            Write-Warning "ONNX Runtime not bundled: $_"
+          }
       # --- END WINAI BINARIES ---
 
       # Visual C++ runtime next to the exe, so it starts on PCs without it.
