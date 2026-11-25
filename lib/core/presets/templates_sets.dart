@@ -219,7 +219,7 @@ List<Map<String, dynamic>> _roomSet(TemplateCtx c) {
     _k(id, 'camera', 'position', du, [w / 2 + 220 * k, h / 2 - 10 * k, z0 + 900 * k], 'easy_ease'),
     _k(id, 'camera', 'poi', 0, [w / 2 - 60 * k, h / 2 + 20 * k, 400], 'easy_ease'),
     _k(id, 'camera', 'poi', du, [w / 2 + 40 * k, h / 2 + 20 * k, 400], 'easy_ease'),
-    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'aperture', 'value': 16}),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'aperture', 'value': 9}),
     _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'focus', 'value': 2300 * k}),
   ]);
   cmds.addAll(_finish(c, id, du, vignette: 55, grain: 16));
