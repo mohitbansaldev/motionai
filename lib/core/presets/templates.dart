@@ -7,6 +7,7 @@ import '../model/project.dart';
 import 'components.dart';
 import 'doc_transitions.dart'; // V2-C
 import 'templates_datahud.dart'; // V3-C
+import 'templates_sets.dart'; // win-30: general 3D set / evidence templates
 import '../../director/patterns.dart'; // V3-E
 import 'world_map.dart';
 
@@ -251,7 +252,8 @@ class SceneTemplate {
 /// Built-in scene templates, insertion and "save as template".
 class SceneTemplates {
   static const mine = 'My templates';
-  static const categories = ['Intros', 'Showcases', 'Transitions', 'Captions', 'Lower thirds', 'Endings', 'Maps', '3D', 'Doc patterns' /* V3-E */];
+  static const categories = ['Intros', 'Showcases', 'Transitions', 'Captions', 'Lower thirds', 'Endings', 'Maps', '3D', 'Doc patterns' /* V3-E */,
+    '3D sets', 'Explainers', 'Evidence' /* win-30 */];
 
   /// Built-ins available on this build (gated templates hidden).
   static List<SceneTemplate> get available => [for (final t in builtIn) if (t.available) t];
@@ -289,7 +291,7 @@ class SceneTemplates {
     }
   }
 
-  static const _refKeys = ['id', 'layer', 'target', 'parent', 'new_id', 'map', 'attach', 'cut_to', 'behind'];
+  static const _refKeys = ['id', 'layer', 'target', 'parent', 'new_id', 'map', 'attach', 'cut_to', 'behind', 'in_comp', 'comp']; // win-30: + comp refs
 
   /// Gives every id the template defines (and component parts `<id>_x`) the
   /// [prefix], so a template can be inserted any number of times.
@@ -303,7 +305,7 @@ class SceneTemplates {
         }
       }
       final id = c['id'];
-      if (id is String && (c['op'] == 'add_layer' || c['op'] == 'add_component')) defined.add(id);
+      if (id is String && (c['op'] == 'add_layer' || c['op'] == 'add_component' || c['op'] == 'add_comp')) defined.add(id); // win-30: + precomps
       if (id is String && c['op'] == 'add_component') components.add(id);
       if (c['new_id'] is String) defined.add(c['new_id'] as String);
     }
@@ -319,7 +321,7 @@ class SceneTemplates {
 
     Map<String, dynamic> one(Map c) {
       final out = <String, dynamic>{};
-      final isLayerOp = c['op'] == 'add_layer' || c['op'] == 'add_component';
+      final isLayerOp = c['op'] == 'add_layer' || c['op'] == 'add_component' || c['op'] == 'add_comp';
       c.forEach((k, v) {
         final key = '$k';
         if (key == 'commands' && v is List) {
@@ -788,6 +790,7 @@ class SceneTemplates {
       },
     ),
     ...docTransitionTemplates(), // V2-C: one per documentary transition
+    ...setTemplates(), // win-30: general reusable scenes (360-pack inspired)
     ...dataHudTemplates(), // V3-C: stat title, date stamp, calendar, unit chart, social bug
     ...docPatternTemplates(), // V3-E: one per story-grammar pattern ("Doc patterns")
     // ---------------------------------------------------------------- Captions

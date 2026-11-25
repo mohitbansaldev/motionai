@@ -250,7 +250,12 @@ void main() {
         final values = filled(t);
         final r = SceneTemplates.insert(p, t, start: 0, values: values);
         expect(r.createdIds, isNotEmpty);
-        final used = {for (final l in p.main.layers) if (l.mediaId != null) l.mediaId};
+        // win-30: templates may build their scene inside a precomp.
+        final used = {
+          for (final comp in [p.main, ...p.comps.values])
+            for (final l in comp.layers)
+              if (l.mediaId != null) l.mediaId,
+        };
         if (t.slots.any((s) => s.isMedia && s.media != 'audio')) {
           expect(used, isNotEmpty, reason: 'media slots end up on layers');
         }
