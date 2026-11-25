@@ -157,7 +157,7 @@ void main() {
         expect(kMcpToolNames, contains(n));
         expect(kMcpInstructions, contains(n));
       }
-      expect(kMcpTools.length, 35);
+      expect(kMcpTools.length, 38);
       expect(kMcpEditTools.contains('batch'), isFalse, reason: 'inner calls are checked one by one');
       for (final t in kMcpTools) {
         expect((t['description'] as String).length, lessThan(800), reason: '${t['name']}');

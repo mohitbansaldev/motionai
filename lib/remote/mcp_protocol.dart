@@ -329,12 +329,49 @@ final List<Map<String, dynamic>> kMcpTools = [
       'Searches the user\'s shared asset library (photos, cut-outs, videos, music) by name, tags, description, kind, era, region, '
           'mood. Returns ids "lib:<id>".',
       _obj({
-        'query': _s('Search words (empty = newest)'),
+        'query': _s('Search words, fuzzy (empty = newest)'),
+        'role': _e(['character', 'object', 'plate', 'overlay', 'set_piece'], 'Only this role'),
+        'tags': {'type': 'array', 'items': {'type': 'string'}, 'description': 'All of these tags'},
+        'kit': _s('Only this kit (name or id)'),
         'type': _e(['image', 'video', 'audio'], 'Only this media type'),
         'transparent': _b('Only cut-outs with transparency'),
         'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100, 'description': 'Default 30'},
       }),
       readOnly: true),
+  // V2-lead >>> library tools backed by lib/library/library_ops.dart (V2-F)
+  _tool('library_import_folder', 'Import a folder into the library',
+      'Imports every image/video/audio in a folder on this PC (e.g. a Google Flow kit folder with cutouts/, plates/, fx/) into the '
+          'shared library as one kit. Roles come from file prefixes (char_ character, prop_ object, plate_ background, fx_ overlay, '
+          'cut_ set piece); the PNG cut-out wins over a same-named green-screen JPEG; duplicates are skipped. green_screen auto keys '
+          'flat green/blue backgrounds; remove_mark inpaints the small AI sparkle mark. Slow for big folders.',
+      _obj({
+        'path': _s('Absolute folder path'),
+        'recursive': _b('Include subfolders (default true)'),
+        'kit': _s('Kit name (default: folder name)'),
+        'tags': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Extra tags for every asset'},
+        'green_screen': _e(['auto', 'true', 'false'], 'Key green/blue-screen images (default auto)'),
+        'remove_mark': _b('Remove the AI sparkle watermark (default false)'),
+      }, required: ['path'])),
+  _tool('library_clean', 'Clean library images',
+      'Green-screen keying and/or AI sparkle-mark removal on library images (originals are kept; restore:true undoes).',
+      _obj({
+        'ids': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Library ids ("lib:<id>")'},
+        'kit': _s('Kit name or id'),
+        'all': _b('Every image in the library'),
+        'green_screen': _e(['auto', 'true', 'false'], 'Default auto'),
+        'remove_mark': _b('Default true'),
+        'restore': _b('Go back to the original images'),
+      })),
+  _tool('library_suggest', 'Suggest assets for a shot',
+      'Ranks library assets for a shot brief, per role (character, object, plate, overlay, set_piece). Read-only.',
+      _obj({
+        'brief': _s('What the shot shows, e.g. "merchant shows a tulip bulb in the exchange hall"'),
+        'roles': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Roles wanted (default all)'},
+        'kit': _s('Only this kit'),
+        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 30, 'description': 'Per role, default 5'},
+      }, required: ['brief']),
+      readOnly: true),
+  // <<< V2-lead
   _tool('library_insert', 'Insert library asset',
       'Imports a library asset into the open project (returns its media id) and by default adds it as a layer at "start".',
       _obj({
@@ -359,6 +396,7 @@ Set<String> get kMcpToolNames => {for (final t in kMcpTools) t['name'] as String
 const Set<String> kMcpEditTools = {
   'run_commands', 'undo', 'redo', 'open_project', 'new_project', 'close_project', 'import_media', 'open_comp',
   'director_run', 'captions_generate', 'apply_template', 'library_insert', 'export_video',
+  'library_import_folder', 'library_clean', // V2-lead
 };
 
 // ---------------------------------------------------------------- resources

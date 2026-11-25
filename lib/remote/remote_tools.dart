@@ -22,6 +22,7 @@ import '../director/capabilities.dart';
 import '../director/director.dart';
 import '../director/planner.dart';
 import '../library/asset_library.dart';
+import '../library/library_ops.dart'; // V2-lead
 import '../services/captions.dart';
 import '../services/project_storage.dart';
 import '../state/editor_controller.dart';
@@ -326,6 +327,12 @@ class RemoteTools implements McpBackend {
         return _applyTemplate(a);
       case 'library_search':
         return _librarySearch(a);
+      // V2-lead >>>
+      case 'library_import_folder':
+      case 'library_clean':
+      case 'library_suggest':
+        return _libraryOps(name, a);
+      // <<< V2-lead
       case 'library_insert':
         return _libraryInsert(a);
       case 'list_effects':
@@ -1011,8 +1018,32 @@ class RemoteTools implements McpBackend {
 
   // ------------------------------------------------------------ library
 
+  // V2-lead >>> library ops (V2-F)
+  Future<McpToolResult> _libraryOps(String name, Map<String, dynamic> a) async {
+    final lib = await AssetLibrary.shared();
+    try {
+      final r = switch (name) {
+        'library_import_folder' => await LibraryOps.importFolder(lib, a),
+        'library_clean' => await LibraryOps.clean(lib, a),
+        _ => LibraryOps.suggest(lib, a),
+      };
+      return McpToolResult.json(r);
+    } on ArgumentError catch (e) {
+      throw _Fail('${e.message}');
+    }
+  }
+  // <<< V2-lead
+
   Future<McpToolResult> _librarySearch(Map<String, dynamic> a) async {
     final lib = await AssetLibrary.shared();
+    // V2-lead: role/tags/kit (and fuzzy matching) go through LibraryOps.search.
+    if (a['role'] != null || a['roles'] != null || a['tags'] != null || a['kit'] != null) {
+      try {
+        return McpToolResult.json(LibraryOps.search(lib, a));
+      } on ArgumentError catch (e) {
+        throw _Fail('${e.message}');
+      }
+    }
     final type = switch (_str(a, 'type')) { 'image' => MediaType.image, 'video' => MediaType.video, 'audio' => MediaType.audio, _ => null };
     final limit = (_num(a, 'limit') ?? 30).round().clamp(1, 100);
     final found = lib.search(_str(a, 'query') ?? '', type: type, transparent: _bool(a, 'transparent') == true ? true : null);
