@@ -17,6 +17,7 @@ import '../../fonts/font_commands.dart'; // FONTS (Agent I)
 import '../engine/precomp.dart'; // PRECOMP (Agent L)
 import 'precomp_commands.dart'; // PRECOMP (Agent L)
 import 'bulk_commands.dart'; // BULK (Agent N)
+import 'transition_commands.dart'; // V2-C
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -85,6 +86,7 @@ class EditCommands {
     ...SoundCommands.ops, // Sound (Agent K): add_sfx, beat_sync, auto_mix
     ...PrecompCommands.ops, // PRECOMP (Agent L)
     ...BulkCommands.ops, // BULK (Agent N): for_layers, select, align, group_layers, paste_layers…
+    ...TransitionCommands.ops, // V2-C: transition, list_transitions
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -153,6 +155,13 @@ class EditCommands {
         BulkCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
         break;
       // <<< BULK (Agent N)
+
+      // V2-C >>> documentary transitions → transition_commands.dart
+      case 'transition':
+      case 'list_transitions':
+        TransitionCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
+        break;
+      // <<< V2-C
 
       case 'add_layer':
         _addLayer(project, c, now, r);

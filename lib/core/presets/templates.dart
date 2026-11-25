@@ -5,6 +5,7 @@ import '../commands/edit_commands.dart';
 import '../model/layer.dart';
 import '../model/project.dart';
 import 'components.dart';
+import 'doc_transitions.dart'; // V2-C
 import 'world_map.dart';
 
 /// Starter templates: ready-made animated scenes built only from edit
@@ -784,6 +785,7 @@ class SceneTemplates {
         ];
       },
     ),
+    ...docTransitionTemplates(), // V2-C: one per documentary transition
     // ---------------------------------------------------------------- Captions
     SceneTemplate(
       id: 'glow_word', name: 'Glow word', category: 'Captions',
@@ -1060,3 +1062,36 @@ class SceneTemplates {
     return cmds;
   }
 }
+
+// V2-C >>> documentary transition templates (category "Transitions"):
+// two shots (photos/clips or placeholders) joined by the `transition` op.
+List<SceneTemplate> docTransitionTemplates() => [
+      for (final d in DocTransitions.catalog)
+        SceneTemplate(
+          id: 'doc_tr_${d.id}',
+          name: '${d.label} transition',
+          category: 'Transitions',
+          subtitle: 'Best for ${d.bestFor}',
+          duration: 6,
+          previewTime: 3,
+          needsOps: const ['transition'],
+          slots: const [
+            TemplateSlot('a', 'Outgoing shot', kind: 'media'),
+            TemplateSlot('b', 'Incoming shot', kind: 'media'),
+          ],
+          builder: (c) {
+            Map<String, dynamic> shot(String id, String key, double st, String c1, String c2, String title) {
+              final m = c.media(key);
+              if (m != null && m.type != MediaType.audio) return {...c.mediaLayer(id, m, st: st, du: 3.0), 'name': title};
+              return c.rect(id, c.w, c.h, c.w / 2, c.h / 2, c1, fill2: c2, st: st, du: 3.0, name: title);
+            }
+
+            return [
+              shot('a', 'a', 0, '#2B3A4A', '#0D1218', 'Shot A'),
+              shot('b', 'b', 3.0, '#5A3A22', '#1A0F08', 'Shot B'),
+              {'op': 'transition', 'layers': ['a', 'b'], 'type': d.id, 'at': c.t(3.0)},
+            ];
+          },
+        ),
+    ];
+// <<< V2-C

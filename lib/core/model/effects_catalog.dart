@@ -174,6 +174,22 @@ class EffectsCatalog {
       ParamDef('view', 'View', [0], 0, 1, options: ['final', 'matte']),
     ], category: 'keying'),
     // <<< CHROMA (Agent M)
+
+    // V2-C >>> transition effects (lib/ui/preview/fx/transition_painters.dart)
+    EffectDef('burn_edge', 'Burn Away', [
+      ParamDef('progress', 'Progress', [0], 0, 100),
+      ParamDef('cx', 'Start X %', [50], 0, 100),
+      ParamDef('cy', 'Start Y %', [50], 0, 100),
+      ParamDef('color', 'Glow color', [255, 140, 40], 0, 255, color: true),
+      ParamDef('embers', 'Embers', [60], 0, 100),
+    ], category: 'reveal'),
+    EffectDef('page_curl', 'Page Curl', [
+      ParamDef('progress', 'Progress', [0], 0, 100),
+      ParamDef('angle', 'Direction °', [200], 0, 360),
+      ParamDef('shadow', 'Shadow', [60], 0, 100),
+      ParamDef('back', 'Back of page', [238, 230, 214], 0, 255, color: true),
+    ], category: 'reveal'),
+    // <<< V2-C
   ];
 
   static const categories = ['keying', 'color', 'blur', 'stylize', 'distort', 'atmosphere', 'reveal']; // CHROMA (Agent M): + keying

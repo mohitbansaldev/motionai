@@ -154,4 +154,25 @@ ASSET LIBRARY PIPELINE (MCP tools; NOT run_commands ops):
 - library_search {query?, role?: character|object|plate|overlay|set_piece|audio (synonyms: background, prop, fx, cutout…), tags?, kit?, type?, transparent?, limit?} — fuzzy, ranked ("merchnt" finds char_merchant).
 - library_suggest {brief: what the shot shows, roles?: [character, object, plate, overlay, set_piece], kit?, limit? (per role, 5)} — ranked lib:<id> assets per role for a shot (keyword/tag scoring); a role with no match lists its newest assets with score 0. Use plates as the back layer, characters/objects/set pieces (transparent cut-outs) above, overlays on top, then make_3d.
 // ---- <<< V2-F ----
+
+// ---- V2-C: DOCUMENTARY TRANSITIONS ----
+TRANSITIONS between two shots (one undo step; prefer these over animate_in/out for scene changes):
+  transition {from: outgoing layer id, to: incoming layer id, type, duration? (s), at? (cut time, default = to.start), sound?: true (default: matched whoosh/riser/impact with its PEAK on the cut) | false | "<sfx kind>" | [kinds], snap_to_beat?: true (move the cut to the nearest analysed music beat ≤ beat_tolerance (0.25) s away; or pass beats: [s]), params?: {...}}
+    It extends/trims the two layers so they overlap around the cut, sets eased keyframes, masks, effects and helper layers (ids tr_<to>_*). Re-running it on the same pair replaces the previous transition.
+  types (params):
+    push_through {target: door/window/arch layer (this comp or inside the outgoing shot precomp) | point [x,y] + size [w,h], shape: rect|ellipse} — fly through the opening into the next shot
+    foreground_wipe {direction: left|right|up|down, media?: cut-out PNG id, shape: pillar|tree|person, width: 0.55} — dark object passes the lens, cut hidden behind it
+    zoom_into_photo {layer: picture/newspaper/screen layer | point+size} — the picture fills the frame and becomes the next shot
+    map_drop {target|point, push: 1.06} — dive from a map/aerial shot through clouds
+    match_cut {from_point [x,y], to_point [x,y], from_size px, to_size px} — shapes line up, 3-frame blend + soft flash
+    whip_pan {direction} · parallax_slide {direction} (shot precomps built with make_3d slide layer by layer by depth)
+    paper_tear {direction} · burn_edge {cx, cy (%), tone} · page_turn {angle (180 = turn to the left)}
+    focus_pull · dolly_zoom (vertigo, then cut) · film_burn {tone} · light_leak_wipe {tone} · ink_bleed {cx, cy, tone} · smoke_reveal {tone}
+    bw_to_colour {cx, cy} — the incoming starts as an old B&W photo, colour blooms out radially
+    glitch_cut · flash_cut {color | tone} · dip_to_black {color}
+    tone: warm | cold | neutral. Defaults look good: usually just {from, to, type}.
+  list_transitions {} — the catalog (ids, labels, best_for, params) as JSON in the log.
+  Good habits: push_through into buildings, zoom_into_photo for archive photos/newspapers, map_drop after a map, bw_to_colour for "then vs now", paper_tear/burn_edge/page_turn for archive and history, whip_pan for energy, dip_to_black between chapters.
+  Effects used by them (also usable alone): burn_edge {progress 0-100, cx, cy, color, embers}, page_curl {progress 0-100, angle, shadow, back}.
+// ---- end V2-C ----
 ''';
