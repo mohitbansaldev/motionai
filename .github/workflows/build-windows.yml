@@ -6,7 +6,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main, feat/windows, integ/v1, feat/winai] # TEMP feat/winai (Agent E CI check) - remove before merge
+    branches: [main, feat/windows, integ/v1]
   workflow_dispatch:
 
 permissions:
@@ -184,7 +184,6 @@ jobs:
           Get-ChildItem MotionAI-* | Format-Table Name, Length
 
       - uses: softprops/action-gh-release@v2
-        if: github.ref_name != 'feat/winai' # TEMP (Agent E CI check) - remove before merge
         with:
           tag_name: win-${{ github.run_number }}
           name: MotionAI for Windows · build ${{ github.run_number }}
