@@ -15,7 +15,8 @@ import '../core/presets/scene3d.dart';
 
 class SceneIssue {
   /// black_gap | ends_early | starts_late | empty_edges | floating |
-  /// text_overlap | text_off_frame | text_unsafe | broken_effect | missing_media
+  /// text_overlap | text_off_frame | text_unsafe | broken_effect | missing_media |
+  /// flat_parallax | flat_set (win-30)
   final String kind;
   final String severity; // error | warning | info
   final List<String> layers;
@@ -96,6 +97,7 @@ class SceneCheck {
     if (playhead != null) _startsLate(comp, f0, f1, playhead, out);
     _edges(p, comp, times, at, out);
     _floating(p, comp, times, at, out);
+    _parallax(p, comp, times, at, out); // win-30
     _text(comp, f0, f1, times, at, out);
     _effects(comp, out);
     _media(p, comp, fileExists ?? (path) => File(path).existsSync(), out);
@@ -407,6 +409,104 @@ class SceneCheck {
           fix: l.parentId == null ? _shift(l, 0, dy) : const [],
           hint: 'Check with preview_shot. Fix moves it down so it stands on the bottom of the frame; or add a ground/foreground layer under it.'));
     }
+  }
+
+  // ------------------------------------------------------------ win-30: depth / parallax
+
+  /// Centre of an item on screen.
+  static Vector2 _centre(RenderItem it) {
+    final q = it.corners();
+    var x = 0.0, y = 0.0;
+    for (final v in q) {
+      x += v.x;
+      y += v.y;
+    }
+    return Vector2(x / q.length, y / q.length);
+  }
+
+  /// When the 3D camera moves, layers at different depths must move by
+  /// different amounts on screen (parallax). Flags (a) moves where every 3D
+  /// layer slides by about the same amount ("everything moves with the
+  /// camera") and (b) sets whose background is one flat photo while the
+  /// camera trucks sideways (the room never changes perspective).
+  static void _parallax(Project p, Composition comp, List<double> times, List<RenderItem> Function(double) at, List<SceneIssue> out) {
+    if (times.length < 2) return;
+    final w = comp.width, h = comp.height;
+    double? flatT0, flatT1, flatSpread, flatMove;
+    double? plateT;
+    String? plateId;
+    for (var k = 0; k + 1 < times.length; k++) {
+      final t0 = times[k], t1 = times[k + 1];
+      final a = {for (final it in at(t0)) if (it.layer.is3D && _visual(it.layer)) it.layer.id: it};
+      final b = {for (final it in at(t1)) if (it.layer.is3D && _visual(it.layer)) it.layer.id: it};
+      final moves = <(double, double, RenderItem)>[]; // (screen move px, depth, item)
+      for (final id in a.keys) {
+        final i0 = a[id]!, i1 = b[id];
+        if (i1 == null) continue;
+        // Only layers that do not animate themselves: their screen motion
+        // then comes from the camera alone.
+        final l = i0.layer;
+        if (l.prop(Props.position).isAnimated || l.parentId != null) continue;
+        final d = (_centre(i1) - _centre(i0)).length;
+        if (!d.isFinite) continue;
+        moves.add((d, i0.depth, i0));
+      }
+      if (moves.length < 2) continue;
+      final mean = moves.map((m) => m.$1).reduce((x, y) => x + y) / moves.length;
+      if (mean < w * 0.01) continue; // camera (nearly) still in this step
+      final mx = moves.map((m) => m.$1).reduce(math.max), mn = moves.map((m) => m.$1).reduce(math.min);
+      final spread = (mx - mn) / math.max(1e-6, mean);
+      if (spread < 0.25 && (flatSpread == null || spread < flatSpread)) {
+        flatSpread = spread;
+        flatT0 = t0;
+        flatT1 = t1;
+        flatMove = mean;
+      }
+      // One big image covering most of the frame while the move is sideways.
+      final sideways = moves.any((m) {
+        final c0 = _centre(a[m.$3.layer.id]!), c1 = _centre(b[m.$3.layer.id]!);
+        return (c1.x - c0.x).abs() > w * 0.01 && (c1.x - c0.x).abs() > (c1.y - c0.y).abs();
+      });
+      if (sideways && plateId == null) {
+        final plates = [
+          for (final m in moves)
+            if (m.$3.layer.type == LayerType.image && !isCutOut(p, m.$3.layer) && _area(m.$3) > w * h * 0.75) m.$3.layer.id,
+        ];
+        final images = moves.where((m) => m.$3.layer.type == LayerType.image && !isCutOut(p, m.$3.layer)).length;
+        if (plates.length == 1 && images == 1) {
+          plateId = plates.first;
+          plateT = t0;
+        }
+      }
+    }
+    if (flatT0 != null && flatT1 != null) {
+      out.add(SceneIssue('flat_parallax', 'warning',
+          'No parallax between ${_fmt(flatT0)} and ${_fmt(flatT1)} s: every 3D layer moves about ${flatMove!.round()} px on screen '
+          '(spread ${(flatSpread! * 100).round()}%), so the scene looks like one flat picture moving with the camera.',
+          time: flatT0,
+          until: flatT1,
+          hint: 'Spread the layers in depth (far plate ≥2× the distance of the subject, a foreground object close to the camera) '
+              'and move the camera sideways/arc instead of only pushing straight in. Near layers should move clearly more than far ones.'));
+    }
+    if (plateId != null) {
+      out.add(SceneIssue('flat_set', 'info',
+          'The set is one flat photo ($plateId) while the camera moves sideways at ${_fmt(plateT!)} s: walls and floor inside it '
+          'cannot change perspective.',
+          layers: [plateId],
+          time: plateT,
+          hint: 'Build the set from separate layers (back wall, side walls / columns, floor plane rotated X -90, foreground props) '
+              'or keep this shot to slow push-ins and small arcs.'));
+    }
+  }
+
+  static double _area(RenderItem it) {
+    final q = it.corners();
+    var s = 0.0;
+    for (var i = 0; i < q.length; i++) {
+      final a = q[i], b = q[(i + 1) % q.length];
+      s += a.x * b.y - b.x * a.y;
+    }
+    return (s / 2).abs();
   }
 
   // ------------------------------------------------------------ (d) text
