@@ -31,7 +31,13 @@ class CompositionCanvas extends StatelessWidget {
     this.playing = false,
     this.comp, // PRECOMP (Agent L)
     this.nested = false, // PRECOMP (Agent L)
+    this.previewScale, // PERF (Agent O)
   });
+
+  /// Live editor preview only: screen pixels per composition pixel (view
+  /// scale × device pixel ratio × preview quality). Enables image caching of
+  /// static 3D layers and on-screen-size photo decoding (see [LayerView]).
+  final double? previewScale; // PERF (Agent O)
 
   // PRECOMP (Agent L) >>>
   /// The composition to draw (default: the project's main comp).
@@ -83,13 +89,16 @@ class CompositionCanvas extends StatelessWidget {
     }
     if (overlay != null) children.add(Positioned.fill(child: IgnorePointer(child: overlay!)));
     final stack = PrecompScope.stackOf(context); // PRECOMP (Agent L)
-    return PrecompScope(stack: [...stack, comp.id], child: SizedBox(
+    final Widget canvas = PrecompScope(stack: [...stack, comp.id], child: SizedBox(
       width: comp.width,
       height: comp.height,
       child: ClipRect(
         child: Stack(clipBehavior: Clip.hardEdge, children: children),
       ),
     )); // PRECOMP (Agent L): PrecompScope
+    // PERF (Agent O): the live preview repaints every frame; keep that from
+    // repainting the editor around it (draft only: export is unchanged).
+    return draft ? RepaintBoundary(child: canvas) : canvas;
   }
 
   Widget _view(RenderItem item, Key? key, {bool asMatte = false}) => LayerView(
@@ -102,5 +111,6 @@ class CompositionCanvas extends StatelessWidget {
         draft: draft,
         playing: playing,
         asMatte: asMatte,
+        previewScale: previewScale, // PERF (Agent O)
       );
 }

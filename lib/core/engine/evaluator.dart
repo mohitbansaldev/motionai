@@ -123,17 +123,43 @@ class _Frame {
   final Camera3DState cam;
   final Matrix4 proj;
   final Matrix4 cam2d;
-  _Frame._(this.comp, this.t, this.cam, this.proj, this.cam2d);
+
+  /// cam2d · proj, computed once per frame instead of once per 3D layer.
+  final Matrix4 camProj;
+
+  /// True when [cam2d] is the identity (camera mode is not 2D).
+  final bool flat2d;
+
+  /// camera position · forward, for depth along the view axis.
+  final double camDot;
+  _Frame._(this.comp, this.t, this.cam, this.proj, this.cam2d, this.flat2d)
+      : camProj = flat2d ? proj : cam2d.multiplied(proj),
+        camDot = cam.position.dot(cam.forward);
 
   factory _Frame(Composition comp, double t) {
     final cam = Evaluator.camera3D(comp, t);
-    return _Frame._(comp, t, cam, Evaluator.projection(cam), Evaluator.camera2D(comp, t));
+    return _Frame._(comp, t, cam, Evaluator.projection(cam), Evaluator.camera2D(comp, t), comp.camera.mode != CameraMode.twoD);
+  }
+
+  /// Depth of layer-local (x, y) for [world] is a0·x + a1·y + a2.
+  (double, double, double) depthCoefs(Matrix4 world) {
+    final m = world.storage, f = cam.forward;
+    final fx = f.x, fy = f.y, fz = f.z;
+    return (
+      m[0] * fx + m[1] * fy + m[2] * fz,
+      m[4] * fx + m[5] * fy + m[6] * fz,
+      m[12] * fx + m[13] * fy + m[14] * fz - camDot,
+    );
   }
 }
 
 class Evaluator {
   /// Everything visible at time [t], in paint order (first = bottom).
-  static List<RenderItem> evaluate(Composition comp, double t) {
+  ///
+  /// [velocity] false skips the motion-blur velocity (a second evaluation at
+  /// t − 1 frame); the live preview passes false while playing, where motion
+  /// blur is not drawn anyway.
+  static List<RenderItem> evaluate(Composition comp, double t, {bool velocity = true}) {
     final f = _Frame(comp, t);
     _Frame? prev; // previous frame, for motion-blur velocity (lazy)
 
@@ -149,13 +175,19 @@ class Evaluator {
 
     void flush3D() {
       if (group3D.isEmpty) return;
-      // Far first; stable for equal depth.
-      final indexed = group3D.asMap().entries.toList()
-        ..sort((a, b) {
-          final c = b.value.depth.compareTo(a.value.depth);
-          return c != 0 ? c : a.key.compareTo(b.key);
-        });
-      items.addAll(indexed.map((e) => e.value));
+      if (group3D.length == 1) {
+        items.add(group3D.first);
+      } else {
+        // Far first; stable for equal depth.
+        final order = List<int>.generate(group3D.length, (i) => i)
+          ..sort((a, b) {
+            final c = group3D[b].depth.compareTo(group3D[a].depth);
+            return c != 0 ? c : a.compareTo(b);
+          });
+        for (final i in order) {
+          items.add(group3D[i]);
+        }
+      }
       group3D.clear();
     }
 
@@ -184,7 +216,7 @@ class Evaluator {
       }
 
       // Motion blur velocity: where the centre was one frame ago.
-      if (comp.motionBlur || _hasMotionBlurFx(layer)) {
+      if (velocity && (comp.motionBlur || _hasMotionBlurFx(layer))) {
         prev ??= _Frame(comp, t - comp.frameDuration);
         final before = _screenMatrix(prev, layer);
         if (before != null) {
@@ -217,21 +249,16 @@ class Evaluator {
   /// Layer → screen matrix, or null if a 3D layer crosses the near plane.
   static Matrix4? _screenMatrix(_Frame f, Layer layer) {
     final world = worldMatrix(f.comp, layer, f.t, f.worldCache);
-    if (!layer.is3D) return f.cam2d.multiplied(world);
-    if (_crossesNearPlane(f, world, layer)) return null;
-    return f.cam2d.multiplied(f.proj).multiplied(world);
+    if (!layer.is3D) return f.flat2d ? world.clone() : f.cam2d.multiplied(world);
+    if (_crossesNearPlane(f.depthCoefs(world), layer)) return null;
+    return f.camProj.multiplied(world);
   }
 
-  static final Vector3 _corner = Vector3.zero();
-
   /// True when a corner of the 3D layer is closer to the camera than [kNearPlane].
-  static bool _crossesNearPlane(_Frame f, Matrix4 world, Layer layer) {
-    for (int i = 0; i < 4; i++) {
-      _corner.setValues(i == 1 || i == 2 ? layer.width : 0, i >= 2 ? layer.height : 0, 0);
-      world.transform3(_corner);
-      if (f.cam.depthOf(_corner) < kNearPlane) return true;
-    }
-    return false;
+  static bool _crossesNearPlane((double, double, double) d, Layer layer) {
+    final (a0, a1, a2) = d;
+    final w = layer.width * a0, h = layer.height * a1;
+    return a2 < kNearPlane || w + a2 < kNearPlane || w + h + a2 < kNearPlane || h + a2 < kNearPlane;
   }
 
   static RenderItem? _item(_Frame f, Layer layer) {
@@ -242,16 +269,16 @@ class Evaluator {
 
     if (layer.is3D) {
       // Cull layers crossing behind the camera.
-      if (_crossesNearPlane(f, world, layer)) return null;
-      final center = world.transformed3(Vector3(layer.width / 2, layer.height / 2, 0));
-      final depth = f.cam.depthOf(center);
+      final d = f.depthCoefs(world);
+      if (_crossesNearPlane(d, layer)) return null;
+      final depth = d.$1 * layer.width / 2 + d.$2 * layer.height / 2 + d.$3;
       double blur = 0;
       if (f.comp.camera.mode == CameraMode.threeD && f.cam.aperture > 0) {
         blur = f.cam.aperture * 0.4 * (depth - f.cam.focus).abs() / math.max(depth, 1.0);
       }
       return RenderItem(
         layer: layer,
-        matrix: f.cam2d.multiplied(f.proj).multiplied(world),
+        matrix: f.camProj.multiplied(world),
         opacity: opacity,
         depth: depth,
         dofBlur: blur,
@@ -259,7 +286,8 @@ class Evaluator {
     }
     return RenderItem(
       layer: layer,
-      matrix: f.cam2d.multiplied(world),
+      // The world matrix is cached for this frame only; parents share it, so copy.
+      matrix: f.flat2d ? world.clone() : f.cam2d.multiplied(world),
       opacity: opacity,
       depth: 0,
       dofBlur: 0,
@@ -285,15 +313,61 @@ class Evaluator {
       p[1] += ps.y;
       if (path.orient) rz += ps.angle;
     }
-    final m = Matrix4.translationValues(p[0], p[1], is3D ? p[2] : 0);
+    // Built directly (no temporary rotation / scale matrices): the linear
+    // part is L = Rx·Ry·Rz·S and the translation p − L·anchor.
+    double r00 = 1, r01 = 0, r02 = 0, r10 = 0, r11 = 1, r12 = 0, r20 = 0, r21 = 0, r22 = 1;
     if (is3D) {
-      if (r[0] != 0) m.multiply(Matrix4.rotationX(r[0] * _deg));
-      if (r[1] != 0) m.multiply(Matrix4.rotationY(r[1] * _deg));
+      if (r[0] != 0) {
+        final c = math.cos(r[0] * _deg), sn = math.sin(r[0] * _deg);
+        // R = Rx
+        r11 = c;
+        r12 = -sn;
+        r21 = sn;
+        r22 = c;
+      }
+      if (r[1] != 0) {
+        final c = math.cos(r[1] * _deg), sn = math.sin(r[1] * _deg);
+        // R = R · Ry, Ry = [c 0 s; 0 1 0; -s 0 c]
+        final a00 = r00 * c - r02 * sn, a02 = r00 * sn + r02 * c;
+        final a10 = r10 * c - r12 * sn, a12 = r10 * sn + r12 * c;
+        final a20 = r20 * c - r22 * sn, a22 = r20 * sn + r22 * c;
+        r00 = a00;
+        r02 = a02;
+        r10 = a10;
+        r12 = a12;
+        r20 = a20;
+        r22 = a22;
+      }
     }
-    if (rz != 0) m.multiply(Matrix4.rotationZ(rz * _deg));
-    m.multiply(Matrix4.diagonal3Values(s[0] / 100, s[1] / 100, is3D ? s[2] / 100 : 1));
-    m.multiply(Matrix4.translationValues(-a[0], -a[1], is3D ? -a[2] : 0));
-    return m;
+    if (rz != 0) {
+      final c = math.cos(rz * _deg), sn = math.sin(rz * _deg);
+      // R = R · Rz, Rz = [c -s 0; s c 0; 0 0 1]
+      final a00 = r00 * c + r01 * sn, a01 = r01 * c - r00 * sn;
+      final a10 = r10 * c + r11 * sn, a11 = r11 * c - r10 * sn;
+      final a20 = r20 * c + r21 * sn, a21 = r21 * c - r20 * sn;
+      r00 = a00;
+      r01 = a01;
+      r10 = a10;
+      r11 = a11;
+      r20 = a20;
+      r21 = a21;
+    }
+    final sx = s[0] / 100, sy = s[1] / 100, sz = is3D ? s[2] / 100 : 1.0;
+    final l00 = r00 * sx, l01 = r01 * sy, l02 = r02 * sz;
+    final l10 = r10 * sx, l11 = r11 * sy, l12 = r12 * sz;
+    final l20 = r20 * sx, l21 = r21 * sy, l22 = r22 * sz;
+    final ax = a[0], ay = a[1], az = is3D ? a[2] : 0.0;
+    final pz = is3D ? p[2] : 0.0;
+    // Column-major.
+    return Matrix4(
+      l00, l10, l20, 0, //
+      l01, l11, l21, 0, //
+      l02, l12, l22, 0, //
+      p[0] - (l00 * ax + l01 * ay + l02 * az),
+      p[1] - (l10 * ax + l11 * ay + l12 * az),
+      pz - (l20 * ax + l21 * ay + l22 * az),
+      1,
+    );
   }
 
   /// Local matrix combined with the parent chain.

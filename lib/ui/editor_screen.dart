@@ -23,6 +23,7 @@ import 'panels/camera_panel.dart';
 import 'panels/effects_panel.dart';
 import 'panels/layer_panel.dart';
 import 'preview/composition_view.dart';
+import 'preview/preview_quality.dart'; // PERF (Agent O)
 import 'theme.dart';
 import 'timeline/timeline_view.dart';
 import 'library/library_sheet.dart';
@@ -243,6 +244,12 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
 
     if (ctrl) {
       if (repeat && k != LogicalKeyboardKey.keyZ && k != LogicalKeyboardKey.keyY) return false;
+      // PERF (Agent O) >>> Ctrl+Shift+F: preview FPS meter
+      if (shift && k == LogicalKeyboardKey.keyF) {
+        PreviewQuality.instance.toggleFps();
+        return true;
+      }
+      // <<< PERF (Agent O)
       if (_bulkCtrlKey(k, shift)) return true; // BULK (Agent N): Ctrl+A/C/X/V/G, Ctrl+Shift+C, Ctrl+D on a multi-selection
       if (k == LogicalKeyboardKey.keyZ) {
         if (shift) {

@@ -202,10 +202,19 @@ class GlyphTextPainter extends CustomPainter {
     return 1 + u * u * ((s + 1) * u + s);
   }
 
+  /// Per-letter animators settle by [duration]; after that (and for plain
+  /// extruded text) time no longer changes the picture (PERF, Agent O).
+  bool _timeChanged(GlyphTextPainter o) {
+    if (o.local == local) return false;
+    if (!_perGlyph || o.animator != animator) return _perGlyph;
+    final done = duration + 0.05;
+    return !(o.local >= done && local >= done);
+  }
+
   @override
   bool shouldRepaint(covariant GlyphTextPainter o) =>
       o.text != text ||
-      o.local != local ||
+      _timeChanged(o) ||
       o.style != style ||
       o.animator != animator ||
       o.duration != duration ||
