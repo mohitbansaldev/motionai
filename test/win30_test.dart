@@ -10,6 +10,7 @@ import 'package:motionai/core/model/layer.dart';
 import 'package:motionai/core/model/project.dart';
 import 'package:motionai/core/presets/realism.dart';
 import 'package:motionai/core/presets/scene3d.dart';
+import 'package:motionai/core/presets/templates.dart';
 import 'package:motionai/remote/mcp_server.dart';
 import 'package:motionai/remote/remote_tools.dart' show resolveFilesPath;
 import 'package:motionai/remote/scene_check.dart';
@@ -252,6 +253,16 @@ void main() {
         final a = Evaluator.camera3D(p.main, 0.05).position, b = Evaluator.camera3D(p.main, 2.95).position;
         expect((a - b).length, greaterThan(150), reason: '$move barely moves');
       }
+    });
+  });
+
+  group('set template looks', () {
+    test('look slot adds a grade on the template precomp', () {
+      final p = _project();
+      final t = SceneTemplates.byId('set_character_intro')!;
+      SceneTemplates.insert(p, t, start: 0, values: {'look': 'noir'});
+      final grade = p.comps.values.expand((c) => c.layers).firstWhere((l) => l.name == 'Grade');
+      expect(grade.effects.map((e) => e.type), containsAll(['mono', 'vignette']));
     });
   });
 }

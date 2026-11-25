@@ -26,8 +26,24 @@ List<Map<String, dynamic>> _comp(TemplateCtx c, String id, String name, double d
       _in(id, {'op': 'set_comp', 'motion_blur': true}),
     ];
 
+/// Style variants: one "look" slot on every set template.
+const lookSlot = TemplateSlot('look', 'Look: none | warm | cold | noir | vintage', initial: 'none');
+
+List<Map<String, dynamic>> _look(TemplateCtx c, String id) {
+  final g = '${id}_grade';
+  Map<String, dynamic> fx(String e, Map<String, dynamic> p) => _in(id, {'op': 'add_effect', 'layer': g, 'effect': e, 'params': p});
+  return switch (c.s('look', 'none').trim().toLowerCase()) {
+    'warm' => [fx('tint', {'color': '#FFB070', 'amount': 14}), fx('color', {'contrast': 8, 'saturation': 6})],
+    'cold' => [fx('tint', {'color': '#6FA8FF', 'amount': 14}), fx('color', {'contrast': 10, 'saturation': -12})],
+    'noir' => [fx('mono', {'amount': 100}), fx('color', {'contrast': 22, 'brightness': -6})],
+    'vintage' => [fx('tint', {'color': '#E8C48A', 'amount': 22}), fx('color', {'contrast': -6, 'saturation': -30})],
+    _ => const <Map<String, dynamic>>[],
+  };
+}
+
 List<Map<String, dynamic>> _finish(TemplateCtx c, String id, double du, {double vignette = 55, double grain = 16}) => [
       _in(id, {'op': 'add_layer', 'type': 'solid', 'id': '${id}_grade', 'name': 'Grade', 'adjustment': true, 'color': '#00000000'}),
+      ..._look(c, id),
       _in(id, {'op': 'add_effect', 'layer': '${id}_grade', 'effect': 'vignette', 'params': {'amount': vignette, 'size': 45}}),
       _in(id, {'op': 'add_effect', 'layer': '${id}_grade', 'effect': 'grain', 'params': {'amount': grain, 'size': 2}}),
       {'op': 'add_layer', 'type': 'comp', 'comp': id, 'id': '${id}_layer', 'start': c.t(0), 'duration': du},
@@ -44,6 +60,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('photos', 'Photos (3–8)', kind: 'medias', media: 'image', max: 8),
           TemplateSlot('title', 'Title', initial: 'HISTORY OF WARGAMING'),
           TemplateSlot('duration', 'Duration (s)', initial: '6.4'),
+          lookSlot,
         ],
         builder: _photoPile,
       ),
@@ -58,6 +75,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('backdrop', 'Backdrop', kind: 'media', media: 'image'),
           TemplateSlot('floor', 'Floor texture (top-down)', kind: 'media', media: 'image'),
           TemplateSlot('duration', 'Duration (s)', initial: '8.6'),
+          lookSlot,
         ],
         builder: _piecesOnBoard,
       ),
@@ -69,6 +87,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('people', 'People (full-body cut-outs, 1–5)', kind: 'medias', media: 'image', max: 5),
           TemplateSlot('backdrop', 'Stage / curtain backdrop', kind: 'media', media: 'image'),
           TemplateSlot('hold', 'Seconds on each person', initial: '3'),
+          lookSlot,
         ],
         builder: _stageLineup,
       ),
@@ -81,6 +100,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('labels', 'Labels (comma-separated)', initial: 'WAR, ECONOMY, TECHNOLOGY'),
           TemplateSlot('conclusion', 'Conclusion', initial: 'WORLD POLITICS'),
           TemplateSlot('background', 'Background texture', kind: 'media', media: 'image'),
+          lookSlot,
         ],
         builder: _topicsToIdea,
       ),
@@ -93,6 +113,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('portraits', 'Portraits (2–5)', kind: 'medias', media: 'image', max: 5),
           TemplateSlot('labels', 'Labels (comma-separated)', initial: 'NAME ONE, NAME TWO, NAME THREE'),
           TemplateSlot('hold', 'Seconds per portrait', initial: '3.1'),
+          lookSlot,
         ],
         builder: _pinnedPortraits,
       ),
@@ -108,6 +129,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('people', 'People / props (cut-outs, 1–4)', kind: 'medias', media: 'image', max: 4),
           TemplateSlot('foreground', 'Foreground object (cut-out, optional)', kind: 'media', media: 'image'),
           TemplateSlot('duration', 'Duration (s)', initial: '8'),
+          lookSlot,
         ],
         builder: _roomSet,
       ),
@@ -122,6 +144,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('road', 'Road (top-down)', kind: 'media', media: 'image'),
           TemplateSlot('people', 'People / vehicles (cut-outs, 1–5)', kind: 'medias', media: 'image', max: 5),
           TemplateSlot('duration', 'Duration (s)', initial: '8'),
+          lookSlot,
         ],
         builder: _streetSet,
       ),
@@ -134,6 +157,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('outside', 'Picture around the opening (when there is no frame cut-out)', kind: 'media', media: 'image'),
           TemplateSlot('inside', 'Picture seen through the opening', kind: 'media', media: 'image'),
           TemplateSlot('duration', 'Duration (s)', initial: '4'),
+          lookSlot,
         ],
         builder: _pushThrough,
       ),
@@ -148,6 +172,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('role', 'Role / one line', initial: 'FOUNDER OF NORTH KOREA'),
           TemplateSlot('accent', 'Accent colour', kind: 'color', initial: '#D0202A'),
           TemplateSlot('duration', 'Duration (s)', initial: '5'),
+          lookSlot,
         ],
         builder: _characterIntro,
       ),
@@ -159,6 +184,7 @@ List<SceneTemplate> setTemplates() => const [
           TemplateSlot('article', 'Article screenshot', kind: 'media', media: 'image'),
           TemplateSlot('desk', 'Desk / paper texture', kind: 'media', media: 'image'),
           TemplateSlot('duration', 'Duration (s)', initial: '6'),
+          lookSlot,
         ],
         builder: _articleDesk,
       ),
