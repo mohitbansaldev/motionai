@@ -1,12 +1,14 @@
 import 'dart:math' as math;
 
 import '../engine/evaluator.dart';
+import '../model/easing.dart'; // SCENE (Agent D)
 import '../model/layer.dart';
 import '../model/project.dart';
 import 'world_map.dart';
 
 part 'components_doc.dart';
 part 'components_article.dart';
+part 'map_kit.dart'; // SCENE (Agent D): maps + 3D room/board
 
 /// Documentary kit: ready-made, fully editable groups of layers built from
 /// ordinary edit commands. Every component is a null "group" layer (anchor at
@@ -20,6 +22,7 @@ class Components {
     'name_tag', 'character_label', 'arrow_callout', 'censor_bar', 'plaque', 'poster', 'glass_screen',
     'title_slam', 'foreground_wipe', 'icon_stream', 'icon_badge', 'scanner', 'silhouette_crowd',
     'number_tiles', 'date_title', 'article',
+    ..._sceneTypes, // SCENE (Agent D)
   ];
 
   static String label(String t) => const {
@@ -55,6 +58,7 @@ class Components {
         'date_title': 'Date Title',
         'article': 'Article Highlight',
       }[t] ??
+      _sceneLabels[t] ?? // SCENE (Agent D)
       t;
 
   static List<Map<String, dynamic>> build(Project p, Map<String, dynamic> c, double now) {
@@ -64,6 +68,8 @@ class Components {
     }
     final comp = p.main;
     final b = _B(comp.width, comp.height, c, now, '${c['id'] ?? Ids.next(type)}');
+    final scene = _sceneBuild(p, c, b); // SCENE (Agent D)
+    if (scene != null) return scene;
     switch (type) {
       case 'source_card':
         return _sourceCard(b);
