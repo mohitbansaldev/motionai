@@ -297,7 +297,7 @@ class _Geo {
 
   static const _mapKeys = [
     'fill_opacity', 'stroke_width', 'label_size', 'label_opacity', 'label_rotate', 'label_animator', 'label_stagger',
-    'focus_dim', 'cities', 'bounds', 'tilt',
+    'focus_dim', 'cities', 'bounds', 'tilt', 'zoom_rotation',
   ];
 
   static bool wantsMap(Map<String, dynamic> c) => c['style'] == 'satellite' || _mapKeys.any(c.containsKey);
@@ -331,6 +331,24 @@ class _Geo {
           cmds.add(b.kf(g, 'position', t, [v[0], v[1], 0]));
           cmds.add(b.kf(g, 'scale', t, [v[2], v[2], 100]));
         }
+      }
+    }
+    // Continent → region ease with a slight rotation (about the frame centre).
+    final zr = b.n('zoom_rotation', 0);
+    if (zr != 0) {
+      final keys = [
+        for (final cmd in cmds)
+          if (cmd['op'] == 'set_keyframe' && cmd['target'] == g && cmd['prop'] == 'position') cmd,
+      ]..sort((x, y) => (x['time'] as num).compareTo(y['time'] as num));
+      if (keys.length >= 2) {
+        final last = keys.last;
+        final v = last['value'] as List;
+        final px0 = (v[0] as num).toDouble(), py0 = (v[1] as num).toDouble();
+        final mx = (b.w / 2 - px0) / s, my = (b.h / 2 - py0) / s;
+        final a = zr * math.pi / 180, ca = math.cos(a), sa = math.sin(a);
+        last['value'] = [b.w / 2 - s * (ca * mx - sa * my), b.h / 2 - s * (sa * mx + ca * my), 0];
+        cmds.add(b.kf(g, 'rotation', (keys.first['time'] as num).toDouble(), [0, 0, 0]));
+        cmds.add(b.kf(g, 'rotation', (last['time'] as num).toDouble(), [0, 0, zr]));
       }
     }
     if (sat) {

@@ -157,6 +157,19 @@ void main() {
       expect(q.main.requireLayer('m_c0').shape!.fill, 0xFFC9A227);
     });
 
+    test('zoom_rotation: continent → region ease with a slight rotation, focus stays centred', () {
+      final p = project();
+      run(p, {'op': 'add_component', 'type': 'map', 'id': 'm', 'style': 'satellite', 'focus': 'Peru', 'zoom_rotation': -4, 'start': 0, 'duration': 6});
+      final g = p.main.requireLayer('m_g');
+      expect(g.prop(Props.rotation).valueAt(0)[2], 0);
+      expect(g.prop(Props.rotation).valueAt(5)[2], closeTo(-4, 1e-6));
+      final bb = WorldMap.bbox(WorldMap.find('Peru')!);
+      final m = Evaluator.worldMatrix(p.main, g, 5);
+      final c = m.transform3(Vector3((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2, 0));
+      expect(c.x, closeTo(960, 1));
+      expect(c.y, closeTo(540, 1));
+    });
+
     test('map_texture effect + bundled Blue Marble asset', () {
       expect(EffectsCatalog.byType('map_texture'), isNotNull);
       final f = File('assets/maps/blue_marble_dark.jpg');
