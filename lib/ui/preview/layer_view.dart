@@ -19,6 +19,8 @@ import 'fx/fx_painters.dart';
 import 'fx/layer_cache.dart'; // PERF (Agent O)
 import 'fx/offscreen.dart';
 import 'fx/particles.dart';
+import 'fx/realism_painters.dart'; // V2-D
+import '../../core/presets/realism.dart'; // V2-D
 import 'fx/text_fx.dart';
 import 'precomp_view.dart'; // PRECOMP (Agent L)
 import 'shape_painter.dart';
@@ -76,8 +78,13 @@ class LayerView extends StatefulWidget {
     final l = item.layer;
     Widget child = SizedBox(width: l.width, height: l.height, child: _content(l, decodeWidth: decodeWidth));
     for (final e in l.effects) {
-      if (e.enabled) child = _effect(e, child, l);
+      if (e.enabled && e.type != 'contact_shadow') child = _effect(e, child, l); // V2-D: shadows go around the finished layer
     }
+    // V2-D >>> contact shadows under the finished layer (outside other effects' snapshots)
+    for (final e in l.effects) {
+      if (e.enabled && e.type == 'contact_shadow') child = _effect(e, child, l);
+    }
+    // <<< V2-D
     for (final m in l.masks) {
       child = _mask(m, child);
     }
@@ -411,7 +418,7 @@ class LayerView extends StatefulWidget {
         final amount = (p('amount') / 100).clamp(0.0, 1.0);
         final r = p('radius').clamp(1.0, 100.0);
         if (amount <= 0) return child;
-        return Stack(children: [
+        return Stack(clipBehavior: Clip.none, children: [ // V2-D: the glow spills past the box (was cut off on shape layers)
           child,
           IgnorePointer(
             child: Opacity(
@@ -670,9 +677,33 @@ class LayerView extends StatefulWidget {
           Transform.translate(offset: Offset(jx, 0), child: child),
         ]);
       default:
-        return child;
+        return realismEffect(e, child, l, time, draft: draft, playing: playing) ?? child; // V2-D
     }
   }
+
+  // V2-D >>>
+  /// Adjustment layer: this layer's effects and masks applied to [below]
+  /// (everything under it, [w]×[h] comp px). Opacity / masks mix the result
+  /// over the untouched picture.
+  Widget buildAdjustment(Widget below, double w, double h) {
+    final src = item.layer;
+    final l = Layer(
+        id: src.id, name: src.name, type: LayerType.solid, start: src.start, duration: src.duration, width: w, height: h,
+        effects: src.effects, masks: src.masks);
+    Widget fx = SizedBox(width: w, height: h, child: below);
+    for (final e in l.effects) {
+      if (e.enabled) fx = _effect(e, fx, l);
+    }
+    for (final m in l.masks) {
+      fx = _mask(m, fx);
+    }
+    if (item.opacity >= 0.999 && l.masks.isEmpty) return fx;
+    return Stack(clipBehavior: Clip.none, children: [
+      SizedBox(width: w, height: h, child: below),
+      Opacity(opacity: item.opacity, child: fx),
+    ]);
+  }
+  // <<< V2-D
 
   // ----------------------------------------------------------------- masks
 
@@ -762,7 +793,14 @@ class _LayerViewState extends State<LayerView> {
     // the GPU re-composites the cached picture (or image) instead of repainting it.
     // In the editor the depth blur is applied by LayerRaster too (baked into
     // the cached image), so the widget tree keeps the same shape.
-    return w.wrap(LayerRaster(enabled: raster, ratio: ratio, fast: w.playing, blur: scale != null ? w.dofSigma : 0, child: _content!),
+    return w.wrap(
+        LayerRaster(
+            enabled: raster,
+            ratio: ratio,
+            fast: w.playing,
+            blur: scale != null ? w.dofSigma : 0,
+            pad: raster ? Realism.spill(l, w.time) : 0, // V2-D
+            child: _content!),
         dof: scale == null);
   }
 }

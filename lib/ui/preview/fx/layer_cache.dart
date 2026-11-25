@@ -9,8 +9,10 @@ import 'package:flutter/widgets.dart';
 import '../../../core/model/anim_prop.dart';
 import '../../../core/model/layer.dart';
 import '../../../core/model/project.dart';
+import '../../../core/presets/realism.dart'; // V2-D
 import '../shape_painter.dart';
 import 'offscreen.dart';
+import 'realism_painters.dart'; // V2-D
 
 /// Live-preview caching for layers (Agent O, performance).
 ///
@@ -33,6 +35,7 @@ class LayerSig {
     'blur', 'color', 'tint', 'vignette', 'glow', 'gradient', 'letterbox', 'outline', 'shadow', 'shatter', 'paper',
     'grunge', 'silhouette', 'mono', 'duotone', 'edge_blur', 'motion_blur', 'curve', 'glass_frame', 'torn_edge',
     'reveal', 'flash',
+    ...Realism.paramFx, // V2-D
   };
 
   static int _prop(AnimProp p, double t) => Object.hashAll(p.isAnimated ? p.valueAt(t) : p.staticValue);
@@ -153,10 +156,17 @@ class LayerRaster extends SingleChildRenderObjectWidget {
   /// instead of blurring the layer every frame; a blur layer otherwise.
   final double blur;
 
-  const LayerRaster({super.key, required this.enabled, this.ratio = 1, this.fast = false, this.blur = 0, super.child});
+  /// V2-D: margin (layer px) cached around the box for effects that paint
+  /// outside it (blur tails, glow, shadows), see `Realism.spill`.
+  final double pad;
+
+  const LayerRaster(
+      {super.key, required this.enabled, this.ratio = 1, this.fast = false, this.blur = 0, this.pad = 0, super.child});
 
   @override
-  RenderLayerRaster createRenderObject(BuildContext context) => RenderLayerRaster(enabled, ratio, fast)..blur = blur;
+  RenderLayerRaster createRenderObject(BuildContext context) => RenderLayerRaster(enabled, ratio, fast)
+    ..blur = blur
+    ..pad = pad;
 
   @override
   void updateRenderObject(BuildContext context, RenderLayerRaster renderObject) {
@@ -164,7 +174,8 @@ class LayerRaster extends SingleChildRenderObjectWidget {
       ..enabled = enabled
       ..ratio = ratio
       ..fast = fast
-      ..blur = blur;
+      ..blur = blur
+      ..pad = pad; // V2-D
   }
 }
 
@@ -240,6 +251,17 @@ class RenderLayerRaster extends RenderProxyBox {
     _bucket = b;
     if (_enabled) markNeedsPaint();
   }
+
+  // V2-D >>> snapshot margin
+  double _pad = 0; // wanted (layer px, steps of 8)
+  double _imagePad = 0; // margin of [_image]
+  set pad(double v) {
+    final q = v > 0.5 ? (v / 8).ceil() * 8.0 : 0.0;
+    if (q == _pad) return;
+    _pad = q;
+    if (_enabled) markNeedsPaint();
+  }
+  // <<< V2-D
 
   double _blurQ = 0; // quantised sigma (layer px), 0 = sharp
   ui.Image? _blurred;
@@ -369,7 +391,7 @@ class RenderLayerRaster extends RenderProxyBox {
   }
 
   double get _ratio {
-    final side = math.max(size.width, size.height);
+    final side = math.max(size.width, size.height) + 2 * _pad; // V2-D: + margin
     if (side <= 0) return _bucket;
     return math.min(_bucket, maxSide / side);
   }
@@ -472,7 +494,8 @@ class RenderLayerRaster extends RenderProxyBox {
         _paintDirect(context, offset, child);
         return;
       }
-      final img = paintChildToImage(_holder.layer!, child, size, ratio);
+      // V2-D: with a margin when effects paint outside the box.
+      final img = _pad > 0 ? paintChildToImagePadded(_holder.layer!, child, size, ratio, _pad) : paintChildToImage(_holder.layer!, child, size, ratio);
       if (img == null) {
         _dropImage();
         _paintDirect(context, offset, child);
@@ -481,6 +504,7 @@ class RenderLayerRaster extends RenderProxyBox {
       _image?.dispose();
       _image = img;
       _imageRatio = ratio;
+      _imagePad = _pad; // V2-D
       snapshots++;
       _recordWatch(_hasInnerBoundary(child));
     }
@@ -490,7 +514,7 @@ class RenderLayerRaster extends RenderProxyBox {
     if (_blurQ > 0) {
       // Blurred copy with a 3σ margin (the blur spills past the layer edge),
       // stored smaller the stronger the blur (it has no fine detail left).
-      final k = img.width / size.width; // image px per layer px
+      final k = img.width / (size.width + 2 * _imagePad); // image px per layer px (V2-D: margin)
       final sigma = _blurQ * k; // in image px
       final ds = (2.0 / sigma).clamp(0.08, 1.0).toDouble();
       final pad = 3 * sigma; // image px
@@ -520,7 +544,7 @@ class RenderLayerRaster extends RenderProxyBox {
         _blurredPad = pad;
       }
       final b = _blurred!;
-      final m = _blurredPad / k; // layer px
+      final m = _blurredPad / k + _imagePad; // layer px (V2-D: + snapshot margin)
       context.canvas.drawImageRect(
         b,
         Rect.fromLTWH(0, 0, b.width.toDouble(), b.height.toDouble()),
@@ -533,7 +557,7 @@ class RenderLayerRaster extends RenderProxyBox {
     context.canvas.drawImageRect(
       img,
       Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-      offset & size,
+      (offset & size).inflate(_imagePad), // V2-D: snapshot margin
       _paint,
     );
   }

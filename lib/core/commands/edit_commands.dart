@@ -17,6 +17,7 @@ import '../../fonts/font_commands.dart'; // FONTS (Agent I)
 import '../engine/precomp.dart'; // PRECOMP (Agent L)
 import 'precomp_commands.dart'; // PRECOMP (Agent L)
 import 'bulk_commands.dart'; // BULK (Agent N)
+import 'realism_commands.dart'; // V2-D
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -85,6 +86,7 @@ class EditCommands {
     ...SoundCommands.ops, // Sound (Agent K): add_sfx, beat_sync, auto_mix
     ...PrecompCommands.ops, // PRECOMP (Agent L)
     ...BulkCommands.ops, // BULK (Agent N): for_layers, select, align, group_layers, paste_layers…
+    ...RealismCommands.ops, // V2-D: match_colour, camera_shake, set_dof
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -275,6 +277,7 @@ class EditCommands {
           });
         }
         l.effects.add(e);
+        RealismCommands.onEffectAdded(project, l, e, c); // V2-D: contact_shadow footprint
         r.createdIds.add(id);
         break;
 
@@ -342,6 +345,7 @@ class EditCommands {
         break;
 
       case 'apply_style':
+        if (RealismCommands.applyStyle(comp, c, r)) break; // V2-D: doc_* looks, film_look
         final ids = (c['layers'] as List?)?.map((e) => '$e').toList();
         r.log.addAll(MotionPresets.applyStyle(comp, c['style'] as String? ?? '', layerIds: ids));
         break;
@@ -435,7 +439,17 @@ class EditCommands {
         if (c['background'] != null) comp.background = _color(c['background']);
         FxCommands.applyComp(comp, c); // FX (Agent B): motion_blur
         PrecompCommands.afterSetComp(project, comp); // PRECOMP (Agent L): comp layers follow the size
+        RealismCommands.applyComp(comp, c); // V2-D: dof
         break;
+
+      // V2-D >>>
+      case 'match_colour':
+      case 'match_color':
+      case 'camera_shake':
+      case 'set_dof':
+        RealismCommands.run(project, c, now, r);
+        break;
+      // <<< V2-D
 
       // ===== scene ops (Agent D) =====
       case 'make_3d':
@@ -443,7 +457,12 @@ class EditCommands {
         final bands = c['bands'] is Map
             ? {for (final e in (c['bands'] as Map).entries) '${e.key}': '${e.value}'}
             : const <String, String>{};
-        Scene3D.make3D(comp, layerIds: ids, bands: bands, start: _optNum(c, 'start') ?? now, log: r.log);
+        // V2-D >>> adjustment layers stay flat; haze + contact shadows after
+        final start3d = _optNum(c, 'start') ?? now;
+        final roots = Scene3D.make3D(comp,
+            layerIds: RealismCommands.make3DLayers(comp, ids, start3d), bands: bands, start: start3d, log: r.log);
+        RealismCommands.afterMake3D(project, comp, roots, c, start3d, r.log);
+        // <<< V2-D
         break;
 
       case 'camera_shot':
@@ -619,6 +638,7 @@ class EditCommands {
       layer.parentId = pid;
     }
     FxCommands.applyLayer(comp, layer, c); // FX (Agent B): matte, path
+    RealismCommands.applyLayer(layer, c); // V2-D: adjustment
     if (child != null) PrecompCommands.applyLayer(project, comp, layer, c, child: child); // PRECOMP (Agent L)
     if (c['position'] != null) {
       final p = layer.prop(Props.position);
@@ -679,6 +699,7 @@ class EditCommands {
     if (l.type == LayerType.shape) _applyShape(l, c, placeFromPoints: false);
     FxCommands.applyLayer(comp, l, c); // FX (Agent B): matte, path
     PrecompCommands.applyLayer(project, comp, l, c); // PRECOMP (Agent L): loop, comp
+    RealismCommands.applyLayer(l, c); // V2-D: adjustment
     _extendComp(comp, l.end);
   }
 
