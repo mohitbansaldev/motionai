@@ -254,3 +254,31 @@ Working rules that have held all along:
 - `docs/REFERENCE_STYLE.md`: earlier reference analysis (doc-kit style, 20 building blocks).
 - `docs/EDIT_COMMANDS.md`, `docs/ROADMAP.md`, `docs/CLAUDE_CONTROL.md`, `README.md`.
 - `lib/ai/command_spec.dart`: the authoritative list of every op/component/effect the AI can use.
+
+## win-30 (branch `integ/v3`, Windows releases win-31 …)
+
+**Engine**
+- 3D layers that reach behind the camera are drawn cropped to their part in view (`RenderItem.crop`, `Evaluator.nearCrop`) instead of culled: no more black frames from big backgrounds/floors during pass_by / orbit / arc.
+- Stacked parallel 3D layers (tilted calendar pages, cards on a board) sort by plane distance (`Evaluator.stackedDepthKeys`).
+- Camera-facing 3D layers get a sub-pixel perspective term in the **editor preview only** (`Realism.previewSafe`) — the Windows compositor dropped them.
+- Masks clip what effects draw past the layer edge (eye_reflection "square box").
+- New camera_shot moves: `truck`, `arc`, `crane`.
+
+**Components / commands**
+- x / y / size / width / height on components accept 0–1 fractions (`_B.f`).
+- map `bounds`: [[lat,lon],[lat,lon]], flat list or {north,south,east,west}; bad bounds are an error.
+- book: 2+ filled pages are read (zoom first, hold per page, marks on their own page).
+- match_colour default amount 60, exposure capped 75–140 %.
+- shape layers accept `shape` as an alias of `kind`.
+- `room` component = real 3D set (walls/floor planes, grounded items, foreground).
+
+**Templates** (`templates_sets.dart`, each builds its own precomp, every slot optional, `look` slot: warm|cold|noir|vintage):
+photo pile → title, pieces on a board, stage line-up, topics → idea, pinned portraits, room set, street set, push through a frame, character intro, article on a desk.
+
+**MCP** (45 tools): get_layers, editor_screenshot, get_logs, list_files / read_file / write_file (Documents\MotionAI* only), `comp` on get_layer / render_frame / preview_shot, `format: jpeg`, `export_status {wait_s}`, perf (RAM) in get_state, POST `/api/upload` for Google Flow (origins labs.google / flow.google.com, bearer token) → Documents\MotionAI_Flow\<folder>. Helper: `tool/flow_helper.js` (match by Flow batch card).
+
+**GPU / export**: NVIDIA/AMD high-performance exports in the runner, "Use high-performance GPU" button (Windows per-app preference), compat FFmpeg (n7.1/n6.1) for NVENC on older drivers, encoder error reasons + re-check, `-hwaccel auto` decoding, overlapped encoder writes, cancel needs confirmation (Cancel button excluded from focus), cancel source logged.
+
+**Memory**: `MemoryGuard` — 256 MB decoded-image cap, caches trimmed above 2 GB RSS.
+
+**Not done yet**: video proxy files (the reader already decodes at preview size).
