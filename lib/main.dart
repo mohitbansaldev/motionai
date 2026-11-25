@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/presets/world_map.dart';
-import 'services/app_log.dart'; // win-30
+import 'services/app_log.dart';
+import 'services/memory_guard.dart'; // win-30
 import 'remote/remote_control.dart'; // MCP (Agent P)
 import 'remote/remote_ui.dart'; // MCP (Agent P)
 import 'ui/depth_tools.dart'; // V2-E
@@ -26,6 +27,7 @@ void main() {
     AppLog.error('async', '$error\n${stack.toString().split('\n').take(8).join('\n')}');
     return false; // keep the default handling
   };
+  MemoryGuard.install(); // win-30: image cache cap + trim when RAM grows
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: MA.bg,
