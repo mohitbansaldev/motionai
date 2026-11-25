@@ -24,6 +24,7 @@ import '../state/editor_controller.dart';
 import '../ui/editor_screen.dart';
 import '../ui/export_screen.dart';
 import '../ui/preview/composition_view.dart'; // win-30
+import '../ui/preview/multi_view.dart'; // win-40
 import '../ui/library/library_common.dart';
 import 'contact_sheet.dart';
 import 'mcp_protocol.dart';
@@ -344,7 +345,10 @@ class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHos
   Future<Uint8List?> editorScreenshot({int width = 960}) async {
     if (_editor == null) return null;
     await WidgetsBinding.instance.endOfFrame;
-    final ro = CompositionView.previewKey.currentContext?.findRenderObject();
+    final multi = CompositionViews.viewsKey.currentContext?.findRenderObject(); // win-40: several view panes
+    final ro = (multi is RenderRepaintBoundary && multi.attached && !multi.size.isEmpty)
+        ? multi
+        : CompositionView.previewKey.currentContext?.findRenderObject();
     if (ro is! RenderRepaintBoundary || !ro.attached || ro.size.isEmpty) return null;
     final image = await ro.toImage(pixelRatio: width / ro.size.width);
     try {

@@ -22,7 +22,7 @@ import 'panels/ai_panel.dart';
 import 'panels/camera_panel.dart';
 import 'panels/effects_panel.dart';
 import 'panels/layer_panel.dart';
-import 'preview/composition_view.dart';
+import 'preview/multi_view.dart'; // win-40
 import 'preview/preview_quality.dart'; // PERF (Agent O)
 import 'theme.dart';
 import 'timeline/timeline_view.dart';
@@ -645,7 +645,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
                     final l = c.selectedLayer;
                     if (l != null) _layerContextMenu(l, d.globalPosition); // BULK (Agent N): multi menu inside
                   },
-                  child: CompositionView(controller: c),
+                  child: CompositionViews(controller: c), // win-40: 1 / 2 / 4 / 1+3 view layouts
                 ),
               ),
               AnimatedBuilder(

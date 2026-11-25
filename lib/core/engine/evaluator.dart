@@ -165,13 +165,17 @@ class _Frame {
   /// True when [cam2d] is the identity (camera mode is not 2D).
   final bool flat2d;
 
+  /// win-40: orthographic working view (no perspective divide).
+  final bool ortho;
+
   /// camera position · forward, for depth along the view axis.
   final double camDot;
-  _Frame._(this.comp, this.t, this.cam, this.proj, this.cam2d, this.flat2d)
+  _Frame._(this.comp, this.t, this.cam, this.proj, this.cam2d, this.flat2d, {this.ortho = false})
       : camProj = flat2d ? proj : cam2d.multiplied(proj),
         camDot = cam.position.dot(cam.forward);
 
-  factory _Frame(Composition comp, double t) {
+  factory _Frame(Composition comp, double t, {ViewCam? view}) {
+    if (view != null) return _Frame._(comp, t, view.cam, view.proj, Matrix4.identity(), true, ortho: view.ortho); // win-40
     final cam = Evaluator.camera3D(comp, t);
     return _Frame._(comp, t, cam, Evaluator.projection(cam), Evaluator.camera2D(comp, t), comp.camera.mode != CameraMode.twoD);
   }
@@ -194,8 +198,9 @@ class Evaluator {
   /// [velocity] false skips the motion-blur velocity (a second evaluation at
   /// t − 1 frame); the live preview passes false while playing, where motion
   /// blur is not drawn anyway.
-  static List<RenderItem> evaluate(Composition comp, double t, {bool velocity = true}) {
-    final f = _Frame(comp, t);
+  static List<RenderItem> evaluate(Composition comp, double t, {bool velocity = true, ViewCam? view}) {
+    final f = _Frame(comp, t, view: view); // win-40: working 3D views (Top, Front, Custom…)
+    if (view != null) velocity = false;
     _Frame? prev; // previous frame, for motion-blur velocity (lazy)
 
     // Layers used as a track matte by another layer are not drawn themselves.
@@ -232,6 +237,7 @@ class Evaluator {
       final layer = comp.layers[i];
       if (!layer.isActiveAt(t) || (layer.type == LayerType.nullObject && !layer.adjustment) || layer.type == LayerType.audio) continue; // V2-D: adjustment nulls
       if (matteIds != null && matteIds.contains(layer.id)) continue;
+      if (view != null && !layer.is3D) continue; // win-40: working views show 3D layers only (like AE)
       var item = _item(f, layer);
       if (item == null) continue;
 
@@ -444,7 +450,7 @@ class Evaluator {
       // V2-D >>> w = 1 at the layer centre (same projection): compositor
       // blurs inside the perspective transform are sized correctly.
       final mat = f.camProj.multiplied(world);
-      Realism.normalizeW(mat, depth);
+      if (!f.ortho) Realism.normalizeW(mat, depth); // win-40: ortho views have w = 1 already
       // <<< V2-D
       final ws = world.storage;
       var n = Vector3(ws[0], ws[1], ws[2]).cross(Vector3(ws[4], ws[5], ws[6]));
@@ -588,6 +594,17 @@ class Evaluator {
       roll = rig.prop(CamProps.roll).scalarAt(t);
       focus = rig.prop(CamProps.focus).scalarAt(t);
       aperture = math.max(0.0, rig.prop(CamProps.aperture).scalarAt(t));
+      // win-40 >>> one-node camera aims with its orientation; blur level; focus lock
+      final o = rig.props[CamProps.orientation]?.valueAt(t);
+      if (rig.type == 'one_node' && o != null) {
+        final fwd = oneNodeForward(o[0], o[1]);
+        poi = pos + fwd * zoom;
+        roll += o.length > 2 ? o[2] : 0;
+      }
+      final bl = rig.props[CamProps.blurLevel]?.scalarAt(t) ?? 100;
+      aperture *= math.max(0.0, bl) / 100;
+      if (rig.focusLock) focus = (poi - pos).length;
+      // <<< win-40
       // V2-D >>> camera_shake
       final sh = Realism.shake3D(rig, t, pos, poi, zoom);
       if (sh != null) {
@@ -631,6 +648,13 @@ class Evaluator {
       aperture: aperture,
     );
   }
+
+  // win-40 >>> one-node camera: forward from X (pitch, + = look down) and Y (yaw, + = turn right) in degrees.
+  static Vector3 oneNodeForward(double xDeg, double yDeg) {
+    final x = xDeg * _deg, y = yDeg * _deg;
+    return Vector3(math.sin(y) * math.cos(x), math.sin(x), math.cos(y) * math.cos(x))..normalize();
+  }
+  // <<< win-40
 
   /// World → composition-screen matrix with perspective in the w row.
   static Matrix4 projection(Camera3DState c) {
@@ -687,3 +711,141 @@ class Evaluator {
   static double shakeNoise(double x, double seed) =>
       math.sin(x * 6.13 + seed) * 0.5 + math.sin(x * 13.71 + seed * 2.3) * 0.3 + math.sin(x * 27.1 + seed * 4.1) * 0.2;
 }
+
+// win-40 >>> WORKING 3D VIEWS (After Effects: Front / Left / Top / Back / Right /
+// Bottom orthographic views and Custom View 1-3 perspective orbit views).
+
+/// A view of a composition's 3D space that is not the active camera.
+class ViewCam {
+  final Camera3DState cam;
+  final Matrix4 proj;
+  final bool ortho;
+  final String kind;
+  ViewCam(this.kind, this.cam, this.proj, this.ortho);
+
+  static const kinds = ['active', 'front', 'left', 'top', 'back', 'right', 'bottom', 'custom1', 'custom2', 'custom3'];
+  static const labels = {
+    'active': 'Active Camera', 'front': 'Front', 'left': 'Left', 'top': 'Top', 'back': 'Back', 'right': 'Right', 'bottom': 'Bottom',
+    'custom1': 'Custom View 1', 'custom2': 'Custom View 2', 'custom3': 'Custom View 3',
+  };
+
+  /// Default orbit of the custom views: [yaw°, pitch°, distance × scene size].
+  static const customDefaults = {
+    'custom1': [-35.0, 22.0, 1.7],
+    'custom2': [40.0, 12.0, 1.9],
+    'custom3': [0.0, 62.0, 1.8],
+  };
+
+  /// World-space points the working views frame: the comp frame, every 3D
+  /// layer's corners and the camera (position + point of interest).
+  static List<Vector3> scenePoints(Composition comp, double t) {
+    final pts = <Vector3>[
+      Vector3(0, 0, 0), Vector3(comp.width, 0, 0), Vector3(0, comp.height, 0), Vector3(comp.width, comp.height, 0),
+    ];
+    final cache = <String, Matrix4>{};
+    for (final l in comp.layers) {
+      if (!l.is3D || !l.isActiveAt(t)) continue;
+      final m = Evaluator.worldMatrix(comp, l, t, cache);
+      for (final c in [[0.0, 0.0], [l.width, 0.0], [0.0, l.height], [l.width, l.height]]) {
+        pts.add(m.transform3(Vector3(c[0], c[1], 0)));
+      }
+    }
+    if (comp.camera.mode == CameraMode.threeD) {
+      final cam = Evaluator.camera3D(comp, t);
+      pts.add(cam.position);
+      pts.add(cam.position + cam.forward * cam.zoom);
+    }
+    return pts;
+  }
+
+  /// Builds the [kind] view for a viewport of [vw] × [vh] (comp px).
+  /// [orbit] overrides a custom view's [yaw, pitch, distance factor].
+  static ViewCam? build(Composition comp, double t, String kind, {List<double>? orbit}) {
+    if (kind == 'active') return null;
+    final w = comp.width, h = comp.height;
+    final pts = scenePoints(comp, t);
+    var mn = Vector3.copy(pts.first), mx = Vector3.copy(pts.first);
+    for (final p in pts) {
+      mn = Vector3(math.min(mn.x, p.x), math.min(mn.y, p.y), math.min(mn.z, p.z));
+      mx = Vector3(math.max(mx.x, p.x), math.max(mx.y, p.y), math.max(mx.z, p.z));
+    }
+    final center = (mn + mx) * 0.5;
+    final extent = math.max(1.0, (mx - mn).length);
+    if (kind.startsWith('custom')) {
+      final o = orbit ?? customDefaults[kind] ?? customDefaults['custom1']!;
+      final yaw = o[0] * _deg, pitch = o[1] * _deg;
+      final dist = extent * (o.length > 2 ? o[2] : 1.7);
+      final dir = Vector3(math.sin(yaw) * math.cos(pitch), -math.sin(pitch), math.cos(yaw) * math.cos(pitch)); // camera → scene
+      final pos = center - dir * dist;
+      final f = dir.normalized();
+      var r = Vector3(0, 1, 0).cross(f);
+      if (r.length < 1e-6) r = Vector3(1, 0, 0);
+      r.normalize();
+      final d = f.cross(r)..normalize();
+      final zoom = defaultZoomFor(w);
+      final cam = Camera3DState(position: pos, right: r, down: d, forward: f, zoom: zoom, cx: w / 2, cy: h / 2, focus: dist, aperture: 0);
+      return ViewCam(kind, cam, Evaluator.projection(cam), false);
+    }
+    late Vector3 f;
+    switch (kind) {
+      case 'front':
+        f = Vector3(0, 0, 1);
+      case 'back':
+        f = Vector3(0, 0, -1);
+      case 'left':
+        f = Vector3(1, 0, 0);
+      case 'right':
+        f = Vector3(-1, 0, 0);
+      case 'top':
+        f = Vector3(0, 1, 0);
+      case 'bottom':
+        f = Vector3(0, -1, 0);
+      default:
+        throw ArgumentError('Unknown view "$kind" (use ${kinds.join(', ')})');
+    }
+    var r = Vector3(0, 1, 0).cross(f);
+    if (r.length < 1e-6) r = Vector3(1, 0, 0);
+    r.normalize();
+    final d = f.cross(r)..normalize();
+    // Fit every point into 86 % of the viewport.
+    double r0 = double.infinity, r1 = -double.infinity, d0 = double.infinity, d1 = -double.infinity;
+    for (final p in pts) {
+      final pr = (p - center).dot(r), pd = (p - center).dot(d);
+      r0 = math.min(r0, pr);
+      r1 = math.max(r1, pr);
+      d0 = math.min(d0, pd);
+      d1 = math.max(d1, pd);
+    }
+    final s = 0.86 * math.min(w / math.max(1.0, r1 - r0), h / math.max(1.0, d1 - d0));
+    final mid = center + r * ((r0 + r1) / 2) + d * ((d0 + d1) / 2);
+    final pos = mid - f * (extent * 50);
+    final cam = Camera3DState(position: pos, right: r, down: d, forward: f, zoom: s, cx: w / 2, cy: h / 2, focus: extent * 50, aperture: 0);
+    final m = Matrix4.zero();
+    void row(int i, Vector3 v, double k, double c) {
+      m.setEntry(i, 0, v.x * k);
+      m.setEntry(i, 1, v.y * k);
+      m.setEntry(i, 2, v.z * k);
+      m.setEntry(i, 3, -(v * k).dot(mid) + c);
+    }
+    row(0, r, s, w / 2);
+    row(1, d, s, h / 2);
+    row(2, f, 1e-4, 1); // tiny depth row keeps the matrix invertible (hit-testing)
+    m.setEntry(3, 3, 1);
+    return ViewCam(kind, cam, m, true);
+  }
+
+  /// Comp → this view's screen (comp px of the viewport).
+  Offset2 toScreen(Vector3 p) {
+    final v = proj.transform(Vector4(p.x, p.y, p.z, 1));
+    final w = v.w.abs() < 1e-9 ? 1e-9 : v.w;
+    return Offset2(v.x / w, v.y / w, ortho || cam.depthOf(p) > kNearPlane);
+  }
+}
+
+/// A projected point and whether it is in front of the view.
+class Offset2 {
+  final double x, y;
+  final bool visible;
+  const Offset2(this.x, this.y, this.visible);
+}
+// <<< win-40

@@ -1,5 +1,6 @@
 import 'anim_prop.dart';
 import 'motion_path.dart';
+import '../geo/geo_spec.dart'; // win-40
 
 export 'motion_path.dart';
 
@@ -428,6 +429,7 @@ class Layer {
   String? mediaId; // for video/image layers
   TextData? text;
   ShapeData? shape;
+  GeoSpec? geo; // win-40: live map (shape layer with a geo spec)
   int color; // solid color (ARGB)
 
   /// Layer content size in pixels (media size, solid size, text box).
@@ -483,6 +485,7 @@ class Layer {
     this.mediaId,
     this.text,
     this.shape,
+    this.geo, // win-40
     this.color = 0xFF3D5AFE,
     Map<String, AnimProp>? props,
     List<Effect>? effects,
@@ -600,6 +603,7 @@ class Layer {
         mediaId: mediaId,
         text: text?.copy(),
         shape: shape?.copy(),
+        geo: geo?.copy(), // win-40
         color: color,
         props: props.map((k, v) => MapEntry(k, v.copy())),
         effects: effects.map((e) => e.copy()).toList(),
@@ -626,6 +630,7 @@ class Layer {
         if (mediaId != null) 'mediaId': mediaId,
         if (text != null) 'text': text!.toJson(),
         if (shape != null) 'shape': shape!.toJson(),
+        if (geo != null) 'geo': geo!.toJson(), // win-40
         'color': color,
         'width': width,
         'height': height,
@@ -657,6 +662,7 @@ class Layer {
         mediaId: j['mediaId'] as String?,
         text: j['text'] == null ? null : TextData.fromJson(j['text'] as Map<String, dynamic>),
         shape: j['shape'] == null ? null : ShapeData.fromJson(j['shape'] as Map<String, dynamic>),
+        geo: j['geo'] is Map ? GeoSpec.fromJson(Map<String, dynamic>.from(j['geo'] as Map)) : null, // win-40
         color: j['color'] as int? ?? 0xFF3D5AFE,
         props: (j['props'] as Map<String, dynamic>? ?? {})
             .map((k, v) => MapEntry(k, AnimProp.fromJson(v as Map<String, dynamic>))),

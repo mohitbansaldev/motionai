@@ -65,6 +65,16 @@ class EffectsCatalog {
       ParamDef('amount', 'Intensity', [50], 0, 100),
       ParamDef('radius', 'Radius', [20], 1, 100),
     ]),
+    // win-40: Deep Glow (After Effects plugin look)
+    EffectDef('deep_glow', 'Deep Glow', [
+      ParamDef('amount', 'Intensity', [80], 0, 200),
+      ParamDef('radius', 'Radius', [40], 1, 200),
+      ParamDef('threshold', 'Threshold', [45], 0, 95),
+      ParamDef('spread', 'Spread', [50], 0, 100),
+      ParamDef('aspect', 'Aspect Ratio %', [100], 10, 400),
+      ParamDef('chromatic', 'Chromatic Aberration', [0], 0, 100),
+      ParamDef('tint', 'Tint', [255, 255, 255], 0, 255, color: true),
+    ]),
     EffectDef('grain', 'Film Grain', [
       ParamDef('amount', 'Amount', [25], 0, 100),
       ParamDef('size', 'Size', [2], 1, 8),

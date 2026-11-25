@@ -28,17 +28,36 @@ class CamProps {
   static const roll = 'roll'; // [°] rotation around view axis
   static const focus = 'focus'; // focus distance (px) for depth of field
   static const aperture = 'aperture'; // blur strength; 0 = depth of field off
+  // win-40 >>> one-node camera + AE camera options
+  static const orientation = 'orientation'; // [x°, y°, z°] one-node camera aim (pitch, yaw, roll)
+  static const blurLevel = 'blur_level'; // [%] depth of field strength multiplier (AE Blur Level)
+  // <<< win-40
 
   static const twoDProps = [pan, zoom2d, rotation2d, shake, shakeSpeed];
-  static const threeDProps = [position, poi, zoom, roll, focus, aperture];
+  static const threeDProps = [position, poi, zoom, roll, focus, aperture, orientation, blurLevel];
 }
 
 /// Default AE-like zoom for a comp width (≈ 50mm lens, 39.6° horizontal FOV).
 double defaultZoomFor(double compWidth) => compWidth * 1.38889;
 
+// win-40 >>> AE lens presets: zoom = comp width × focal length / film size (36 mm).
+const kFilmSizeMm = 36.0;
+const kLensPresetsMm = [15, 20, 24, 28, 35, 50, 80, 135, 200];
+double zoomForLens(double compWidth, double mm) => compWidth * mm / kFilmSizeMm;
+double lensForZoom(double compWidth, double zoom) => zoom * kFilmSizeMm / compWidth;
+// <<< win-40
+
 class CameraRig {
   CameraMode mode;
   final Map<String, AnimProp> props;
+  // win-40 >>> AE camera options
+  /// "two_node" (looks at its point of interest, AE default) or "one_node"
+  /// (aims with [CamProps.orientation]; good for dolly / handheld moves).
+  String type = 'two_node';
+
+  /// Link Focus Distance to Point of Interest (the POI is always sharp).
+  bool focusLock = false;
+  // <<< win-40
 
   CameraRig({this.mode = CameraMode.off, Map<String, AnimProp>? props}) : props = props ?? {};
 
@@ -61,6 +80,8 @@ class CameraRig {
     props.putIfAbsent(CamProps.roll, () => AnimProp([0]));
     props.putIfAbsent(CamProps.focus, () => AnimProp([z]));
     props.putIfAbsent(CamProps.aperture, () => AnimProp([0]));
+    props.putIfAbsent(CamProps.orientation, () => AnimProp([0, 0, 0])); // win-40
+    props.putIfAbsent(CamProps.blurLevel, () => AnimProp([100])); // win-40
   }
 
   AnimProp prop(String key) {
@@ -79,16 +100,22 @@ class CameraRig {
     return s.toList()..sort();
   }
 
-  CameraRig copy() => CameraRig(mode: mode, props: props.map((k, v) => MapEntry(k, v.copy())));
+  CameraRig copy() => CameraRig(mode: mode, props: props.map((k, v) => MapEntry(k, v.copy())))
+    ..type = type // win-40
+    ..focusLock = focusLock; // win-40
 
   Map<String, dynamic> toJson() => {
         'mode': mode.name,
         'props': props.map((k, v) => MapEntry(k, v.toJson())),
+        if (type != 'two_node') 'type': type, // win-40
+        if (focusLock) 'focusLock': true, // win-40
       };
 
   static CameraRig fromJson(Map<String, dynamic> j) => CameraRig(
         mode: CameraMode.values.firstWhere((m) => m.name == j['mode'], orElse: () => CameraMode.off),
         props: (j['props'] as Map<String, dynamic>? ?? {})
             .map((k, v) => MapEntry(k, AnimProp.fromJson(v as Map<String, dynamic>))),
-      );
+      )
+        ..type = j['type'] == 'one_node' ? 'one_node' : 'two_node' // win-40
+        ..focusLock = j['focusLock'] == true; // win-40
 }

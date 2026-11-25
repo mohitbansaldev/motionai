@@ -23,6 +23,7 @@ import 'realism_commands.dart'; // V2-D
 import 'shot_commands.dart'; // V2-B
 import 'map_commands.dart'; // V3-A
 import 'v3_fx_commands.dart'; // V3-D
+import 'geo_commands.dart'; // win-40
 import '../presets/fx_animators.dart'; // V3-D
 import 'datahud_commands.dart'; // V3-C
 import 'pattern_commands.dart'; // V3-E
@@ -106,6 +107,7 @@ class EditCommands {
     ...MapCommands.ops, // V3-A: geo component aliases (status_ring, signal_rings, …), map_tilt
     ...V3FxCommands.ops, // V3-D: mood_flood, tint_wipe, grade_swap, spotlight_subject, pulse, cut_to_black, lightning, montage, swap_layer
     ...PatternCommands.ops, // V3-E: suggest_patterns, apply_patterns, list_patterns
+    ...GeoCommands.ops, // win-40: add_geo, update_geo, geo_fly, set_camera, set_view_layout
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -591,6 +593,16 @@ class EditCommands {
         }
         break;
       // ---- end Sound
+
+      // win-40 >>> geo layers, AE camera options, view layouts → geo_commands.dart
+      case 'add_geo':
+      case 'update_geo':
+      case 'geo_fly':
+      case 'set_camera':
+      case 'set_view_layout':
+        GeoCommands.run(project, c, now, r);
+        break;
+      // <<< win-40
 
       // V3-D >>> mood & character FX → v3_fx_commands.dart
       case 'mood_flood':

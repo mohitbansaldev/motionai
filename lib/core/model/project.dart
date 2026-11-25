@@ -69,6 +69,14 @@ class Composition {
   String? dofFocus;
   // <<< V2-D
 
+  // win-40 >>> viewer: After Effects view layout ("1", "2", "4", "1+3") and the
+  // 3D view of each pane (see ViewCam.kinds); custom view orbits [yaw, pitch, dist].
+  String viewLayout = '1';
+  List<String> views = ['active', 'top', 'front', 'right'];
+  Map<String, List<double>> customViews = {};
+  static const viewLayouts = ['1', '2', '4', '1+3'];
+  // <<< win-40
+
   Composition({
     required this.id,
     required this.name,
@@ -118,7 +126,11 @@ class Composition {
         layers: layers.map((l) => l.copy()).toList(),
         camera: camera.copy(),
         motionBlur: motionBlur,
-      )..dofFocus = dofFocus; // V2-D
+      )
+        ..dofFocus = dofFocus // V2-D
+        ..viewLayout = viewLayout // win-40
+        ..views = List.of(views) // win-40
+        ..customViews = customViews.map((k, v) => MapEntry(k, List.of(v))); // win-40
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -132,6 +144,9 @@ class Composition {
         'camera': camera.toJson(),
         if (motionBlur) 'motionBlur': true,
         if (dofFocus != null) 'dofFocus': dofFocus, // V2-D
+        if (viewLayout != '1') 'viewLayout': viewLayout, // win-40
+        if (viewLayout != '1' || views.join() != 'activetopfrontright') 'views': views, // win-40
+        if (customViews.isNotEmpty) 'customViews': customViews, // win-40
       };
 
   static Composition fromJson(Map<String, dynamic> j) => Composition(
@@ -145,7 +160,13 @@ class Composition {
         layers: (j['layers'] as List? ?? []).map((e) => Layer.fromJson(e as Map<String, dynamic>)).toList(),
         camera: j['camera'] == null ? null : CameraRig.fromJson(j['camera'] as Map<String, dynamic>),
         motionBlur: j['motionBlur'] as bool? ?? false,
-      )..dofFocus = j['dofFocus'] as String?; // V2-D
+      )
+        ..dofFocus = j['dofFocus'] as String? // V2-D
+        ..viewLayout = viewLayouts.contains(j['viewLayout']) ? j['viewLayout'] as String : '1' // win-40
+        ..views = j['views'] is List ? [for (final v in j['views'] as List) '$v'] : ['active', 'top', 'front', 'right'] // win-40
+        ..customViews = j['customViews'] is Map
+            ? (j['customViews'] as Map).map((k, v) => MapEntry('$k', [for (final x in v as List) (x as num).toDouble()]))
+            : <String, List<double>>{}; // win-40
 }
 
 class Project {

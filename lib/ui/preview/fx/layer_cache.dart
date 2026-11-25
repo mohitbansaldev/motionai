@@ -11,6 +11,7 @@ import '../../../core/model/layer.dart';
 import '../../../core/model/project.dart';
 import '../../../core/presets/realism.dart'; // V2-D
 import '../shape_painter.dart';
+import 'map_texture.dart'; // win-40
 import 'offscreen.dart';
 import 'realism_painters.dart'; // V2-D
 import 'text_fx_v3.dart'; // V3-C
@@ -33,7 +34,7 @@ class LayerSig {
 
   /// Effects whose look depends only on their params (and the layer).
   static const paramDriven = {
-    'blur', 'color', 'tint', 'vignette', 'glow', 'gradient', 'letterbox', 'outline', 'shadow', 'shatter', 'paper',
+    'blur', 'color', 'tint', 'vignette', 'glow', 'deep_glow', 'gradient', 'letterbox', 'outline', 'shadow', 'shatter', 'paper',
     'grunge', 'silhouette', 'mono', 'duotone', 'edge_blur', 'motion_blur', 'curve', 'glass_frame', 'torn_edge',
     'reveal', 'flash',
     ...Realism.paramFx, // V2-D
@@ -78,6 +79,17 @@ class LayerSig {
     if (sh != null) h = Object.hash(h, identityHashCode(sh), ShapePainter.signature(sh));
     final trim = l.props[Props.trim];
     if (trim != null && l.type == LayerType.shape) h = Object.hash(h, _prop(trim, t));
+    // win-40 >>> live map: spec + animated view + progress (+ time for pulsing pins)
+    final geo = l.geo;
+    if (geo != null) {
+      h = Object.hash(h, geo.signature, identityHashCode(MapTexture.image.value));
+      for (final k in const ['geo_center', 'geo_zoom', 'geo_progress']) {
+        final gp = l.props[k];
+        if (gp != null) h = Object.hash(h, _prop(gp, t));
+      }
+      if (geo.pins.any((p) => p.kind == 'pulse' || p.kind == 'ring')) h = Object.hash(h, (t * 30).floor());
+    }
+    // <<< win-40
     if (l.type == LayerType.text) h = Object.hash(h, _text(l, l.text ?? TextData(), t));
     for (final e in l.effects) {
       h = Object.hash(h, e.id, e.type, e.enabled);

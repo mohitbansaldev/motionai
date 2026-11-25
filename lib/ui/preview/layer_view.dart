@@ -27,6 +27,7 @@ import 'fx/text_fx_v3.dart'; // V3-C
 import 'fx/datahud_fx.dart'; // V3-C
 import 'fx/transition_painters.dart'; // V2-C
 import 'fx/map_texture.dart'; // V3-A
+import 'fx/geo_painter.dart'; // win-40
 import 'fx/v3_fx_painters.dart'; // V3-D
 import 'precomp_view.dart'; // PRECOMP (Agent L)
 import 'shape_painter.dart';
@@ -170,6 +171,7 @@ class LayerView extends StatefulWidget {
   }
 
   Widget _content(Layer l, {int? decodeWidth}) {
+    if (l.geo != null) return GeoLayerView(layer: l, time: time, draft: draft); // win-40: live map
     // CHROMA (Agent M): green screen keys the source pixels (decoded frames,
     // never the live texture) before every other effect.
     final ck = (l.type == LayerType.video || l.type == LayerType.image) ? chromaEffectOf(l) : null;
@@ -507,6 +509,46 @@ class LayerView extends StatefulWidget {
             ),
           ),
         ]);
+      // win-40 >>> Deep Glow: threshold → tint → three blur scales (tight core,
+      // body, wide halo ≈ inverse-square falloff), aspect ratio, chromatic aberration.
+      case 'deep_glow':
+        final amount = (p('amount') / 100).clamp(0.0, 2.0);
+        if (amount <= 0) return child;
+        final r = p('radius').clamp(1.0, 200.0);
+        final th = (p('threshold') / 100).clamp(0.0, 0.95);
+        final spread = (p('spread') / 100).clamp(0.0, 1.0);
+        final asp = (p('aspect') / 100).clamp(0.1, 4.0);
+        final chrom = p('chromatic').clamp(0.0, 100.0);
+        final tint = rgbList('tint');
+        final k = 1 / (1 - th), o = -th * 255 * k;
+        final tr = tint[0] / 255, tg = tint[1] / 255, tb = tint[2] / 255;
+        final src = ColorFiltered(
+          colorFilter: ColorFilter.matrix([k * tr, 0, 0, 0, o * tr, 0, k * tg, 0, 0, o * tg, 0, 0, k * tb, 0, o * tb, 0, 0, 0, 1, 0]),
+          child: child,
+        );
+        Widget scale(double rr, double op, {List<double>? channel, double dx = 0}) {
+          Widget w = src;
+          if (channel != null) {
+            w = ColorFiltered(
+                colorFilter: ColorFilter.matrix([channel[0], 0, 0, 0, 0, 0, channel[1], 0, 0, 0, 0, 0, channel[2], 0, 0, 0, 0, 0, 1, 0]), child: w);
+          }
+          w = ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: rr * asp, sigmaY: rr / asp, tileMode: TileMode.decal), child: w);
+          if (dx != 0) w = Transform.translate(offset: Offset(dx, 0), child: w);
+          return IgnorePointer(child: Opacity(opacity: (op * amount).clamp(0.0, 1.0), child: w));
+        }
+        final shift = chrom * r * 0.012;
+        return Stack(clipBehavior: Clip.none, children: [
+          child,
+          scale(r * 0.25, 0.55),
+          scale(r * (cheap ? 1.4 : 1.0), 0.35 + 0.3 * spread),
+          if (!cheap && chrom <= 0) scale(r * 2.8, 0.18 + 0.4 * spread),
+          if (!cheap && chrom > 0) ...[
+            scale(r * 2.8, 0.18 + 0.4 * spread, channel: [1, 0, 0], dx: -shift),
+            scale(r * 2.8, 0.18 + 0.4 * spread, channel: [0, 1, 0]),
+            scale(r * 2.8, 0.18 + 0.4 * spread, channel: [0, 0, 1], dx: shift),
+          ],
+        ]);
+      // <<< win-40
       case 'grain':
         final amount = (p('amount') / 100).clamp(0.0, 1.0);
         if (amount <= 0) return child;

@@ -10,6 +10,8 @@ import '../doc_kit_sheet.dart';
 import '../audio/sound_sheet.dart'; // Sound (Agent K)
 import '../library/library_sheet.dart'; // Library & templates (Agent G)
 import '../library/template_gallery.dart'; // Library & templates (Agent G)
+import '../../core/geo/geo_styles.dart'; // win-40
+import '../../core/model/camera.dart'; // win-40
 
 /// Add media, text, solids, nulls and the one-tap parallax rig.
 class AddPanel extends StatefulWidget {
@@ -122,6 +124,8 @@ class _AddPanelState extends State<AddPanel> {
       (Icons.article_outlined, 'Doc Kit', () => DocKitSheet.open(context, c)),
       (Icons.category_outlined, 'Shapes', () => DocKitSheet.open(context, c, shapes: true)),
       (Icons.public, 'World Map', () => DocKitSheet.open(context, c, component: 'map')),
+      (Icons.travel_explore, 'Geo Map (live)', () => _geoMap(context)), // win-40
+      (Icons.videocam_outlined, '3D Camera', () => _camera(context)), // win-40
       (Icons.newspaper, 'Article', () => DocKitSheet.open(context, c, component: 'article')),
       (Icons.bolt, 'Title Intro', () => DocKitSheet.open(context, c, component: 'title_slam')),
       (Icons.badge_outlined, 'Name Tag', () => DocKitSheet.open(context, c, component: 'name_tag')),
@@ -162,6 +166,119 @@ class _AddPanelState extends State<AddPanel> {
       if (_busy) const Center(child: CircularProgressIndicator()),
     ]);
   }
+
+  // win-40 >>> live geo map + AE camera dialogs
+  Future<void> _geoMap(BuildContext context) async {
+    String style = 'dark_political', projection = 'equirectangular';
+    final focus = TextEditingController(text: 'India');
+    final highlight = TextEditingController(text: 'India');
+    double extrude = 18;
+    bool fly = true, pitch = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          title: const Text('Geo Map (live)'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              DropdownButtonFormField<String>(
+                initialValue: style,
+                decoration: const InputDecoration(labelText: 'Style', isDense: true),
+                items: [for (final st in GeoStyles.all) DropdownMenuItem(value: st.id, child: Text(st.label))],
+                onChanged: (v) => set(() => style = v ?? style),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: projection,
+                decoration: const InputDecoration(labelText: 'Projection', isDense: true),
+                items: const [
+                  DropdownMenuItem(value: 'equirectangular', child: Text('Flat (equirectangular)')),
+                  DropdownMenuItem(value: 'natural_earth', child: Text('Natural Earth')),
+                  DropdownMenuItem(value: 'mercator', child: Text('Mercator')),
+                  DropdownMenuItem(value: 'globe', child: Text('Globe (3D sphere)')),
+                ],
+                onChanged: (v) => set(() => projection = v ?? projection),
+              ),
+              TextField(controller: focus, decoration: const InputDecoration(labelText: 'Fly to (country)', isDense: true)),
+              TextField(controller: highlight, decoration: const InputDecoration(labelText: 'Highlight (comma separated)', isDense: true)),
+              const SizedBox(height: 8),
+              Text('3D slab thickness: ${extrude.round()} px', style: const TextStyle(fontSize: 12)),
+              Slider(value: extrude, min: 0, max: 60, onChanged: (v) => set(() => extrude = v)),
+              CheckboxListTile(dense: true, value: fly, title: const Text('Fly in from the whole world'), onChanged: (v) => set(() => fly = v ?? fly)),
+              CheckboxListTile(dense: true, value: pitch, title: const Text('Pitched 3D map (3D camera)'), onChanged: (v) => set(() => pitch = v ?? pitch)),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final hs = [for (final h in highlight.text.split(',')) if (h.trim().isNotEmpty) {'code': h.trim(), 'extrude': extrude}];
+    final to = focus.text.trim();
+    final cmd = <String, dynamic>{
+      'op': 'add_geo',
+      'style': style,
+      'projection': projection,
+      'highlight': hs,
+      'start': c.time,
+      'is3d': pitch,
+      'reveal': {'start': c.time + (fly ? 2.2 : 0.3), 'duration': 1.5},
+      if (to.isNotEmpty && !fly) 'focus': to,
+      if (to.isNotEmpty && fly) 'fly': {'from': [20, 20], 'from_zoom': 1, 'to': to, 'start': c.time, 'duration': 2.5},
+    };
+    _add(cmd);
+    if (pitch) {
+      final id = c.selectedLayerId;
+      if (id != null) {
+        c.tryRun({'op': 'set_property', 'target': id, 'prop': 'rotation', 'value': [38, 0, 0]});
+        c.tryRun({'op': 'set_property', 'target': id, 'prop': 'scale', 'value': [150, 150, 100]});
+        c.tryRun({'op': 'set_camera', 'type': 'two_node', 'lens_mm': 35, 'aperture': 60, 'focus_lock': true});
+      }
+    }
+  }
+
+  Future<void> _camera(BuildContext context) async {
+    final rig = c.comp.camera;
+    String type = rig.type;
+    double lens = lensForZoom(c.comp.width, rig.props[CamProps.zoom]!.valueAt(c.time)[0]).roundToDouble();
+    bool lock = rig.focusLock;
+    double blur = rig.props[CamProps.blurLevel]?.valueAt(c.time)[0] ?? 100;
+    double aperture = rig.props[CamProps.aperture]!.valueAt(c.time)[0];
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          title: const Text('3D Camera'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SegmentedButton<String>(
+              segments: const [ButtonSegment(value: 'one_node', label: Text('One-node')), ButtonSegment(value: 'two_node', label: Text('Two-node'))],
+              selected: {type},
+              onSelectionChanged: (v) => set(() => type = v.first),
+            ),
+            const SizedBox(height: 10),
+            Wrap(spacing: 6, children: [
+              for (final mm in kLensPresetsMm)
+                ChoiceChip(label: Text('${mm}mm'), selected: lens.round() == mm, onSelected: (_) => set(() => lens = mm.toDouble())),
+            ]),
+            CheckboxListTile(dense: true, value: lock, title: const Text('Link focus to point of interest'), onChanged: (v) => set(() => lock = v ?? lock)),
+            Text('Aperture (depth of field): ${aperture.round()}', style: const TextStyle(fontSize: 12)),
+            Slider(value: aperture.clamp(0.0, 200.0), min: 0, max: 200, onChanged: (v) => set(() => aperture = v)),
+            Text('Blur level: ${blur.round()} %', style: const TextStyle(fontSize: 12)),
+            Slider(value: blur.clamp(0.0, 300.0), min: 0, max: 300, onChanged: (v) => set(() => blur = v)),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Apply')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    _add({'op': 'set_camera', 'type': type, 'lens_mm': lens, 'focus_lock': lock, 'blur_level': blur, 'aperture': aperture});
+  }
+  // <<< win-40
 
   Future<void> _parallax(BuildContext context) async {
     final candidates = c.comp.layers.where((l) => l.type != LayerType.nullObject && l.type != LayerType.audio).toList();
