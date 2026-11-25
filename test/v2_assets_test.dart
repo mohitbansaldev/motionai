@@ -15,7 +15,7 @@ import 'package:motionai/library/library_ops.dart';
 import 'package:motionai/platform/windows_ai/image_io.dart';
 
 /// Synthetic RGBA image from a colour function.
-Rgba paint(int w, int h, List<int> Function(int x, int y) f) {
+Rgba synth(int w, int h, List<int> Function(int x, int y) f) {
   final d = Uint8List(w * h * 4);
   for (int y = 0; y < h; y++) {
     for (int x = 0; x < w; x++) {
@@ -33,7 +33,7 @@ Rgba paint(int w, int h, List<int> Function(int x, int y) f) {
 int noise(int x, int y, int amp) => ((hash01(x * 31 + 7, y * 17 + 3) * 2 - 1) * amp).round();
 
 /// Subject (red ellipse + white box) on a flat green screen.
-Rgba greenShot(int w, int h, {List<int> screen = const [20, 200, 70]}) => paint(w, h, (x, y) {
+Rgba greenShot(int w, int h, {List<int> screen = const [20, 200, 70]}) => synth(w, h, (x, y) {
       final dx = (x - w / 2) / (w * 0.22), dy = (y - h / 2) / (h * 0.3);
       if (dx * dx + dy * dy <= 1) return [200, 60, 50];
       if (x > w * 0.1 && x < w * 0.2 && y > h * 0.4 && y < h * 0.6) return [240, 240, 240];
@@ -47,7 +47,7 @@ bool inStar(int x, int y, double cx, double cy, double r) {
   return math.pow(ax, 0.6) + math.pow(ay, 0.6) <= 1;
 }
 
-Rgba greyPhoto(int w, int h, {bool star = false, bool square = false}) => paint(w, h, (x, y) {
+Rgba greyPhoto(int w, int h, {bool star = false, bool square = false}) => synth(w, h, (x, y) {
       final cx = w - 15.0, cy = h - 15.0;
       if (star && inStar(x, y, cx, cy, 6.5)) return [255, 255, 255];
       if (square && (x - cx).abs() <= 6 && (y - cy).abs() <= 6) return [255, 255, 255];
@@ -160,19 +160,19 @@ void main() {
     test('blue screens too; photos, foliage and cut-outs are left alone', () {
       expect(ImageClean.detectScreen(greenShot(120, 90, screen: const [10, 60, 200]))?.name, 'blue');
       // Textured grass under a sky: not a screen.
-      final grass = paint(160, 120, (x, y) {
+      final grass = synth(160, 120, (x, y) {
         if (y < 40) return [120, 170, 230];
         final k = 0.4 + hash01(x, y) * 1.0;
         return [(60 * k).round(), (150 * k).round().clamp(0, 255), (40 * k).round()];
       });
       expect(ImageClean.detectScreen(grass), isNull);
       // Clear sky plate: pale blue is not a chroma screen.
-      expect(ImageClean.detectScreen(paint(120, 90, (x, y) => [110 + y ~/ 4, 160 + y ~/ 4, 230])), isNull);
+      expect(ImageClean.detectScreen(synth(120, 90, (x, y) => [110 + y ~/ 4, 160 + y ~/ 4, 230])), isNull);
       expect(ImageClean.detectScreen(greyPhoto(120, 90)), isNull);
-      final cut = paint(100, 100, (x, y) => (x - 50).abs() < 20 && (y - 50).abs() < 30 ? [200, 0, 0, 255] : [0, 255, 0, 0]);
+      final cut = synth(100, 100, (x, y) => (x - 50).abs() < 20 && (y - 50).abs() < 30 ? [200, 0, 0, 255] : [0, 255, 0, 0]);
       expect(ImageClean.detectScreen(cut), isNull);
       // A green screen with the subject touching the bottom edge still counts.
-      final standing = paint(160, 120, (x, y) => (x - 80).abs() < 25 && y > 40 ? [180, 120, 90] : [0, 190, 60]);
+      final standing = synth(160, 120, (x, y) => (x - 80).abs() < 25 && y > 40 ? [180, 120, 90] : [0, 190, 60]);
       expect(ImageClean.detectScreen(standing), isNotNull);
     });
   });
@@ -199,10 +199,10 @@ void main() {
     test('conservative: no star, a solid square or a bright area is not a mark', () {
       expect(ImageClean.detectMark(greyPhoto(400, 300)), isNull);
       expect(ImageClean.detectMark(greyPhoto(400, 300, square: true)), isNull);
-      final bright = paint(400, 300, (x, y) => x > 300 && y > 200 ? [250, 250, 250] : [90, 90, 90]);
+      final bright = synth(400, 300, (x, y) => x > 300 && y > 200 ? [250, 250, 250] : [90, 90, 90]);
       expect(ImageClean.detectMark(bright), isNull);
       // A star in the middle of the picture is content, not the mark.
-      final mid = paint(400, 300, (x, y) => inStar(x, y, 200, 150, 6.5) ? [255, 255, 255] : [90, 90, 90]);
+      final mid = synth(400, 300, (x, y) => inStar(x, y, 200, 150, 6.5) ? [255, 255, 255] : [90, 90, 90]);
       expect(ImageClean.detectMark(mid), isNull);
     });
   });
@@ -271,13 +271,13 @@ void main() {
 
     test('imports a Flow kit folder: roles, kit, dedupe, PNG preferred, green screen keyed', () async {
       final root = '${tmp.path}/Tulip_Library';
-      final cut = paint(80, 120, (x, y) => (x - 40).abs() < 20 && (y - 60).abs() < 50 ? [150, 90, 60, 255] : [0, 0, 0, 0]);
+      final cut = synth(80, 120, (x, y) => (x - 40).abs() < 20 && (y - 60).abs() < 50 ? [150, 90, 60, 255] : [0, 0, 0, 0]);
       writeImg('$root/cutouts/char_merchant.png', cut);
       writeImg('$root/char_merchant.jpg', greenShot(80, 120));
       writeImg('$root/dup/char_merchant_copy.png', cut);
       writeImg('$root/prop_tulip_green.jpg', greenShot(120, 120));
       writeImg('$root/plates/plate_market.jpg', greyPhoto(200, 120));
-      writeImg('$root/cut_windmill.png', paint(60, 60, (x, y) => (x - 30).abs() < 10 ? [120, 120, 130, 255] : [0, 0, 0, 0]));
+      writeImg('$root/cut_windmill.png', synth(60, 60, (x, y) => (x - 30).abs() < 10 ? [120, 120, 130, 255] : [0, 0, 0, 0]));
       File('$root/notes.txt').writeAsStringSync('hi');
       final lib = await AssetLibrary.open(Directory('${tmp.path}/lib'));
       final r = await LibraryOps.importFolder(lib, {'path': root, 'tags': ['holland']});
@@ -320,7 +320,7 @@ void main() {
     test('clean_assets keys + removes the mark in batch and can restore', () async {
       final lib = await AssetLibrary.open(Directory('${tmp.path}/lib'));
       writeImg('${tmp.path}/a.png', greenShot(120, 90));
-      final marked = paint(400, 300, (x, y) => inStar(x, y, 385, 285, 6.5) ? [255, 255, 255] : [90 + noise(x, y, 10), 95, 85]);
+      final marked = synth(400, 300, (x, y) => inStar(x, y, 385, 285, 6.5) ? [255, 255, 255] : [90 + noise(x, y, 10), 95, 85]);
       writeImg('${tmp.path}/b.png', marked);
       final a = await lib.addFile('${tmp.path}/a.png', type: MediaType.image, width: 120, height: 90);
       final b = await lib.addFile('${tmp.path}/b.png', type: MediaType.image, width: 400, height: 300);
