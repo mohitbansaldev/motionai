@@ -182,41 +182,35 @@ void main() {
     });
 
     test('far layers stay visible over the mid band during the move', () {
-      final p = project();
-      run(p, {
-        'op': 'add_shot', 'id': 's', 'plate': 'plate', 'duration': 5,
-        'layers': [
-          {'media': 'castle', 'role': 'far', 'id': 'castle', 'x': 0.5},
-          {'media': 'person', 'role': 'mid', 'id': 'man', 'x': 0.5},
-        ],
-        'camera': [
-          {'move': 'fly_to', 'target': 'man', 'start': 0, 'duration': 5, 'intensity': 0.9},
-        ],
-      });
-      final comp = p.comps['s']!;
-      final margin = kH * 0.03;
-      final b0 = box(comp, 'castle', 0), m0 = box(comp, 'man', 0);
-      final base = (b0[1] - (m0[1] - margin)).clamp(0.0, double.infinity);
-      for (final t in times(5, 16)) {
-        final c = box(comp, 'castle', t), m = box(comp, 'man', t);
-        final overlap = (c[2] < m[2] ? c[2] : m[2]) - (c[0] > m[0] ? c[0] : m[0]);
-        if (overlap <= (c[2] - c[0]) * 0.15) continue;
-        expect(c[1] - (m[1] - margin), lessThanOrEqualTo(base + 3), reason: 'castle sinks behind the man at $t');
+      Project build(bool keep) {
+        final p = project();
+        run(p, {
+          'op': 'add_shot', 'id': 's', 'plate': 'plate', 'duration': 5, 'keep_far_visible': keep,
+          'layers': [
+            {'media': 'castle', 'role': 'far', 'id': 'castle', 'x': 0.5},
+            {'media': 'person', 'role': 'mid', 'id': 'man', 'x': 0.5},
+          ],
+          'camera': [
+            {'move': 'fly_to', 'target': 'man', 'start': 0, 'duration': 5, 'intensity': 0.9},
+          ],
+        });
+        return p;
       }
-      final off = project();
-      run(off, {
-        'op': 'add_shot', 'id': 's', 'plate': 'plate', 'duration': 5, 'keep_far_visible': false,
-        'layers': [
-          {'media': 'castle', 'role': 'far', 'id': 'castle', 'x': 0.5},
-          {'media': 'person', 'role': 'mid', 'id': 'man', 'x': 0.5},
-        ],
-        'camera': [
-          {'move': 'fly_to', 'target': 'man', 'start': 0, 'duration': 5, 'intensity': 0.9},
-        ],
-      });
-      final sOn = p.comps['s']!.requireLayer('castle').prop(Props.scale).staticValue[1];
-      final sOff = off.comps['s']!.requireLayer('castle').prop(Props.scale).staticValue[1];
-      expect(sOn, greaterThan(sOff), reason: 'the far castle was grown to stay visible');
+
+      final margin = kH * 0.03;
+      double v(Composition comp, double t) => box(comp, 'castle', t)[1] - (box(comp, 'man', t)[1] - margin);
+      final off = build(false).comps['s']!, on = build(true).comps['s']!;
+      // The composed first frame (before any fix) is the reference.
+      final base = v(off, 0).clamp(0.0, double.infinity);
+      var worseOff = 0.0;
+      for (final t in times(5, 16)) {
+        worseOff = worseOff > v(off, t) - base ? worseOff : v(off, t) - base;
+        expect(v(on, t), lessThanOrEqualTo(base + 3), reason: 'castle sinks behind the man at $t');
+      }
+      expect(worseOff, greaterThan(10), reason: 'without the option the castle does sink');
+      expect(on.requireLayer('castle').prop(Props.scale).staticValue[1], greaterThan(off.requireLayer('castle').prop(Props.scale).staticValue[1]));
+      expect(ShotGeometry.bottomOf(on, on.requireLayer('castle'), 0), closeTo(ShotGeometry.bottomOf(off, off.requireLayer('castle'), 0), 0.5),
+          reason: 'grown about its bottom: still on the ground');
     });
 
     test('default start is the end of the last shot; main grows to fit', () {
