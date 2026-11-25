@@ -17,7 +17,7 @@ import '../model/layer.dart';
 import '../model/project.dart';
 import 'edit_commands.dart' show CommandError, CommandResult;
 
-typedef _Exec = void Function(Map<String, dynamic> cmd);
+typedef MapExec = void Function(Map<String, dynamic> cmd);
 
 class MapCommands {
   /// Ops that are the same as add_component with that type.
@@ -27,7 +27,7 @@ class MapCommands {
   ];
   static const ops = [...componentOps, 'map_tilt'];
 
-  static void run(Project p, Map<String, dynamic> c, double now, CommandResult r, _Exec exec) {
+  static void run(Project p, Map<String, dynamic> c, double now, CommandResult r, MapExec exec) {
     final op = '${c['op']}';
     if (componentOps.contains(op)) {
       exec({...c, 'op': 'add_component', 'type': op});
@@ -91,7 +91,7 @@ class MapCommands {
   /// Moves the map group (and everything parented to it) into a precomp
   /// 1.6× the frame (so the far edge stays covered), makes the comp layer
   /// 3D and pitches it back by [tilt]° with a [roll]° roll.
-  static void tilt(Project p, Map<String, dynamic> c, double now, CommandResult r, _Exec exec) {
+  static void tilt(Project p, Map<String, dynamic> c, double now, CommandResult r, MapExec exec) {
     final comp = p.editComp;
     final at = _num(c, 'at') ?? _num(c, 'start') ?? now;
     final map = _mapId(comp, c['map'], at);
@@ -144,7 +144,7 @@ class MapCommands {
   /// a point with motion blur and a whoosh. On the 2D camera, or on a
   /// layer / map group when "layer" or "map" is given (or the camera is 3D).
   /// Returns false for other presets.
-  static bool cameraMove(Project p, Map<String, dynamic> c, double now, _Exec exec) {
+  static bool cameraMove(Project p, Map<String, dynamic> c, double now, MapExec exec) {
     if (c['preset'] != 'punch_in') return false;
     final comp = p.editComp;
     final start = _num(c, 'start') ?? now;
