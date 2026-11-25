@@ -180,8 +180,8 @@ class DepthCommands {
       if (e is! Map) throw CommandError('photo_to_3d: bad prepared layer $e');
       final m = project.media['${e['media']}'];
       if (m == null || m.type != MediaType.image) throw CommandError('photo_to_3d: no generated photo "${e['media']}"');
-      double num(String k, double d) => e[k] is num ? (e[k] as num).toDouble() : d;
-      parts.add((m: m, x: num('x', 0), y: num('y', 0), k: num('k', 1), depth: num('depth', 0.5)));
+      double numOf(String k, double d) => e[k] is num ? (e[k] as num).toDouble() : d;
+      parts.add((m: m, x: numOf('x', 0), y: numOf('y', 0), k: numOf('k', 1), depth: numOf('depth', 0.5)));
     }
 
     // The layer to replace (a new full-frame one when the photo isn't used yet).
