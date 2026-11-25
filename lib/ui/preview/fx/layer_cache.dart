@@ -200,6 +200,17 @@ class RenderLayerRaster extends RenderProxyBox {
   @override
   bool get isRepaintBoundary => true;
 
+  /// What this boundary does right now (tests / benchmark).
+  String get debugStatus => !_enabled
+      ? 'off'
+      : _never
+          ? 'never'
+          : _clock.elapsedMilliseconds < _cooldownUntilMs
+              ? 'cooldown'
+              : _image != null
+                  ? 'image'
+                  : 'direct';
+
   bool get enabled => _enabled;
   set enabled(bool v) {
     if (v == _enabled) return;

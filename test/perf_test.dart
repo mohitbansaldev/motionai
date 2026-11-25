@@ -192,6 +192,15 @@ void main() {
       for (final l in tester.layers) {
         kinds['${l.runtimeType}'] = (kinds['${l.runtimeType}'] ?? 0) + 1;
       }
+      final ros = <String, int>{};
+      for (final r in tester.allRenderObjects) {
+        final n = r is RenderLayerRaster ? 'LayerRaster(${r.debugStatus})' : '${r.runtimeType}';
+        if (n.contains('Raster') || n.contains('Repaint') || n.contains('Filter') || n.contains('Opacity') || n.contains('ShaderMask')) {
+          ros[n] = (ros[n] ?? 0) + 1;
+        }
+      }
+      // ignore: avoid_print
+      print('PERF render objects ${play ? 'playing' : 'scrubbing'}${viaMake3D ? ' make_3d' : ''}: $ros');
       // ignore: avoid_print
       print('PERF raster ${play ? 'playing' : 'scrubbing'}${viaMake3D ? ' make_3d' : ''}: whole preview rasterised in software ${_Stats(raster)}; layers: $kinds');
       // ignore: avoid_print
