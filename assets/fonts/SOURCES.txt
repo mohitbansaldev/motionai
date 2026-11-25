@@ -1,0 +1,11 @@
+Bundled fonts for MotionAI (catalog: lib/fonts/font_catalog.dart).
+All files were downloaded unmodified from https://github.com/google/fonts
+(branch main): ofl/<dir>/ (SIL Open Font License 1.1, see OFL.txt) or
+apache/<dir>/ (Apache License 2.0, see LICENSE.txt). Variable font files
+were only renamed from Family[axes].ttf to Family-VariableFont_axes.ttf.
+
+OFL-1.1: Anton, Bebas Neue, Oswald, Teko, Barlow Condensed, Playfair Display,
+  DM Serif Display, Cinzel, Great Vibes, Dancing Script, Roboto Mono, Inter,
+  Montserrat, Poppins, Noto Sans Devanagari, Hind, Mukta, Baloo 2, Rozha One,
+  Yatra One, Kalam
+Apache-2.0: Permanent Marker, Special Elite

@@ -11,6 +11,7 @@ import '../../core/engine/fx_math.dart';
 import '../../core/model/easing.dart';
 import '../../core/model/layer.dart';
 import '../../core/model/project.dart';
+import '../../fonts/font_catalog.dart'; // FONTS (Agent I)
 import '../../state/video_pool.dart';
 import 'fx/fx_painters.dart';
 import 'fx/offscreen.dart';
@@ -39,10 +40,16 @@ class LayerView extends StatelessWidget {
     this.videoFrames,
     this.draft = false,
     this.playing = false,
+    this.asMatte = false,
   });
 
   final bool draft;
   final bool playing;
+
+  /// Drawn only as a track matte (its pixels are never shown): a live video
+  /// is replaced by its opaque frame box, since a snapshot of a platform
+  /// texture can come out blank.
+  final bool asMatte;
 
   /// Longest side images are decoded at in the live preview.
   static const draftImageSize = 1280;
@@ -101,6 +108,7 @@ class LayerView extends StatelessWidget {
       case LayerType.video:
         final frame = videoFrames?[l.id];
         if (frame != null) return RawImage(image: frame, fit: BoxFit.fill, width: l.width, height: l.height);
+        if (asMatte) return const ColoredBox(color: Color(0xFFFFFFFF));
         final VideoPlayerController? c = videos?.controllerFor(l.id);
         if (c == null) return const ColoredBox(color: Color(0xFF15181D));
         return VideoPlayer(c);
@@ -154,7 +162,9 @@ class LayerView extends StatelessWidget {
       fontSize: t.fontSize,
       color: Color(t.color),
       fontWeight: FontWeight.values[weightIndex],
-      fontFamily: t.fontFamily,
+      // FONTS (Agent I): bundled family/alias + Devanagari fallback
+      fontFamily: FontCatalog.resolve(t.fontFamily, t.text),
+      fontFamilyFallback: FontCatalog.fallbackFor(t.fontFamily),
       height: 1.15,
       decoration: TextDecoration.none,
       shadows: t.shadow
@@ -170,13 +180,39 @@ class LayerView extends StatelessWidget {
     final local = time - l.start;
     final p = t.animDuration <= 0 ? 1.0 : (local / t.animDuration).clamp(0.0, 1.0);
 
-    // Per-letter animators and the 3D extruded edge.
+    // Fade/slide intro for painted text (per-letter animators animate themselves).
     final perGlyph = t.animator == 'random_pop' || t.animator == 'scramble';
-    if ((perGlyph || t.extrude > 0) && t.marks.isEmpty && t.counter == null) {
-      Widget painted = CustomPaint(
-        size: Size(l.width, l.height),
+    Widget intro(Widget painted) {
+      if (perGlyph || t.animator == 'none' || t.animator == 'karaoke') return painted;
+      final e = Easing.easeOut.transform(p);
+      return Opacity(
+        opacity: e,
+        child: Transform.translate(offset: Offset(0, (1 - e) * t.fontSize * 0.4), child: painted),
+      );
+    }
+
+    final shown = t.counter?.valueAt(time) ?? t.text;
+    final size = Size(l.width, l.height);
+    MarkedTextPainter marked(MarkLayer layer) => MarkedTextPainter(
+          text: shown,
+          style: style,
+          align: align,
+          marks: t.marks,
+          time: time,
+          outline: t.outline,
+          extrude: t.extrude,
+          extrudeColor: Color(t.extrudeColor),
+          draft: draft,
+          layer: layer,
+        );
+
+    // Per-letter animators and the 3D extruded edge (also on counters, and
+    // combined with highlight/circle/underline marks).
+    if (perGlyph || (t.extrude > 0 && t.marks.isEmpty)) {
+      final glyphs = CustomPaint(
+        size: size,
         painter: GlyphTextPainter(
-          text: t.text,
+          text: shown,
           style: style,
           align: align,
           animator: perGlyph ? t.animator : 'none',
@@ -189,30 +225,17 @@ class LayerView extends StatelessWidget {
           draft: draft,
         ),
       );
-      if (!perGlyph && t.animator != 'none' && t.animator != 'karaoke') {
-        final e = Easing.easeOut.transform(p);
-        painted = Opacity(
-          opacity: e,
-          child: Transform.translate(offset: Offset(0, (1 - e) * t.fontSize * 0.4), child: painted),
-        );
-      }
-      return painted;
+      if (t.marks.isEmpty) return intro(glyphs);
+      // Marks around per-letter text: highlighter behind, pen marks on top.
+      return Stack(children: [
+        CustomPaint(size: size, painter: marked(MarkLayer.behind)),
+        glyphs,
+        CustomPaint(size: size, painter: marked(MarkLayer.front)),
+      ]);
     }
 
-    if (t.marks.isNotEmpty || t.counter != null || t.outline > 0) {
-      final shown = t.counter?.valueAt(time) ?? t.text;
-      Widget painted = CustomPaint(
-        size: Size(l.width, l.height),
-        painter: MarkedTextPainter(text: shown, style: style, align: align, marks: t.marks, time: time, outline: t.outline),
-      );
-      if (t.animator != 'none' && t.animator != 'karaoke') {
-        final e = Easing.easeOut.transform(p);
-        painted = Opacity(
-          opacity: e,
-          child: Transform.translate(offset: Offset(0, (1 - e) * t.fontSize * 0.4), child: painted),
-        );
-      }
-      return painted;
+    if (t.marks.isNotEmpty || t.counter != null || t.outline > 0 || t.extrude > 0) {
+      return intro(CustomPaint(size: size, painter: marked(MarkLayer.all)));
     }
 
     Widget content;
@@ -707,14 +730,19 @@ class _GrainPainter extends CustomPainter {
   final double dot;
   _GrainPainter(this.seed, this.amount, this.dot);
 
+  // Point buffer reused across frames (grain repaints 24× a second).
+  static Float32List _pts = Float32List(0);
+
   @override
   void paint(Canvas canvas, Size size) {
     final rnd = math.Random(seed);
     final count = (size.width * size.height / (dot * dot * 40)).clamp(500, 20000).toInt();
-    final light = <Offset>[], dark = <Offset>[];
+    if (_pts.length < count * 2) _pts = Float32List(count * 2);
+    final half = (count + 1) ~/ 2; // even points → light (first half), odd → dark
     for (int i = 0; i < count; i++) {
-      final o = Offset(rnd.nextDouble() * size.width, rnd.nextDouble() * size.height);
-      (i.isEven ? light : dark).add(o);
+      final j = (i.isEven ? i ~/ 2 : half + i ~/ 2) * 2;
+      _pts[j] = rnd.nextDouble() * size.width;
+      _pts[j + 1] = rnd.nextDouble() * size.height;
     }
     final pl = Paint()
       ..color = Colors.white.withValues(alpha: 0.35 * amount)
@@ -724,8 +752,8 @@ class _GrainPainter extends CustomPainter {
       ..color = Colors.black.withValues(alpha: 0.45 * amount)
       ..strokeWidth = dot
       ..strokeCap = StrokeCap.square;
-    canvas.drawPoints(ui.PointMode.points, light, pl);
-    canvas.drawPoints(ui.PointMode.points, dark, pd);
+    canvas.drawRawPoints(ui.PointMode.points, Float32List.sublistView(_pts, 0, half * 2), pl);
+    canvas.drawRawPoints(ui.PointMode.points, Float32List.sublistView(_pts, half * 2, count * 2), pd);
   }
 
   @override

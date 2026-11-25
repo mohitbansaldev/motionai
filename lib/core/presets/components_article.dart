@@ -111,6 +111,9 @@ List<Map<String, dynamic>> _articlePage(_B b, int i, MediaAsset? m, double st, d
   final cid = b.id('${pre}_img');
   double yCenter(double o) => -wh / 2 + ih / 2 - o;
   final y0 = scroll ? yCenter(0) : 0.0;
+  // Children of the content (placeholder text lines) with their pixel origin
+  // in content pixels: masks do not clip children, so they get the window too.
+  final kids = <(String, double, double)>[];
   if (m != null) {
     cmds.add(child(b.media('${pre}_img', m, 0, y0, widthPx: iw)));
   } else {
@@ -124,6 +127,9 @@ List<Map<String, dynamic>> _articlePage(_B b, int i, MediaAsset? m, double st, d
     ];
     cmds.add({...b.path('${pre}_head', const [[0, 0], [1, 0]], parent: cid, st: st, du: du), 'points': null, 'rings': head, 'stroke': '#1A1A1A', 'stroke_width': mh * 0.022});
     cmds.add({...b.path('${pre}_lines', const [[0, 0], [1, 0]], parent: cid, st: st, du: du), 'points': null, 'rings': body, 'stroke': '#A0A0A0', 'stroke_width': mh * 0.012});
+    // Same box placement as EditCommands' shape-from-points (pad = stroke × 3 + 8).
+    kids.add((b.id('${pre}_head'), mw * 0.06 - (mh * 0.022 * 3 + 8), mh * 0.07 - (mh * 0.022 * 3 + 8)));
+    kids.add((b.id('${pre}_lines'), mw * 0.06 - (mh * 0.012 * 3 + 8), mh * 0.2 - (mh * 0.012 * 3 + 8)));
   }
   for (final e in ['curve', 'edge_blur']) {
     if (b.c[e] is num) {
@@ -155,9 +161,15 @@ List<Map<String, dynamic>> _articlePage(_B b, int i, MediaAsset? m, double st, d
     final maxO = ih - wh;
     final win = '${cid}_window';
     cmds.add({'op': 'add_mask', 'layer': cid, 'id': win, 'shape': 'rect', 'center': [mw / 2, (wh / 2) / s], 'size': [mw * 1.02, wh / s], 'feather': 0});
+    for (final (kid, ox, oy) in kids) {
+      cmds.add({'op': 'add_mask', 'layer': kid, 'id': '${kid}_window', 'shape': 'rect', 'center': [mw / 2 - ox, (wh / 2) / s - oy], 'size': [mw * 1.02, wh / s], 'feather': 0});
+    }
     void key(double t, double o, String ease) {
       cmds.add(b.kf(cid, 'position', t, [0, yCenter(o), 0], ease));
       cmds.add({'op': 'set_keyframe', 'target': cid, 'mask': win, 'prop': 'center', 'time': t, 'value': [mw / 2, (o + wh / 2) / s], 'ease': ease});
+      for (final (kid, ox, oy) in kids) {
+        cmds.add({'op': 'set_keyframe', 'target': kid, 'mask': '${kid}_window', 'prop': 'center', 'time': t, 'value': [mw / 2 - ox, (o + wh / 2) / s - oy], 'ease': ease});
+      }
     }
 
     if (timed.isEmpty) {

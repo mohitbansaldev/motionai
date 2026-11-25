@@ -51,37 +51,48 @@ class CompositionCanvas extends StatelessWidget {
   Widget build(BuildContext context) {
     final comp = this.comp ?? project.main; // PRECOMP (Agent L)
     final list = items ?? Evaluator.evaluate(comp, time);
+    final children = <Widget>[
+      if (!nested) Positioned.fill(child: ColoredBox(color: Color(comp.background))), // PRECOMP (Agent L): precomps are transparent
+    ];
+    for (int i = 0; i < list.length; i++) {
+      final item = list[i];
+      final matte = item.matte;
+      if (matte == null) {
+        children.add(_view(item, ValueKey(item.layer.id)));
+        continue;
+      }
+      // Track matte: the layer shows only inside/outside the matte layer's
+      // pixels. Neighbours in paint order that use the same matte share one
+      // compositor, so the matte is rendered once (e.g. scanner targets).
+      final group = [item];
+      while (i + 1 < list.length) {
+        final next = list[i + 1];
+        if (next.matte?.layer.id != matte.layer.id || next.matteInverse != item.matteInverse) break;
+        group.add(next);
+        i++;
+      }
+      children.add(Positioned.fill(
+        key: ValueKey('${item.layer.id}#matte'),
+        child: MatteComposite(
+          inverse: item.matteInverse,
+          resolution: draft ? 0.5 : 1.0,
+          matte: Stack(clipBehavior: Clip.none, children: [_view(matte, null, asMatte: true)]),
+          content: Stack(clipBehavior: Clip.none, children: [for (final g in group) _view(g, ValueKey(g.layer.id))]),
+        ),
+      ));
+    }
+    if (overlay != null) children.add(Positioned.fill(child: IgnorePointer(child: overlay!)));
     final stack = PrecompScope.stackOf(context); // PRECOMP (Agent L)
     return PrecompScope(stack: [...stack, comp.id], child: SizedBox(
       width: comp.width,
       height: comp.height,
       child: ClipRect(
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            if (!nested) Positioned.fill(child: ColoredBox(color: Color(comp.background))), // PRECOMP (Agent L)
-            for (final item in list)
-              if (item.matte == null)
-                _view(item, ValueKey(item.layer.id))
-              else
-                // Track matte: the layer shows only inside/outside the matte layer's pixels.
-                Positioned.fill(
-                  key: ValueKey('${item.layer.id}#matte'),
-                  child: MatteComposite(
-                    inverse: item.matteInverse,
-                    resolution: draft ? 0.5 : 1.0,
-                    matte: Stack(clipBehavior: Clip.none, children: [_view(item.matte!, null)]),
-                    content: Stack(clipBehavior: Clip.none, children: [_view(item, null)]),
-                  ),
-                ),
-            if (overlay != null) Positioned.fill(child: IgnorePointer(child: overlay!)),
-          ],
-        ),
+        child: Stack(clipBehavior: Clip.hardEdge, children: children),
       ),
     )); // PRECOMP (Agent L): PrecompScope
   }
 
-  Widget _view(RenderItem item, Key? key) => LayerView(
+  Widget _view(RenderItem item, Key? key, {bool asMatte = false}) => LayerView(
         key: key,
         item: item,
         project: project,
@@ -90,5 +101,6 @@ class CompositionCanvas extends StatelessWidget {
         videoFrames: videoFrames,
         draft: draft,
         playing: playing,
+        asMatte: asMatte,
       );
 }
