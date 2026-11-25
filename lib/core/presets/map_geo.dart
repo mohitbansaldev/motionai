@@ -257,13 +257,46 @@ class _Geo {
     return _borders = out;
   }
 
-  /// "bounds": [[lat, lon], [lat, lon]] (any two corners) → map px box.
+  /// "bounds" → map px box. Accepts [[lat, lon], [lat, lon]] (any two
+  /// corners), a flat [lat, lon, lat, lon], or {north, south, east, west}
+  /// (also n/s/e/w, min_lat/max_lat/min_lon/max_lon). win-30: anything else
+  /// is an error instead of being ignored silently.
   static List<double>? bounds(dynamic v) {
-    if (v is! List || v.length < 2 || v[0] is! List || v[1] is! List) return null;
-    final a = v[0] as List, z = v[1] as List;
-    if (a.length < 2 || z.length < 2) return null;
-    final p0 = WorldMap.project((a[1] as num).toDouble(), (a[0] as num).toDouble());
-    final p1 = WorldMap.project((z[1] as num).toDouble(), (z[0] as num).toDouble());
+    if (v == null) return null;
+    double? num_(dynamic x) => x is num ? x.toDouble() : (x is String ? double.tryParse(x) : null);
+    List<double>? corners;
+    if (v is List && v.length >= 2 && v[0] is List && v[1] is List) {
+      final a = v[0] as List, z = v[1] as List;
+      if (a.length >= 2 && z.length >= 2) {
+        final c = [num_(a[0]), num_(a[1]), num_(z[0]), num_(z[1])];
+        if (!c.contains(null)) corners = [for (final x in c) x!];
+      }
+    } else if (v is List && v.length >= 4) {
+      final c = [for (final x in v.take(4)) num_(x)];
+      if (!c.contains(null)) corners = [for (final x in c) x!];
+    } else if (v is Map) {
+      double? g(List<String> ks) {
+        for (final k in ks) {
+          final x = num_(v[k]);
+          if (x != null) return x;
+        }
+        return null;
+      }
+
+      final n = g(['north', 'n', 'max_lat', 'top']), so = g(['south', 's', 'min_lat', 'bottom']);
+      final e = g(['east', 'e', 'max_lon', 'right']), we = g(['west', 'w', 'min_lon', 'left']);
+      if (n != null && so != null && e != null && we != null) corners = [n, we, so, e];
+    }
+    if (corners == null) {
+      throw ArgumentError('map bounds must be [[lat, lon], [lat, lon]], [lat, lon, lat, lon] or {north, south, east, west}; got $v');
+    }
+    for (int i = 0; i < 4; i += 2) {
+      if (corners[i].abs() > 90 || corners[i + 1].abs() > 180) {
+        throw ArgumentError('map bounds: latitude must be −90…90 and longitude −180…180 (lat first); got $v');
+      }
+    }
+    final p0 = WorldMap.project(corners[1], corners[0]);
+    final p1 = WorldMap.project(corners[3], corners[2]);
     return [math.min(p0[0], p1[0]), math.min(p0[1], p1[1]), math.max(p0[0], p1[0]), math.max(p0[1], p1[1])];
   }
 
