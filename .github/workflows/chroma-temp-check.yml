@@ -1,0 +1,40 @@
+# TEMPORARY (Agent M, feat/chroma): verifies the chroma_key shader compiles
+# for every backend and the Windows app builds. No release. Remove before merge.
+name: Chroma temp build check
+
+on:
+  push:
+    branches: [feat/chroma]
+
+jobs:
+  shader:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter precache --linux --android
+      - name: impellerc (SkSL, GLES, Vulkan, Metal)
+        run: |
+          E=$(dirname $(which flutter))/cache/artifacts/engine/linux-x64
+          ls $E | head -50
+          $E/impellerc --help | head -60 || true
+          $E/impellerc --sksl --runtime-stage-gles --runtime-stage-vulkan --runtime-stage-metal --iplr \
+            --sl=/tmp/chroma.iplr --spirv=/tmp/chroma.spv --input=shaders/chroma_key.frag --input-type=frag \
+            --include=shaders --include=$E/shader_lib
+          ls -la /tmp/chroma.iplr
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter create --org com.mohitflix --project-name motionai --platforms=windows .
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - shell: pwsh
+        run: Get-ChildItem -Recurse build\windows\x64\runner\Release\data\flutter_assets\shaders

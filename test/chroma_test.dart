@@ -14,7 +14,6 @@ import 'package:motionai/ai/command_spec.dart';
 import 'package:motionai/core/commands/edit_commands.dart';
 import 'package:motionai/core/engine/chroma.dart';
 import 'package:motionai/core/model/effects_catalog.dart';
-import 'package:motionai/core/model/layer.dart';
 import 'package:motionai/core/model/project.dart';
 import 'package:motionai/ui/preview/composition_canvas.dart';
 import 'package:motionai/ui/preview/fx/chroma_key.dart';
