@@ -6,7 +6,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main, feat/windows, integ/v1, integ/v2]
+    branches: [main, feat/windows, integ/v1, integ/v2, integ/v3]
   workflow_dispatch:
 
 permissions:
@@ -39,8 +39,13 @@ jobs:
           $s = Get-Content $f -Raw
           $s = $s -replace 'Win32Window::Size size\(\d+, \d+\)', 'Win32Window::Size size(1440, 900)'
           $s = $s -replace 'window\.Create\(L"motionai"', 'window.Create(L"MotionAI"'
+          # win-30: ask hybrid laptops (NVIDIA Optimus / AMD Switchable) for the
+          # dedicated GPU, so the preview and export run on it, not the iGPU.
+          if ($s -notmatch 'NvOptimusEnablement') {
+            $s = $s + "`r`n`r`n// MotionAI: prefer the high-performance GPU on hybrid laptops.`r`nextern `"C`" {`r`n  __declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;`r`n  __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;`r`n}`r`n"
+          }
           Set-Content $f $s -NoNewline
-          Select-String -Path $f -Pattern 'Size size|window.Create'
+          Select-String -Path $f -Pattern 'Size size|window.Create|NvOptimusEnablement'
           $rc = 'windows/runner/Runner.rc'
           if (Test-Path $rc) {
             (Get-Content $rc -Raw) -replace '"motionai"', '"MotionAI"' | Set-Content $rc -NoNewline
@@ -76,6 +81,26 @@ jobs:
           & "$env:REL\ffmpeg.exe" -hide_banner -loglevel error -f lavfi -i color=c=red:s=320x240:r=30:d=1 -f rawvideo -pix_fmt rgba frames.rgba
           & "$env:REL\ffmpeg.exe" -y -hide_banner -loglevel error -f rawvideo -pix_fmt rgba -s 320x240 -framerate 30 -i frames.rgba -an -vf "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p" -c:v libx264 -preset medium -crf 18 smoke.mp4
           if (-not (Test-Path smoke.mp4)) { throw 'FFmpeg smoke test failed' }
+          # win-30: a second, older FFmpeg in "ffmpeg_compat\" for NVENC on older
+          # NVIDIA drivers (FFmpeg 8 needs driver 570+, 7.1 works from 551,
+          # 6.1 from 531). The app tries it only when the main one's NVENC fails.
+          $curls = @(
+            'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-7.1.zip',
+            'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n6.1-latest-win64-gpl-6.1.zip'
+          )
+          foreach ($u in $curls) {
+            try {
+              Invoke-WebRequest $u -OutFile ffmpeg_compat.zip
+              Expand-Archive ffmpeg_compat.zip -DestinationPath ffc_x -Force
+              $cb = Get-ChildItem ffc_x -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+              $cdest = Join-Path $env:REL 'ffmpeg_compat'
+              New-Item -ItemType Directory -Force $cdest | Out-Null
+              Copy-Item $cb.FullName $cdest
+              Write-Host "Compat FFmpeg: $u"
+              & (Join-Path $cdest 'ffmpeg.exe') -hide_banner -version | Select-Object -First 1
+              break
+            } catch { Write-Host "Not available: $u" }
+          }
 
       # --- WINAI BINARIES ---
       # Agent E (feat/winai) owns this step's contents (Windows AI layer,

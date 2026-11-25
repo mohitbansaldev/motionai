@@ -112,20 +112,54 @@ class WinMedia {
   static List<String>? _working;
 
   /// Encoders that really work on this PC (GPU drivers present), best first.
-  static Future<List<String>> workingEncoders() async {
+  /// win-30: an encoder that fails with the main FFmpeg is tried again with
+  /// the bundled compat FFmpeg (older NVENC API); the reason of every failure
+  /// is kept in [encoderErrors] for the export screen.
+  static Future<List<String>> workingEncoders({bool refresh = false}) async {
     final cached = _working;
-    if (cached != null) return cached;
+    if (cached != null && !refresh) return cached;
     final ok = <String>[];
+    encoderErrors.clear();
+    encoderBinary.clear();
     for (final e in kEncoders) {
-      try {
-        final r = await Process.run(WinTools.ffmpeg, encoderProbeArgs(e)).timeout(const Duration(seconds: 20));
-        if (r.exitCode == 0) ok.add(e);
-      } catch (_) {
-        // Not available.
+      final err = await _probe(WinTools.ffmpeg, e);
+      if (err == null) {
+        ok.add(e);
+        encoderBinary[e] = WinTools.ffmpeg;
+        continue;
+      }
+      final compat = WinTools.ffmpegCompat;
+      final err2 = compat == null ? 'no compat FFmpeg bundled' : await _probe(compat, e);
+      if (compat != null && err2 == null) {
+        ok.add(e);
+        encoderBinary[e] = compat;
+      } else {
+        encoderErrors[e] = compat == null ? err : '$err\n(compat FFmpeg: $err2)';
       }
     }
-    if (!ok.contains('libx264')) ok.add('libx264');
+    if (!ok.contains('libx264')) {
+      ok.add('libx264');
+      encoderBinary['libx264'] = WinTools.ffmpeg;
+    }
     return _working = ok;
+  }
+
+  /// Why each GPU encoder failed its test (empty when all work).
+  static final Map<String, String> encoderErrors = {};
+
+  /// Which ffmpeg.exe runs each working encoder (main or compat).
+  static final Map<String, String> encoderBinary = {};
+
+  /// Null when [enc] encodes a test clip with [ffmpeg], else the error text.
+  static Future<String?> _probe(String ffmpeg, String enc) async {
+    try {
+      final r = await Process.run(ffmpeg, encoderProbeArgs(enc)).timeout(const Duration(seconds: 20));
+      if (r.exitCode == 0) return null;
+      final msg = '${r.stderr}'.trim().split(RegExp(r'[\r\n]+')).where((x) => x.trim().isNotEmpty).take(3).join(' · ');
+      return msg.isEmpty ? 'exit code ${r.exitCode}' : msg;
+    } catch (e) {
+      return '$e';
+    }
   }
 
   static Process? _enc;
@@ -145,7 +179,7 @@ class WinMedia {
     final enc = preferredEncoder != 'auto' && working.contains(preferredEncoder) ? preferredEncoder : working.first;
     lastEncoder = enc;
     _encLog.clear();
-    final p = await Process.start(WinTools.ffmpeg, encoderArgs(enc, outPath, width, height, fps, bitrate));
+    final p = await Process.start(encoderBinary[enc] ?? WinTools.ffmpeg, encoderArgs(enc, outPath, width, height, fps, bitrate));
     _enc = p;
     _encOut = outPath;
     _encStderr = p.stderr.transform(utf8.decoder).forEach(_encLog.write);

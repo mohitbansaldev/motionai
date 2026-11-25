@@ -17,6 +17,13 @@ class WinTools {
   static String get ffmpeg => _bundled('ffmpeg.exe');
   static String get ffprobe => _bundled('ffprobe.exe');
 
+  /// win-30: older FFmpeg (7.1 / 6.1) bundled for NVENC on older NVIDIA
+  /// drivers (FFmpeg 8 needs driver 570+). Null when not bundled.
+  static String? get ffmpegCompat {
+    final p = '$exeDir\\ffmpeg_compat\\ffmpeg.exe';
+    return File(p).existsSync() ? p : null;
+  }
+
   static String? get whisperCli {
     for (final n in ['whisper\\whisper-cli.exe', 'whisper\\main.exe', 'whisper-cli.exe']) {
       final p = '$exeDir\\$n';

@@ -61,6 +61,56 @@ class _ExportScreenState extends State<ExportScreen> {
   Composition get comp => p.main;
   double get _fps => _fpsChoice ?? comp.fps;
 
+  // win-30 >>>
+  bool _rechecking = false;
+
+  Future<void> _recheckGpu() async {
+    setState(() => _rechecking = true);
+    try {
+      final e = await WinMedia.workingEncoders(refresh: true);
+      if (mounted) setState(() => _encoders = e);
+    } finally {
+      if (mounted) setState(() => _rechecking = false);
+    }
+  }
+
+  Widget _encoderInfo() {
+    final missing = [for (final e in const ['h264_nvenc', 'h264_qsv', 'h264_amf']) if (!_encoders.contains(e)) e];
+    final compat = [for (final e in _encoders) if (WinMedia.encoderBinary[e] == WinTools.ffmpegCompat && WinTools.ffmpegCompat != null) e];
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 4),
+        for (final e in compat)
+          Text('${encoderLabel(e)}: using the compatibility FFmpeg (older driver)',
+              style: const TextStyle(color: Colors.white54, fontSize: 11.5)),
+        for (final e in missing)
+          if (WinMedia.encoderErrors[e] != null)
+            Tooltip(
+              message: WinMedia.encoderErrors[e]!,
+              child: Text('${encoderLabel(e)} not available: ${_shortReason(WinMedia.encoderErrors[e]!)}',
+                  maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.orangeAccent, fontSize: 11.5)),
+            ),
+        TextButton.icon(
+          onPressed: _rechecking ? null : _recheckGpu,
+          icon: const Icon(Icons.refresh, size: 16),
+          label: Text(_rechecking ? 'Checking GPU…' : 'Re-check GPU'),
+        ),
+      ]),
+    );
+  }
+
+  static String _shortReason(String err) {
+    final l = err.toLowerCase();
+    if (l.contains('driver does not support') || l.contains('minimum required nvidia driver') || l.contains('nvenc api version')) {
+      return 'NVIDIA driver too old - update it (NVIDIA App or nvidia.com/drivers)';
+    }
+    if (l.contains('cannot load nvcuda') || l.contains('cannot load nvencodeapi')) return 'NVIDIA driver not found';
+    if (l.contains('no capable devices') || l.contains('no nvenc capable')) return 'no NVENC-capable GPU active';
+    return err.length > 90 ? '${err.substring(0, 90)}…' : err;
+  }
+  // <<< win-30
+
   @override
   void initState() {
     super.initState();
@@ -363,6 +413,8 @@ class _ExportScreenState extends State<ExportScreen> {
                 for (final e in _encoders) DropdownMenuItem(value: e, child: Text(encoderLabel(e))),
               ],
             ),
+            // win-30: why a GPU encoder is missing + re-check without a restart.
+            if (_win && _encoders.isNotEmpty) _encoderInfo(),
           ]),
         ]),
         const SizedBox(height: 10),
