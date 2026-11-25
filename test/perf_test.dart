@@ -131,13 +131,14 @@ void main() {
       final p = bench3D(aperture: aperture, viaMake3D: viaMake3D);
       expect(p.main.layers.where((l) => l.is3D).length, greaterThan(40), reason: 'all layers 3D');
       final c = EditorController(p, _NoSave());
+      final previewKey = GlobalKey();
       c.attachTicker(tester);
       await tester.pumpWidget(MaterialApp(
         debugShowCheckedModeBanner: false,
         home: Scaffold(
           body: Column(children: [
             const SizedBox(height: 40, child: Text('chrome')),
-            Expanded(child: CompositionView(controller: c)),
+            Expanded(child: RepaintBoundary(key: previewKey, child: CompositionView(controller: c))),
           ]),
         ),
       ));
@@ -146,7 +147,7 @@ void main() {
 
       Set<PictureLayer> pictures() => tester.layers.whereType<PictureLayer>().toSet();
       var prev = pictures();
-      final times = <double>[];
+      final times = <double>[], raster = <double>[];
       var repainted = 0, frames = 0;
       const warm = 20, n = 180;
       for (int f = 0; f < warm + n; f++) {
@@ -163,6 +164,18 @@ void main() {
           times.add(ms);
           repainted += now.difference(prev).length;
           frames++;
+          // Raster-cost proxy: rasterise the whole preview in software. The
+          // test renderer has no GPU, so this is where glyphs, paths, blurs
+          // and big textures under perspective show up.
+          if ((f - warm) % 15 == 0) {
+            await tester.runAsync(() async {
+              final ro = previewKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+              final sw2 = Stopwatch()..start();
+              final img = await ro.toImage();
+              raster.add(_ms(sw2));
+              img.dispose();
+            });
+          }
         }
         prev = now;
       }
@@ -171,6 +184,12 @@ void main() {
       if (play) c.pause();
       await tester.pump();
       final s = _Stats(times);
+      final kinds = <String, int>{};
+      for (final l in tester.layers) {
+        kinds['${l.runtimeType}'] = (kinds['${l.runtimeType}'] ?? 0) + 1;
+      }
+      // ignore: avoid_print
+      print('PERF raster ${play ? 'playing' : 'scrubbing'}${viaMake3D ? ' make_3d' : ''}: whole preview rasterised in software ${_Stats(raster)}; layers: $kinds');
       // ignore: avoid_print
       print('PERF preview ${viaMake3D ? 'make_3d+push_through ' : ''}${play ? 'playing' : 'scrubbing (paused)'}${aperture > 0 ? ' with depth of field' : ''}: '
           'build+layout+paint $s; re-recorded pictures/frame=${(repainted / frames).toStringAsFixed(1)} '
