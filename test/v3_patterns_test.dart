@@ -396,7 +396,7 @@ void main() {
   group('wiring', () {
     test('MCP tool suggest_patterns is listed, read-only, and returns the plan', () {
       expect(kMcpToolNames, contains('suggest_patterns'));
-      final t = kMcpTools.firstWhere((t) => t['name'] == 'suggest_patterns');
+      final t = kMcpTools.firstWhere((x) => x['name'] == 'suggest_patterns');
       expect((t['annotations'] as Map)['readOnlyHint'], isTrue);
       expect(kMcpEditTools.contains('suggest_patterns'), isFalse);
       final plan = PatternCommands.suggest({'lines': [{'text': 'Chile se Argentina tak', 'start': 0, 'end': 3}]});

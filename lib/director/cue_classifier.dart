@@ -637,7 +637,7 @@ class CueClassifier {
       cues.add(Cue('total_breakdown', numbers.first.match, numbers.first.offset, value: numbers.first.value));
     }
     if (has('survivors') && numbers.isNotEmpty) {
-      final c = cues.firstWhere((c) => c.type == 'survivors');
+      final c = cues.firstWhere((x) => x.type == 'survivors');
       cues.remove(c);
       cues.add(Cue('survivors', c.match, c.offset, value: numbers.first.value));
     } else {
@@ -645,7 +645,7 @@ class CueClassifier {
     }
     if (has('stat_change') && numbers.isEmpty) cues.removeWhere((c) => c.type == 'stat_change');
     if (has('stat_change') && numbers.isNotEmpty) {
-      final c = cues.firstWhere((c) => c.type == 'stat_change');
+      final c = cues.firstWhere((x) => x.type == 'stat_change');
       cues.remove(c);
       cues.add(Cue('stat_change', c.match, c.offset, value: {
         if (numbers.length >= 2) 'from': (numbers[0].value as Map)['value'],
@@ -655,7 +655,7 @@ class CueClassifier {
     }
     if (has('comparison')) {
       if (numbers.length >= 2) {
-        final c = cues.firstWhere((c) => c.type == 'comparison');
+        final c = cues.firstWhere((x) => x.type == 'comparison');
         cues.remove(c);
         cues.add(Cue('comparison', c.match, c.offset, value: [for (final n in numbers.take(2)) (n.value as Map)['text']]));
       } else {
@@ -678,7 +678,7 @@ class CueClassifier {
     }
     // a quoted word in a "kaha" line is the quote text
     if (has('quote') && !has('dialogue')) {
-      final c = cues.firstWhere((c) => c.type == 'quote');
+      final c = cues.firstWhere((x) => x.type == 'quote');
       cues.remove(c);
       cues.add(Cue('quote', c.match, c.offset, value: _afterWord(line, c), weight: 0.8));
     }

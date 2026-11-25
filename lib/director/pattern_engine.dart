@@ -518,9 +518,9 @@ class PatternEngine {
       bool presenter;
       if (!presenterOn || afterCrash || climaxHere) {
         presenter = false;
-      } else if (inStint && sg.start - stintStart! < stintTarget - 0.5) {
+      } else if (inStint && sg.start - stintStart < stintTarget - 0.5) {
         presenter = true; // keep the stint going (one ~7 s stint per ~40 s carries the CTA)
-      } else if (inStint && wantsP >= 1.0 && pShare < share[1] && sg.start - stintStart! < 10) {
+      } else if (inStint && wantsP >= 1.0 && pShare < share[1] && sg.start - stintStart < 10) {
         presenter = true; // the presenter keeps talking to the viewer
       } else if (inStint) {
         presenter = false;
@@ -567,9 +567,9 @@ class PatternEngine {
         if (list.isNotEmpty && list.first.value is List) {
           ovs.add({'pattern': 'icon_sticker', 'at': _r(sg.start + 0.1), 'end': _r(sg.end), 'slots': {'items': list.first.value}});
         }
-        if (stintCta && !ctaPlaced && sg.end - stintStart! >= 5) {
-          final at = math.min(stintStart! + 2.5, sg.end - 3.0);
-          ovs.add({'pattern': platform % 3 == 2 ? 'social_bug' : 'social_cta', 'at': _r(math.max(stintStart! + 2.0, at)), 'slots': {'platform': _platforms[platform % _platforms.length], 'handle': handle}});
+        if (stintCta && !ctaPlaced && sg.end - stintStart >= 5) {
+          final at = math.min(stintStart + 2.5, sg.end - 3.0);
+          ovs.add({'pattern': platform % 3 == 2 ? 'social_bug' : 'social_cta', 'at': _r(math.max(stintStart + 2.0, at)), 'slots': {'platform': _platforms[platform % _platforms.length], 'handle': handle}});
           platform++;
           ctaPlaced = true;
           lastCta = sg.start;
