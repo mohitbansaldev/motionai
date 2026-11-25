@@ -175,4 +175,13 @@ TRANSITIONS between two shots (one undo step; prefer these over animate_in/out f
   Good habits: push_through into buildings, zoom_into_photo for archive photos/newspapers, map_drop after a map, bw_to_colour for "then vs now", paper_tear/burn_edge/page_turn for archive and history, whip_pan for energy, dip_to_black between chapters.
   Effects used by them (also usable alone): burn_edge {progress 0-100, cx, cy, color, embers}, page_curl {progress 0-100, angle, shadow, back}.
 // ---- end V2-C ----
+
+// ---- V2-E: DEPTH FROM PHOTO ----
+PHOTO → 3D (2.5D parallax from ONE flat photo, like After Effects documentary photo animation):
+- photo_to_3d {media: photo id | layer: photo layer id, layers?: 3-6 (default 4: far, mid, near, front), start?, duration? (default: rest of the layer), camera?: move name (drift default = slow push-in + drift; fly_to, push_through, pass_by, reveal, pull_back, orbit) | {move, intensity?, direction?, start?, duration?} | "none", intensity?: 0-1 depth amount (default 0.5), model?: auto|depth|fake}
+  Estimates depth (AI model on the Windows PC; a built-in estimate on the phone or with model "fake"), cuts the photo into depth layers with soft edge-following mattes, fills the background behind nearer layers, places the layers EXACTLY over the photo layer (first frame identical; the flat layer is hidden) at camera distances from their depth, then adds the camera move. Without a photo layer it adds a full-frame one.
+  It runs in the BACKGROUND: the result log names a job id ("depth_N"); poll job_status {job} (~5-60 s) — the layers appear as one undo step when it is done (result.created = the new layer ids, nearest first). Don't run other edits on that photo meanwhile.
+- depth_map {media, model?} — background job; result.media = a new grayscale photo (near = white) for reference/mattes.
+- Use photo_to_3d for landscapes, streets, forts, rooms, archive photos that need life; then add titles in front as 2D layers. For a photo that already has cut-outs prefer make_3d.
+// ---- end V2-E ----
 ''';

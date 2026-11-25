@@ -18,6 +18,7 @@ import '../engine/precomp.dart'; // PRECOMP (Agent L)
 import 'precomp_commands.dart'; // PRECOMP (Agent L)
 import 'bulk_commands.dart'; // BULK (Agent N)
 import 'transition_commands.dart'; // V2-C
+import 'depth_commands.dart'; // V2-E (depth from photo)
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -87,6 +88,7 @@ class EditCommands {
     ...PrecompCommands.ops, // PRECOMP (Agent L)
     ...BulkCommands.ops, // BULK (Agent N): for_layers, select, align, group_layers, paste_layers…
     ...TransitionCommands.ops, // V2-C: transition, list_transitions
+    ...DepthCommands.ops, // V2-E: photo_to_3d, depth_map
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -518,6 +520,13 @@ class EditCommands {
         }
         break;
       // ---- end Sound
+
+      // V2-E >>> depth from photo → depth_commands.dart
+      case 'photo_to_3d':
+      case 'depth_map':
+        DepthCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
+        break;
+      // <<< V2-E
 
       default:
         throw CommandError('Unknown op "$op". Valid ops: ${ops.join(', ')}');

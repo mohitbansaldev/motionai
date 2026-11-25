@@ -89,6 +89,10 @@ class ModelStore {
     final dir = await modelsDir();
     final file = File('${dir.path}${Platform.pathSeparator}${spec.fileName}');
     final ok = File('${file.path}.ok');
+    // V2-E >>> a model pinned by URL only (hash ""): trusted once a download
+    // passed the size check (its SHA-256 is recorded in <file>.sha256).
+    if (spec.hash.isEmpty && await file.exists() && await ok.exists()) return file.path;
+    // <<< V2-E
     if (await file.exists()) {
       final len = await file.length();
       // "<hash> <length>" is written once a copy has been verified.
@@ -141,8 +145,16 @@ class ModelStore {
       if (res.contentLength != null && res.contentLength! > 0 && got != res.contentLength) {
         throw HttpException('incomplete download ($got of ${res.contentLength} bytes)');
       }
+      // V2-E >>> no pinned hash: check the size instead and record the hash.
+      if (spec.hash.isEmpty) {
+        if (spec.bytes > 0 && (got - spec.bytes).abs() > spec.bytes * 0.15) {
+          throw HttpException('unexpected download size ($got bytes, expected about ${spec.bytes})');
+        }
+        await File('${dest.path}.sha256').writeAsString('${digest.value} $got\n');
+      }
+      // <<< V2-E
       // The hash is the real check (the size is only for progress).
-      if (digest.value.toString() != spec.hash) throw HttpException('downloaded file is damaged (hash mismatch, $got bytes)');
+      if (spec.hash.isNotEmpty /* V2-E */ && digest.value.toString() != spec.hash) throw HttpException('downloaded file is damaged (hash mismatch, $got bytes)');
       if (await dest.exists()) await dest.delete();
       await part.rename(dest.path);
       onProgress?.call(1);

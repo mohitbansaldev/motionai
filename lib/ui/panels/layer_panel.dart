@@ -6,6 +6,7 @@ import '../../state/editor_controller.dart';
 import '../ai_tools.dart';
 import '../bulk/bulk_panel.dart'; // BULK (Agent N)
 import '../common.dart';
+import '../depth_tools.dart'; // V2-E
 import '../fonts/font_picker.dart'; // FONTS (Agent I)
 import '../precomp_bar.dart'; // PRECOMP (Agent L)
 import 'chroma_controls.dart'; // CHROMA (Agent M)
@@ -76,6 +77,13 @@ class LayerPanel extends StatelessWidget {
                     label: const Text('Erase object'),
                     onPressed: () => AiTools.eraseObject(context, c, l),
                   ),
+                  // V2-E >>> depth from photo
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.view_in_ar, size: 16),
+                    label: const Text('Make 3D from photo'),
+                    onPressed: () => DepthTools.makeFromPhoto(context, c, l),
+                  ),
+                  // <<< V2-E
                 ],
                 if (l.type == LayerType.video)
                   OutlinedButton.icon(
