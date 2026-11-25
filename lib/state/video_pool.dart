@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 
+import '../core/engine/precomp.dart'; // PRECOMP (Agent L)
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 
@@ -36,9 +37,11 @@ class VideoPool extends ChangeNotifier {
   /// shuttle speed (J/K/L); reverse shuttle (rate < 0) scrubs paused players.
   void sync(Project project, double t, {required bool playing, double rate = 1}) {
     if (rate <= 0) playing = false;
-    final comp = project.main;
+    final comp = project.editComp; // PRECOMP (Agent L): the comp open in the editor
     final alive = <String>{};
-    for (final l in comp.layers) {
+    // PRECOMP (Agent L): videos inside nested comps play at their own comp time.
+    final timed = [for (final l in comp.layers) (l, t), for (final n in Precomp.nestedMedia(project, t, root: comp)) (n.layer, n.compTime)];
+    for (final (l, t) in timed) {
       if ((l.type != LayerType.video && l.type != LayerType.audio) || l.mediaId == null) continue;
       final asset = project.media[l.mediaId];
       if (asset == null) continue;

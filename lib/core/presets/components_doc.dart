@@ -82,7 +82,7 @@ List<Map<String, dynamic>> _characterLabel(_B b, Project p) {
   var x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.3);
   final attach = b.c['attach'];
   if (attach is String) {
-    final pt = _screenPointOf(p.main, attach, b.start, b.vec('at', [0.5, 0.12]));
+    final pt = _screenPointOf(p.editComp /* PRECOMP (Agent L) */, attach, b.start, b.vec('at', [0.5, 0.12]));
     if (pt != null) {
       x = pt[0];
       y = pt[1];

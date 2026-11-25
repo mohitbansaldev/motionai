@@ -10,6 +10,7 @@ import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/engine/precomp.dart'; // PRECOMP (Agent L)
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../platform/ffmpeg_args.dart';
@@ -108,7 +109,7 @@ class _ExportScreenState extends State<ExportScreen> {
   }
 
   Future<void> _precacheImages() async {
-    for (final l in comp.layers) {
+    for (final l in [...comp.layers, for (final cc in p.comps.values) ...cc.layers]) { // PRECOMP (Agent L): + nested comps
       if (l.type != LayerType.image) continue;
       final a = p.media[l.mediaId];
       if (a == null) continue;
@@ -162,6 +163,14 @@ class _ExportScreenState extends State<ExportScreen> {
           final f = await MediaBridge.readerFrame(l.id, a.path, l.sourceTimeAt(t).clamp(0.0, a.duration),
               maxSize: math.min(2560, math.max(w, h)));
           if (f != null) frames[l.id] = await _decode(f);
+        }
+        // PRECOMP (Agent L): video layers inside nested comps, at their own comp time.
+        for (final n in Precomp.nestedMedia(p, t)) {
+          final a = p.media[n.layer.mediaId];
+          if (n.layer.type != LayerType.video || a == null) continue;
+          final f = await MediaBridge.readerFrame(n.layer.id, a.path, n.layer.sourceTimeAt(n.compTime).clamp(0.0, a.duration),
+              maxSize: math.min(2560, math.max(w, h)));
+          if (f != null) frames[n.layer.id] = await _decode(f);
         }
         final old = _videoFrames;
         setState(() {

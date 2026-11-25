@@ -160,7 +160,14 @@ class EditAgent {
         'fps': comp.fps,
         'duration': r(comp.duration),
         'playhead': r(c.time),
+        if (c.inPrecomp) 'editing_comp': comp.id, // PRECOMP (Agent L)
       },
+      // PRECOMP (Agent L): nested comps (precomps) in the project.
+      if (c.project.comps.isNotEmpty)
+        'comps': [
+          for (final k in c.project.comps.values)
+            {'id': k.id, 'name': k.name, 'size': [k.width.round(), k.height.round()], 'duration': r(k.duration), 'layers': k.layers.length},
+        ],
       'camera': {'mode': comp.camera.mode.name, 'keyframes': comp.camera.allKeyframeTimes().length},
       'media': [
         for (final m in c.project.media.values)
@@ -182,6 +189,8 @@ class EditAgent {
             'start': r(l.start),
             'end': r(l.end),
             if (l.mediaId != null) 'media': l.mediaId,
+            if (l.compId != null) 'comp': l.compId, // PRECOMP (Agent L)
+            if (l.loop) 'loop': true, // PRECOMP (Agent L)
             if (l.is3D) 'is3d': true,
             if (!l.visible) 'hidden': true,
             if (l.parentId != null) 'parent': l.parentId,
