@@ -1,4 +1,7 @@
 import 'anim_prop.dart';
+import 'motion_path.dart';
+
+export 'motion_path.dart';
 
 enum LayerType { video, image, text, solid, nullObject, audio, shape }
 
@@ -20,6 +23,7 @@ class Props {
   static const opacity = 'opacity'; // [0..100]
   static const volume = 'volume'; // [0..200] % for video/audio layers
   static const trim = 'trim'; // [start%, end%] draw-on for shape layers
+  static const pathProgress = 'path_progress'; // [0..100] position along Layer.path
 
   static const all = [anchor, position, scale, rotation, opacity, volume];
 }
@@ -71,7 +75,7 @@ class WordTiming {
 
 /// Text animators: how text appears when the layer starts.
 class TextAnimators {
-  static const all = ['none', 'typewriter', 'word_pop', 'fade_up', 'slide_up', 'karaoke'];
+  static const all = ['none', 'typewriter', 'word_pop', 'fade_up', 'slide_up', 'karaoke', 'random_pop', 'scramble'];
   static String label(String a) => const {
         'none': 'None',
         'typewriter': 'Typewriter',
@@ -79,6 +83,8 @@ class TextAnimators {
         'fade_up': 'Fade Up',
         'slide_up': 'Slide Up',
         'karaoke': 'Word Highlight',
+        'random_pop': 'Random Pop',
+        'scramble': 'Scramble',
       }[a] ??
       a;
 }
@@ -99,6 +105,8 @@ class TextData {
   List<TextMark> marks;
   CounterSpec? counter;
   double outline; // outline-only text stroke width (0 = filled text)
+  double extrude; // 3D extruded edge depth in px (0 = none)
+  int extrudeColor; // colour of the extruded edge (ARGB)
 
   TextData({
     this.text = 'Title',
@@ -116,6 +124,8 @@ class TextData {
     List<TextMark>? marks,
     this.counter,
     this.outline = 0,
+    this.extrude = 0,
+    this.extrudeColor = 0xFF8A8A8A,
   })  : words = words ?? [],
         marks = marks ?? [];
 
@@ -135,6 +145,8 @@ class TextData {
         marks: marks.map((m) => TextMark.fromJson(m.toJson())).toList(),
         counter: counter == null ? null : CounterSpec.fromJson(counter!.toJson()),
         outline: outline,
+        extrude: extrude,
+        extrudeColor: extrudeColor,
       );
 
   Map<String, dynamic> toJson() => {
@@ -153,6 +165,8 @@ class TextData {
         if (marks.isNotEmpty) 'marks': marks.map((m) => m.toJson()).toList(),
         if (counter != null) 'counter': counter!.toJson(),
         if (outline > 0) 'outline': outline,
+        if (extrude > 0) 'extrude': extrude,
+        if (extrude > 0) 'extrudeColor': extrudeColor,
       };
 
   static TextData fromJson(Map<String, dynamic> j) => TextData(
@@ -171,6 +185,8 @@ class TextData {
         marks: (j['marks'] as List? ?? []).map((e) => TextMark.fromJson(e as Map<String, dynamic>)).toList(),
         counter: j['counter'] == null ? null : CounterSpec.fromJson(j['counter'] as Map<String, dynamic>),
         outline: (j['outline'] as num? ?? 0).toDouble(),
+        extrude: (j['extrude'] as num? ?? 0).toDouble(),
+        extrudeColor: j['extrudeColor'] as int? ?? 0xFF8A8A8A,
       );
 }
 
@@ -361,6 +377,18 @@ class Layer {
   final List<Effect> effects;
   final List<Mask> masks;
 
+  /// Track matte (see [LayerMatte]); null = none.
+  LayerMatte? matte;
+
+  MotionPath? _path;
+
+  /// Motion path (see [MotionPath]); setting one adds the `path_progress` prop.
+  MotionPath? get path => _path;
+  set path(MotionPath? p) {
+    _path = p;
+    if (p != null) props.putIfAbsent(Props.pathProgress, () => AnimProp([0]));
+  }
+
   Layer({
     required this.id,
     required this.name,
@@ -383,10 +411,13 @@ class Layer {
     Map<String, AnimProp>? props,
     List<Effect>? effects,
     List<Mask>? masks,
+    this.matte,
+    MotionPath? path,
   })  : props = props ?? {},
         effects = effects ?? [],
         masks = masks ?? [] {
     _ensureDefaults();
+    this.path = path;
   }
 
   void _ensureDefaults() {
@@ -495,6 +526,8 @@ class Layer {
         props: props.map((k, v) => MapEntry(k, v.copy())),
         effects: effects.map((e) => e.copy()).toList(),
         masks: masks.map((m) => m.copy()).toList(),
+        matte: matte,
+        path: _path?.copy(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -519,6 +552,8 @@ class Layer {
         'props': props.map((k, v) => MapEntry(k, v.toJson())),
         'effects': effects.map((e) => e.toJson()).toList(),
         if (masks.isNotEmpty) 'masks': masks.map((m) => m.toJson()).toList(),
+        if (matte != null) 'matte': matte!.toJson(),
+        if (_path != null) 'path': _path!.toJson(),
       };
 
   static Layer fromJson(Map<String, dynamic> j) => Layer(
@@ -544,5 +579,7 @@ class Layer {
             .map((k, v) => MapEntry(k, AnimProp.fromJson(v as Map<String, dynamic>))),
         effects: (j['effects'] as List? ?? []).map((e) => Effect.fromJson(e as Map<String, dynamic>)).toList(),
         masks: (j['masks'] as List? ?? []).map((e) => Mask.fromJson(e as Map<String, dynamic>)).toList(),
+        matte: j['matte'] is Map ? LayerMatte.fromJson(Map<String, dynamic>.from(j['matte'] as Map)) : null,
+        path: j['path'] is Map ? MotionPath.fromJson(Map<String, dynamic>.from(j['path'] as Map)) : null,
       );
 }

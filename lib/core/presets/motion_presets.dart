@@ -11,6 +11,7 @@ class MotionPresets {
   static const transitions = [
     'fade', 'zoom_in', 'zoom_out', 'slide_left', 'slide_right', 'slide_up', 'slide_down',
     'blur', 'spin', 'pop', 'whip', 'shatter',
+    'iris', 'ink', 'smoke', 'flash', 'glitch_flash',
   ];
 
   static String transitionLabel(String t) => const {
@@ -26,6 +27,11 @@ class MotionPresets {
         'pop': 'Pop',
         'whip': 'Whip Pan',
         'shatter': 'Shatter',
+        'iris': 'Iris',
+        'ink': 'Ink Bleed',
+        'smoke': 'Smoke',
+        'flash': 'Flash',
+        'glitch_flash': 'Glitch Flash',
       }[t] ??
       t;
 
@@ -100,6 +106,70 @@ class MotionPresets {
           prog.setKeyframe(tB, [100]);
         }
         layer.effects.add(sfx);
+        break;
+      case 'iris':
+      case 'ink':
+      case 'smoke':
+        // Procedural reveal mask (see the `reveal` effect).
+        final rid = '${layer.id}_${isIn ? 'in' : 'out'}_reveal';
+        layer.effects.removeWhere((e) => e.id == rid);
+        final rfx = EffectsCatalog.create('reveal', rid);
+        rfx.params['kind']!.staticValue = [const ['iris', 'ink', 'smoke'].indexOf(preset).toDouble()];
+        rfx.params['softness']!.staticValue = [preset == 'iris' ? 8 : 35];
+        final prog = rfx.params['progress']!;
+        final e2 = preset == 'iris' ? Easing.easyEase : ease;
+        if (isIn) {
+          prog.setKeyframe(tA, [0], easing: e2);
+          prog.setKeyframe(tB, [100]);
+        } else {
+          prog.setKeyframe(tA, [100], easing: e2);
+          prog.setKeyframe(tB, [0]);
+        }
+        layer.effects.add(rfx);
+        if (preset == 'smoke') anim(Props.opacity, (r) => [r[0] * 0.3]);
+        break;
+      case 'flash':
+      case 'glitch_flash':
+        final fid = '${layer.id}_${isIn ? 'in' : 'out'}_flash';
+        layer.effects.removeWhere((e) => e.id == fid);
+        final ffx = EffectsCatalog.create('flash', fid);
+        final amt = ffx.params['amount']!;
+        if (isIn) {
+          amt.setKeyframe(tA, [100], easing: Easing.easeOut);
+          amt.setKeyframe(tB, [0]);
+        } else {
+          amt.setKeyframe(tA, [0], easing: Easing.easeIn);
+          amt.setKeyframe(tB, [100]);
+        }
+        layer.effects.add(ffx);
+        if (preset == 'glitch_flash') {
+          final gid = '${layer.id}_${isIn ? 'in' : 'out'}_glitch';
+          layer.effects.removeWhere((e) => e.id == gid);
+          final gfx = EffectsCatalog.create('glitch', gid);
+          final g = gfx.params['amount']!;
+          // Stepped bursts: strong → off → strong → … → settled.
+          const steps = 6;
+          for (int i = 0; i <= steps; i++) {
+            final k = i / steps;
+            final tt = tA + (tB - tA) * k;
+            final on = i.isEven ? 100.0 * (isIn ? 1 - k * 0.6 : 0.4 + k * 0.6) : 0.0;
+            final v = isIn ? (i == steps ? 0.0 : on) : (i == 0 ? 0.0 : on);
+            g.setKeyframe(tt, [v], easing: Easing.hold);
+          }
+          layer.effects.add(gfx);
+        } else {
+          // A quick fade so the flash reads as a cut from white.
+          final p = layer.prop(Props.opacity);
+          final rest = p.valueAt(isIn ? tB : tA);
+          final q = tA + (tB - tA) * (isIn ? 0.25 : 0.75);
+          if (isIn) {
+            p.setKeyframe(tA, [0], easing: Easing.linear);
+            p.setKeyframe(q, rest);
+          } else {
+            p.setKeyframe(q, rest, easing: Easing.linear);
+            p.setKeyframe(tB, [0]);
+          }
+        }
         break;
       case 'blur':
       case 'whip':

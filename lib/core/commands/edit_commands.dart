@@ -10,6 +10,7 @@ import '../model/project.dart';
 import '../presets/camera_presets.dart';
 import '../presets/components.dart';
 import '../presets/motion_presets.dart';
+import 'fx_commands.dart'; // FX (Agent B)
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -213,7 +214,7 @@ class EditCommands {
           params.forEach((k, v) {
             final ap = e.params[k];
             if (ap == null) throw CommandError('Effect "$type" has no param "$k". Params: ${e.params.keys.join(', ')}');
-            ap.staticValue = _fitList(ap, _values(v));
+            ap.staticValue = _fitList(ap, FxCommands.effectValue(type, '$k', v) ?? _values(v)); // FX (Agent B): "#hex" / option names
           });
         }
         l.effects.add(e);
@@ -233,7 +234,8 @@ class EditCommands {
         final ap = e.params[key];
         if (ap == null) throw CommandError('Effect "${e.type}" has no param "$key". Params: ${e.params.keys.join(', ')}');
         final t = _optNum(c, 'time');
-        _write(ap, null, t ?? now, c['value'], keyframe: t != null, ease: _ease(c['ease']));
+        _write(ap, null, t ?? now, FxCommands.effectValue(e.type, key, c['value']) ?? c['value'], // FX (Agent B)
+            keyframe: t != null, ease: _ease(c['ease']));
         break;
 
       case 'set_camera_mode':
@@ -356,6 +358,7 @@ class EditCommands {
         if (c['fps'] != null) comp.fps = _num(c, 'fps').clamp(1, 120).toDouble();
         if (c['duration'] != null) comp.duration = math.max(comp.frameDuration, _num(c, 'duration'));
         if (c['background'] != null) comp.background = _color(c['background']);
+        FxCommands.applyComp(comp, c); // FX (Agent B): motion_blur
         break;
 
       default:
@@ -459,6 +462,7 @@ class EditCommands {
       if (comp.layerById(pid) == null) throw CommandError('Parent "$pid" does not exist');
       layer.parentId = pid;
     }
+    FxCommands.applyLayer(comp, layer, c); // FX (Agent B): matte, path
     if (c['position'] != null) {
       final p = layer.prop(Props.position);
       p.staticValue = _fitList(p, _values(c['position']));
@@ -516,6 +520,7 @@ class EditCommands {
     if (c['height'] != null) l.height = _num(c, 'height');
     if (l.type == LayerType.text) _applyText(l, c);
     if (l.type == LayerType.shape) _applyShape(l, c, placeFromPoints: false);
+    FxCommands.applyLayer(comp, l, c); // FX (Agent B): matte, path
     _extendComp(comp, l.end);
   }
 
@@ -609,6 +614,7 @@ class EditCommands {
     if (c['box_color'] != null) t.boxColor = c['box_color'] == 'none' ? 0 : _color(c['box_color']);
     if (c['shadow'] != null) t.shadow = c['shadow'] == true;
     if (c['outline'] != null) t.outline = math.max(0.0, _num(c, 'outline'));
+    FxCommands.applyText(t, c, _color); // FX (Agent B): extrude
     if (c['marks'] is List) {
       t.marks = [
         for (final m in c['marks'] as List)

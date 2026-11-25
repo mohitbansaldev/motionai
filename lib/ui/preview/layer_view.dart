@@ -7,10 +7,15 @@ import 'package:flutter/material.dart' hide Easing;
 import 'package:video_player/video_player.dart';
 
 import '../../core/engine/evaluator.dart';
+import '../../core/engine/fx_math.dart';
 import '../../core/model/easing.dart';
 import '../../core/model/layer.dart';
 import '../../core/model/project.dart';
 import '../../state/video_pool.dart';
+import 'fx/fx_painters.dart';
+import 'fx/offscreen.dart';
+import 'fx/particles.dart';
+import 'fx/text_fx.dart';
 import 'shape_painter.dart';
 
 /// Draws one evaluated layer: content → effects → masks → depth blur → opacity → transform.
@@ -61,7 +66,33 @@ class LayerView extends StatelessWidget {
       child = ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal), child: child);
     }
     if (item.opacity < 0.999) child = Opacity(opacity: item.opacity, child: child);
-    return Positioned(left: 0, top: 0, child: Transform(transform: item.matrix, child: child));
+    Widget out = Transform(transform: item.matrix, child: child);
+    // Motion blur from on-screen velocity (comp px/frame), in screen space.
+    final mb = _motionBlur(l);
+    if (mb != null) {
+      out = ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(sigmaX: mb.$1, sigmaY: mb.$2, tileMode: TileMode.decal),
+        child: out,
+      );
+    }
+    return Positioned(left: 0, top: 0, child: out);
+  }
+
+  /// Blur sigmas (x, y) for the layer's motion, or null when not needed.
+  /// Skipped while the draft preview plays (like depth blur); full on export.
+  (double, double)? _motionBlur(Layer l) {
+    if (item.vx == 0 && item.vy == 0) return null;
+    if (draft && playing) return null;
+    double shutter = project.main.motionBlur ? 0.5 : 0;
+    for (final e in l.effects) {
+      if (e.enabled && e.type == 'motion_blur') shutter = (e.params['amount']?.valueAt(time)[0] ?? 50) / 100;
+    }
+    if (shutter <= 0) return null;
+    final cap = draft ? 16.0 : 80.0;
+    final sx = math.min(cap, item.vx.abs() * shutter / 2.5);
+    final sy = math.min(cap, item.vy.abs() * shutter / 2.5);
+    if (sx < 0.6 && sy < 0.6) return null;
+    return (math.max(0.01, sx), math.max(0.01, sy));
   }
 
   Widget _content(Layer l) {
@@ -134,6 +165,35 @@ class LayerView extends StatelessWidget {
     };
     final local = time - l.start;
     final p = t.animDuration <= 0 ? 1.0 : (local / t.animDuration).clamp(0.0, 1.0);
+
+    // Per-letter animators and the 3D extruded edge.
+    final perGlyph = t.animator == 'random_pop' || t.animator == 'scramble';
+    if ((perGlyph || t.extrude > 0) && t.marks.isEmpty && t.counter == null) {
+      Widget painted = CustomPaint(
+        size: Size(l.width, l.height),
+        painter: GlyphTextPainter(
+          text: t.text,
+          style: style,
+          align: align,
+          animator: perGlyph ? t.animator : 'none',
+          local: local,
+          duration: t.animDuration,
+          seed: stableHash(l.id),
+          outline: t.outline,
+          extrude: t.extrude,
+          extrudeColor: Color(t.extrudeColor),
+          draft: draft,
+        ),
+      );
+      if (!perGlyph && t.animator != 'none' && t.animator != 'karaoke') {
+        final e = Easing.easeOut.transform(p);
+        painted = Opacity(
+          opacity: e,
+          child: Transform.translate(offset: Offset(0, (1 - e) * t.fontSize * 0.4), child: painted),
+        );
+      }
+      return painted;
+    }
 
     if (t.marks.isNotEmpty || t.counter != null || t.outline > 0) {
       final shown = t.counter?.valueAt(time) ?? t.text;
@@ -257,6 +317,9 @@ class LayerView extends StatelessWidget {
     }
 
     Widget overlay(Widget o) => Stack(children: [child, Positioned.fill(child: IgnorePointer(child: o))]);
+    Color rgb(String k) => Color.fromARGB(255, p(k, 0).round().clamp(0, 255), p(k, 1).round().clamp(0, 255), p(k, 2).round().clamp(0, 255));
+    List<double> rgbList(String k) => [p(k, 0), p(k, 1), p(k, 2)];
+    final cheap = draft && playing;
 
     switch (e.type) {
       case 'blur':
@@ -406,6 +469,144 @@ class LayerView extends StatelessWidget {
         final f = p('amount') / 100;
         final v = 1 - f * (0.5 + 0.5 * math.sin(time * 23.0) * math.sin(time * 7.3)).abs();
         return Opacity(opacity: v.clamp(0.0, 1.0), child: child);
+
+      // ---------------------------------------------- V1 motion FX
+      case 'silhouette':
+        final sil = ColorFiltered(colorFilter: ColorFilter.mode(rgb('color'), BlendMode.srcIn), child: child);
+        final glow = (p('glow') / 100).clamp(0.0, 1.0);
+        if (glow <= 0) return sil;
+        final gs = (4 + glow * 26) * (cheap ? 0.5 : 1.0);
+        return Stack(clipBehavior: Clip.none, children: [
+          IgnorePointer(
+            child: Opacity(
+              opacity: (0.35 + glow * 0.65).clamp(0.0, 1.0),
+              child: ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: gs, sigmaY: gs, tileMode: TileMode.decal), child: sil),
+            ),
+          ),
+          sil,
+        ]);
+      case 'mono':
+        final a = (p('amount') / 100).clamp(0.0, 1.0);
+        if (a <= 0) return child;
+        return ColorFiltered(colorFilter: ColorFilter.matrix(FxColor.mono(a)), child: child);
+      case 'duotone':
+        final a = (p('amount') / 100).clamp(0.0, 1.0);
+        if (a <= 0) return child;
+        return ColorFiltered(colorFilter: ColorFilter.matrix(FxColor.duotone(rgbList('dark'), rgbList('light'), a)), child: child);
+      case 'edge_blur':
+        final a = (p('amount') / 100).clamp(0.0, 1.0);
+        if (a <= 0) return child;
+        final bs = a * (cheap ? 10.0 : 22.0);
+        final w = l.width, h = l.height;
+        final ell = Float64List.fromList([w / 2, 0, 0, 0, 0, h / 2, 0, 0, 0, 0, 1, 0, w / 2, h / 2, 0, 1]);
+        return Stack(children: [
+          ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: bs, sigmaY: bs, tileMode: TileMode.decal), child: child),
+          ShaderMask(
+            blendMode: BlendMode.dstIn,
+            shaderCallback: (_) => ui.Gradient.radial(Offset.zero, 1, const [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+                [0, (0.62 - 0.3 * a).clamp(0.05, 0.9), 1.0], TileMode.clamp, ell),
+            child: child,
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _VignettePainter(a * 0.55),
+              ),
+            ),
+          ),
+        ]);
+      case 'curve':
+        return MeshWarp(
+          mode: WarpMode.curve,
+          a: p('bend'),
+          maxSide: draft ? 1280 : 3000,
+          draft: draft,
+          child: child,
+        );
+      case 'sway':
+        return MeshWarp(
+          mode: WarpMode.sway,
+          a: p('amount'),
+          b: p('speed'),
+          time: time,
+          seed: stableHash(e.id),
+          maxSide: draft ? 1024 : 2560,
+          draft: draft,
+          child: child,
+        );
+      case 'glass_frame':
+        final th = math.max(0.0, p('thickness'));
+        return Stack(children: [
+          ClipRRect(borderRadius: BorderRadius.circular(GlassFramePainter.radiusFor(th)), child: child),
+          Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: GlassFramePainter(th, p('gloss'))))),
+        ]);
+      case 'torn_edge':
+        final side = p('side').round().clamp(0, 3);
+        final amt = (p('amount') / 100).clamp(0.0, 1.0);
+        if (amt <= 0) return child;
+        final depth = amt * 0.09 * (side <= 1 ? l.height : l.width);
+        final seed = stableHash(e.id);
+        return Stack(children: [
+          Positioned.fill(
+            child: ClipPath(clipper: TornEdgeClipper(side, depth, seed + 1, inset: 0.5), child: const ColoredBox(color: Color(0xFFF4F0E6))),
+          ),
+          ClipPath(clipper: TornEdgeClipper(side, depth, seed), child: child),
+        ]);
+      case 'particles':
+        return overlay(CustomPaint(
+          painter: ParticlesPainter(
+            kind: p('kind').round(),
+            amount: p('amount'),
+            speed: p('speed'),
+            direction: p('direction'),
+            time: time,
+            color: rgb('color').toARGB32(),
+            seed: stableHash(e.id) & 0xFFFF,
+          ),
+        ));
+      case 'light_rays':
+        return overlay(CustomPaint(
+          painter: LightRaysPainter(angle: p('angle'), amount: p('amount'), time: time, color: rgb('color'), seed: stableHash(e.id) & 0xFFFF),
+        ));
+      case 'reveal':
+        final prog = p('progress');
+        if (prog >= 99.99) return child;
+        if (prog <= 0.01) return Opacity(opacity: 0, child: child);
+        final kind = p('kind').round().clamp(0, 3);
+        final soft = (p('softness') / 100).clamp(0.0, 1.0);
+        final cx = p('cx') / 100, cy = p('cy') / 100;
+        final seed = stableHash(e.id) & 0xFFFF;
+        final size = Size(l.width, l.height);
+        return ShaderMask(
+          blendMode: BlendMode.dstIn,
+          shaderCallback: (_) => RevealMask.shader(kind, prog / 100, soft, cx, cy, seed, size, draft: draft),
+          child: child,
+        );
+      case 'motion_blur':
+        return child; // applied in screen space in build()
+      case 'flash':
+        final a = (p('amount') / 100).clamp(0.0, 1.0);
+        if (a <= 0.001) return child;
+        return ColorFiltered(colorFilter: ColorFilter.matrix(FxColor.flash(rgbList('color'), a)), child: child);
+      case 'glitch':
+        final a = (p('amount') / 100).clamp(0.0, 1.0);
+        if (a <= 0) return child;
+        final seed = stableHash(e.id) & 0xFFFF;
+        final frame = (time * 24).floor();
+        if (hash01(frame, seed) > 0.25 + 0.75 * a) return child;
+        final jx = (hash01(frame, seed + 1) - 0.5) * 2 * a * l.width * 0.03;
+        final split = a * math.max(4.0, l.width * 0.008) * (0.5 + hash01(frame, seed + 2));
+        return Stack(clipBehavior: Clip.none, children: [
+          Transform.translate(
+            offset: Offset(jx - split, 0),
+            child: Opacity(opacity: 0.75, child: ColorFiltered(colorFilter: const ColorFilter.matrix(_redOnly), child: child)),
+          ),
+          Transform.translate(
+            offset: Offset(jx + split, 0),
+            child: Opacity(opacity: 0.75, child: ColorFiltered(colorFilter: const ColorFilter.matrix(_cyanOnly), child: child)),
+          ),
+          Transform.translate(offset: Offset(jx, 0), child: child),
+        ]);
       default:
         return child;
     }
@@ -459,6 +660,29 @@ class LayerView extends StatelessWidget {
       ),
     );
   }
+}
+
+const List<double> _redOnly = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0];
+const List<double> _cyanOnly = [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0];
+
+/// Elliptical dark vignette (edge_blur).
+class _VignettePainter extends CustomPainter {
+  final double amount;
+  _VignettePainter(this.amount);
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (amount <= 0) return;
+    final w = size.width, h = size.height;
+    final m = Float64List.fromList([w / 2, 0, 0, 0, 0, h / 2, 0, 0, 0, 0, 1, 0, w / 2, h / 2, 0, 1]);
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = ui.Gradient.radial(Offset.zero, 1.25, [const Color(0x00000000), Color.fromRGBO(0, 0, 0, amount)], const [0.55, 1.0], TileMode.clamp, m),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _VignettePainter old) => old.amount != amount;
 }
 
 class _InvertRectClipper extends CustomClipper<Path> {

@@ -60,6 +60,9 @@ class Composition {
   final List<Layer> layers;
   CameraRig camera;
 
+  /// Motion blur on fast-moving layers and camera moves (see Evaluator).
+  bool motionBlur;
+
   Composition({
     required this.id,
     required this.name,
@@ -70,6 +73,7 @@ class Composition {
     this.background = 0xFF000000,
     List<Layer>? layers,
     CameraRig? camera,
+    this.motionBlur = false,
   })  : layers = layers ?? [],
         camera = camera ?? CameraRig.defaults(width, height) {
     this.camera.ensureDefaults(width, height);
@@ -107,6 +111,7 @@ class Composition {
         background: background,
         layers: layers.map((l) => l.copy()).toList(),
         camera: camera.copy(),
+        motionBlur: motionBlur,
       );
 
   Map<String, dynamic> toJson() => {
@@ -119,6 +124,7 @@ class Composition {
         'background': background,
         'layers': layers.map((l) => l.toJson()).toList(),
         'camera': camera.toJson(),
+        if (motionBlur) 'motionBlur': true,
       };
 
   static Composition fromJson(Map<String, dynamic> j) => Composition(
@@ -131,6 +137,7 @@ class Composition {
         background: j['background'] as int? ?? 0xFF000000,
         layers: (j['layers'] as List? ?? []).map((e) => Layer.fromJson(e as Map<String, dynamic>)).toList(),
         camera: j['camera'] == null ? null : CameraRig.fromJson(j['camera'] as Map<String, dynamic>),
+        motionBlur: j['motionBlur'] as bool? ?? false,
       );
 }
 

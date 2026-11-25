@@ -22,13 +22,40 @@ class RenderItem {
   final double depth; // camera-space distance of the layer center (3D only)
   final double dofBlur; // depth-of-field blur radius in px (0 = sharp)
 
+  /// On-screen movement of the layer centre over the last frame (comp px),
+  /// set when motion blur is wanted (comp `motionBlur` or a `motion_blur` effect).
+  final double vx, vy;
+
+  /// Track matte: the evaluated matte layer (drawn only as a mask).
+  final RenderItem? matte;
+  final bool matteInverse;
+
   RenderItem({
     required this.layer,
     required this.matrix,
     required this.opacity,
     required this.depth,
     required this.dofBlur,
+    this.vx = 0,
+    this.vy = 0,
+    this.matte,
+    this.matteInverse = false,
   });
+
+  RenderItem withExtras({double? vx, double? vy, RenderItem? matte, bool? matteInverse}) => RenderItem(
+        layer: layer,
+        matrix: matrix,
+        opacity: opacity,
+        depth: depth,
+        dofBlur: dofBlur,
+        vx: vx ?? this.vx,
+        vy: vy ?? this.vy,
+        matte: matte ?? this.matte,
+        matteInverse: matteInverse ?? this.matteInverse,
+      );
+
+  /// Screen speed in comp px per frame.
+  double get speed => math.sqrt(vx * vx + vy * vy);
 
   /// Projects a layer-local point to composition pixels.
   Vector2 project(double x, double y) => projectPoint(matrix, x, y);
@@ -88,13 +115,34 @@ class Camera3DState {
   double depthOf(Vector3 world) => (world - position).dot(forward);
 }
 
+/// Camera matrices for one moment, shared by every layer.
+class _Frame {
+  final Composition comp;
+  final double t;
+  final Map<String, Matrix4> worldCache = {};
+  final Camera3DState cam;
+  final Matrix4 proj;
+  final Matrix4 cam2d;
+  _Frame._(this.comp, this.t, this.cam, this.proj, this.cam2d);
+
+  factory _Frame(Composition comp, double t) {
+    final cam = Evaluator.camera3D(comp, t);
+    return _Frame._(comp, t, cam, Evaluator.projection(cam), Evaluator.camera2D(comp, t));
+  }
+}
+
 class Evaluator {
   /// Everything visible at time [t], in paint order (first = bottom).
   static List<RenderItem> evaluate(Composition comp, double t) {
-    final worldCache = <String, Matrix4>{};
-    final cam = camera3D(comp, t);
-    final proj = projection(cam);
-    final cam2d = camera2D(comp, t);
+    final f = _Frame(comp, t);
+    _Frame? prev; // previous frame, for motion-blur velocity (lazy)
+
+    // Layers used as a track matte by another layer are not drawn themselves.
+    Set<String>? matteIds;
+    for (final l in comp.layers) {
+      final m = l.matte;
+      if (m != null && m.layerId != l.id) (matteIds ??= <String>{}).add(m.layerId);
+    }
 
     final items = <RenderItem>[];
     final group3D = <RenderItem>[];
@@ -115,66 +163,136 @@ class Evaluator {
     for (int i = comp.layers.length - 1; i >= 0; i--) {
       final layer = comp.layers[i];
       if (!layer.isActiveAt(t) || layer.type == LayerType.nullObject || layer.type == LayerType.audio) continue;
-      final opacity = (layer.prop(Props.opacity).scalarAt(t) / 100).clamp(0.0, 1.0);
-      if (opacity <= 0) continue;
-      final world = worldMatrix(comp, layer, t, worldCache);
+      if (matteIds != null && matteIds.contains(layer.id)) continue;
+      var item = _item(f, layer);
+      if (item == null) continue;
 
-      if (layer.is3D) {
-        // Cull layers crossing behind the camera.
-        bool behind = false;
-        for (final c in [
-          Vector3(0, 0, 0),
-          Vector3(layer.width, 0, 0),
-          Vector3(layer.width, layer.height, 0),
-          Vector3(0, layer.height, 0),
-        ]) {
-          if (cam.depthOf(world.transformed3(c)) < kNearPlane) {
-            behind = true;
-            break;
+      // Track matte.
+      final m = layer.matte;
+      if (m != null && m.layerId != layer.id) {
+        final ml = comp.layerById(m.layerId);
+        if (ml != null) {
+          final active = t >= ml.start - 1e-9 && t < ml.end - 1e-9 &&
+              ml.type != LayerType.nullObject && ml.type != LayerType.audio;
+          final mi = active ? _item(f, ml) : null;
+          if (mi == null) {
+            if (!m.inverse) continue; // nothing to show through
+          } else {
+            item = item.withExtras(matte: mi, matteInverse: m.inverse);
           }
         }
-        if (behind) continue;
-        final center = world.transformed3(Vector3(layer.width / 2, layer.height / 2, 0));
-        final depth = cam.depthOf(center);
-        double blur = 0;
-        if (comp.camera.mode == CameraMode.threeD && cam.aperture > 0) {
-          blur = cam.aperture * 0.4 * (depth - cam.focus).abs() / math.max(depth, 1.0);
+      }
+
+      // Motion blur velocity: where the centre was one frame ago.
+      if (comp.motionBlur || _hasMotionBlurFx(layer)) {
+        prev ??= _Frame(comp, t - comp.frameDuration);
+        final before = _screenMatrix(prev, layer);
+        if (before != null) {
+          final cx = layer.width / 2, cy = layer.height / 2;
+          final now = projectPoint(item.matrix, cx, cy);
+          final was = projectPoint(before, cx, cy);
+          final vx = now.x - was.x, vy = now.y - was.y;
+          if (vx.isFinite && vy.isFinite) item = item.withExtras(vx: vx, vy: vy);
         }
-        group3D.add(RenderItem(
-          layer: layer,
-          matrix: cam2d.multiplied(proj).multiplied(world),
-          opacity: opacity,
-          depth: depth,
-          dofBlur: blur,
-        ));
+      }
+
+      if (layer.is3D) {
+        group3D.add(item);
       } else {
         flush3D();
-        items.add(RenderItem(
-          layer: layer,
-          matrix: cam2d.multiplied(world),
-          opacity: opacity,
-          depth: 0,
-          dofBlur: 0,
-        ));
+        items.add(item);
       }
     }
     flush3D();
     return items;
   }
 
+  static bool _hasMotionBlurFx(Layer l) {
+    for (final e in l.effects) {
+      if (e.enabled && e.type == 'motion_blur') return true;
+    }
+    return false;
+  }
+
+  /// Layer → screen matrix, or null if a 3D layer crosses the near plane.
+  static Matrix4? _screenMatrix(_Frame f, Layer layer) {
+    final world = worldMatrix(f.comp, layer, f.t, f.worldCache);
+    if (!layer.is3D) return f.cam2d.multiplied(world);
+    for (final c in [
+      Vector3(0, 0, 0),
+      Vector3(layer.width, 0, 0),
+      Vector3(layer.width, layer.height, 0),
+      Vector3(0, layer.height, 0),
+    ]) {
+      if (f.cam.depthOf(world.transformed3(c)) < kNearPlane) return null;
+    }
+    return f.cam2d.multiplied(f.proj).multiplied(world);
+  }
+
+  static RenderItem? _item(_Frame f, Layer layer) {
+    final t = f.t;
+    final opacity = (layer.prop(Props.opacity).scalarAt(t) / 100).clamp(0.0, 1.0);
+    if (opacity <= 0) return null;
+    final world = worldMatrix(f.comp, layer, t, f.worldCache);
+
+    if (layer.is3D) {
+      // Cull layers crossing behind the camera.
+      for (final c in [
+        Vector3(0, 0, 0),
+        Vector3(layer.width, 0, 0),
+        Vector3(layer.width, layer.height, 0),
+        Vector3(0, layer.height, 0),
+      ]) {
+        if (f.cam.depthOf(world.transformed3(c)) < kNearPlane) return null;
+      }
+      final center = world.transformed3(Vector3(layer.width / 2, layer.height / 2, 0));
+      final depth = f.cam.depthOf(center);
+      double blur = 0;
+      if (f.comp.camera.mode == CameraMode.threeD && f.cam.aperture > 0) {
+        blur = f.cam.aperture * 0.4 * (depth - f.cam.focus).abs() / math.max(depth, 1.0);
+      }
+      return RenderItem(
+        layer: layer,
+        matrix: f.cam2d.multiplied(f.proj).multiplied(world),
+        opacity: opacity,
+        depth: depth,
+        dofBlur: blur,
+      );
+    }
+    return RenderItem(
+      layer: layer,
+      matrix: f.cam2d.multiplied(world),
+      opacity: opacity,
+      depth: 0,
+      dofBlur: 0,
+    );
+  }
+
   /// Layer transform: T(position) · Rx · Ry · Rz · S(scale) · T(-anchor).
+  /// With a motion path the position is the path point at `path_progress`
+  /// plus the layer's own position (as an offset); `orient` adds the path
+  /// direction to the Z rotation.
   static Matrix4 localMatrix(Layer l, double t) {
     final p = l.prop(Props.position).valueAt(t);
     final a = l.prop(Props.anchor).valueAt(t);
     final s = l.prop(Props.scale).valueAt(t);
     final r = l.prop(Props.rotation).valueAt(t);
     final is3D = l.is3D;
+    double rz = r[2];
+    final path = l.path;
+    if (path != null && path.points.isNotEmpty) {
+      final prog = (l.props[Props.pathProgress]?.scalarAt(t) ?? 0) / 100;
+      final ps = path.sample(prog);
+      p[0] += ps.x;
+      p[1] += ps.y;
+      if (path.orient) rz += ps.angle;
+    }
     final m = Matrix4.translationValues(p[0], p[1], is3D ? p[2] : 0);
     if (is3D) {
       if (r[0] != 0) m.multiply(Matrix4.rotationX(r[0] * _deg));
       if (r[1] != 0) m.multiply(Matrix4.rotationY(r[1] * _deg));
     }
-    if (r[2] != 0) m.multiply(Matrix4.rotationZ(r[2] * _deg));
+    if (rz != 0) m.multiply(Matrix4.rotationZ(rz * _deg));
     m.multiply(Matrix4.diagonal3Values(s[0] / 100, s[1] / 100, is3D ? s[2] / 100 : 1));
     m.multiply(Matrix4.translationValues(-a[0], -a[1], is3D ? -a[2] : 0));
     return m;
