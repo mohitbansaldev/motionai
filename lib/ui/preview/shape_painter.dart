@@ -93,7 +93,17 @@ Path dashPath(Path path, double on, double off) {
 class ShapePainter extends CustomPainter {
   final ShapeData shape;
   final double trimStart, trimEnd;
-  ShapePainter(this.shape, this.trimStart, this.trimEnd);
+
+  /// Cheap fingerprint of the shape's look: edits mutate [shape] in place, so
+  /// comparing the object alone would keep a stale picture.
+  final int _sig;
+  ShapePainter(this.shape, this.trimStart, this.trimEnd) : _sig = signature(shape);
+
+  static int signature(ShapeData s) => Object.hash(
+        s.kind, s.closed, s.smooth, s.sides, s.inner, s.corner, s.fill, s.fill2, s.stroke, s.strokeWidth,
+        Object.hashAll(s.dash), s.arrowStart, s.arrowEnd,
+        identityHashCode(s.rings), s.rings.length, // new points replace the list
+      );
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -153,10 +163,16 @@ class ShapePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ShapePainter old) =>
-      old.shape != shape || old.trimStart != trimStart || old.trimEnd != trimEnd;
+      old.shape != shape || old._sig != _sig || old.trimStart != trimStart || old.trimEnd != trimEnd;
 }
 
-/// Text with animated annotations (highlighter, circle, underline, colour).
+/// Which parts [MarkedTextPainter] draws: everything, or only the marks
+/// behind the text (highlighter) / in front of it (circle, underline) when the
+/// letters themselves are drawn by another painter (per-letter animators).
+enum MarkLayer { all, behind, front }
+
+/// Text with animated annotations (highlighter, circle, underline, colour),
+/// optional outline and 3D extruded edge.
 class MarkedTextPainter extends CustomPainter {
   final String text;
   final TextStyle style;
@@ -164,6 +180,11 @@ class MarkedTextPainter extends CustomPainter {
   final List<TextMark> marks;
   final double time;
   final double outline;
+  final double extrude; // extruded edge depth px (0 = none)
+  final Color extrudeColor;
+  final bool draft;
+  final MarkLayer layer;
+  final int _marksSig;
   MarkedTextPainter({
     required this.text,
     required this.style,
@@ -171,12 +192,18 @@ class MarkedTextPainter extends CustomPainter {
     required this.marks,
     required this.time,
     this.outline = 0,
-  });
+    this.extrude = 0,
+    this.extrudeColor = const Color(0xFF8A8A8A),
+    this.draft = false,
+    this.layer = MarkLayer.all,
+  }) : _marksSig = Object.hashAll([for (final m in marks) Object.hash(m.phrase, m.style, m.color, m.start, m.duration)]);
 
-  double _p(TextMark m) => m.duration <= 0 ? (time >= m.start ? 1 : 0) : ((time - m.start) / m.duration).clamp(0.0, 1.0);
+  static double _progress(TextMark m, double t) => m.duration <= 0 ? (t >= m.start ? 1 : 0) : ((t - m.start) / m.duration).clamp(0.0, 1.0);
+  double _p(TextMark m) => _progress(m, time);
 
   @override
   void paint(Canvas canvas, Size size) {
+    final drawText = layer == MarkLayer.all;
     // Colour marks change the span colour; others are drawn around the text.
     final spans = <TextSpan>[];
     final colorMarks = marks.where((m) => m.style == 'color' && _p(m) > 0).toList();
@@ -234,7 +261,7 @@ class MarkedTextPainter extends CustomPainter {
     }
 
     // Highlighter sweeps behind the text, line by line.
-    for (final m in marks.where((m) => m.style == 'highlight')) {
+    for (final m in marks.where((m) => m.style == 'highlight' && layer != MarkLayer.front)) {
       final p = _p(m);
       if (p <= 0) continue;
       final bs = boxes(m);
@@ -248,9 +275,37 @@ class MarkedTextPainter extends CustomPainter {
         budget -= b.width;
       }
     }
-    tp.paint(canvas, origin);
+    if (drawText) {
+      if (extrude > 0) {
+        // Thick 3D edge: copies of the text in the edge colour, down-right.
+        final depth = extrude.clamp(0.0, 400.0);
+        final steps = draft ? math.min(depth.ceil(), 14) : depth.ceil();
+        const dir = Offset(0.40998, 0.91209); // (0.45, 1) normalised, as GlyphTextPainter
+        final step = dir * (depth / math.max(1, steps));
+        final edge = TextPainter(
+          text: TextSpan(
+            text: text,
+            style: TextStyle(
+              fontSize: style.fontSize,
+              fontWeight: style.fontWeight,
+              fontFamily: style.fontFamily,
+              height: style.height,
+              letterSpacing: style.letterSpacing,
+              color: extrudeColor,
+            ),
+          ),
+          textAlign: align,
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: size.width);
+        for (int k = steps; k >= 1; k--) {
+          edge.paint(canvas, origin + step * k.toDouble());
+        }
+        edge.dispose();
+      }
+      tp.paint(canvas, origin);
+    }
     // Hand-drawn circle / underline draw on top.
-    for (final m in marks.where((m) => m.style == 'circle' || m.style == 'underline')) {
+    for (final m in marks.where((m) => (m.style == 'circle' || m.style == 'underline') && layer != MarkLayer.behind)) {
       final p = _p(m);
       if (p <= 0) continue;
       final bs = boxes(m);
@@ -280,8 +335,26 @@ class MarkedTextPainter extends CustomPainter {
       }
       canvas.drawPath(trimPath(path, 0, p), paint);
     }
+    tp.dispose();
   }
 
   @override
-  bool shouldRepaint(covariant MarkedTextPainter old) => true;
+  bool shouldRepaint(covariant MarkedTextPainter old) {
+    if (old.text != text ||
+        old.style != style ||
+        old.align != align ||
+        old.outline != outline ||
+        old.extrude != extrude ||
+        old.extrudeColor != extrudeColor ||
+        old.draft != draft ||
+        old.layer != layer ||
+        old._marksSig != _marksSig) {
+      return true;
+    }
+    // Same text: repaint only while a mark is animating.
+    for (final m in marks) {
+      if (_progress(m, old.time) != _progress(m, time)) return true;
+    }
+    return false;
+  }
 }
