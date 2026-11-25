@@ -351,6 +351,15 @@ void main() {
       for (final o in CaptionSafeArea.obstacles(p.main, 0.5, 2.5)) {
         expect(o.overlaps(capRect), isFalse, reason: '$o vs $capRect');
       }
+      // Obstacles that are still only commands (e.g. a storyboard batch) count too.
+      final fresh = project();
+      final pendingCmds = [
+        {'op': 'add_layer', 'type': 'text', 'id': 'lt2', 'text': 'Dr. Manmohan Singh, Finance Minister', 'start': 0, 'duration': 3, 'width': 1300, 'height': 90, 'position': [960, 955, 0], 'font_size': 54},
+      ];
+      final withPending = CaptionMaker.fromWords(fresh, ws, CaptionOptions(style: 'karaoke', maxWords: 6), pending: pendingCmds);
+      expect(y(withPending, 0), lessThan(y(ref, 0) - 30));
+      expect(fresh.main.layers, isEmpty, reason: 'pending commands run on a copy');
+
       // Turning the safe area off keeps the default spot.
       final off = CaptionBuilder.fromWords(p, ws, CaptionOptions(style: 'karaoke', maxWords: 6, safeArea: false));
       expect(y(off, 0), closeTo(y(ref, 0), 0.01));

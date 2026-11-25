@@ -60,8 +60,8 @@ class Subtitles {
     return h * 3600 + mi * 60 + se + ms / 1000;
   }
 
-  /// Captions from .srt or .vtt text. Formatting tags (<i>, {\an8}, <c.x>,
-  /// VTT word timestamps) are removed; words get times spread over the cue.
+  /// Captions from .srt or .vtt text. Formatting tags (`<i>`, `{\an8}`,
+  /// `<c.x>`, VTT word timestamps) are removed; words get times spread over the cue.
   static List<CaptionCue> parse(String text) {
     final src = text.replaceAll('﻿', '').replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     final out = <CaptionCue>[];

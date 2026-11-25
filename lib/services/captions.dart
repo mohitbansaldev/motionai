@@ -81,8 +81,11 @@ class CaptionMaker {
 
   /// Caption text layers (with per-word timing) from composition-time words.
   /// Grouping, styles, emphasis and safe areas live in `lib/captions/`.
-  static List<Map<String, dynamic>> fromWords(Project project, List<WordTiming> words, CaptionOptions o) =>
-      CaptionBuilder.fromWords(project, words, o);
+  /// [pending]: commands that run before these (e.g. a storyboard's name
+  /// tags), so captions keep clear of them too.
+  static List<Map<String, dynamic>> fromWords(Project project, List<WordTiming> words, CaptionOptions o,
+          {List<Map<String, dynamic>>? pending}) =>
+      CaptionBuilder.fromWords(project, words, o, pending: pending);
 
   /// One AI request for the whole transcript: normalised words to emphasise.
   /// Returns an empty set when AI is not set up or the request fails.

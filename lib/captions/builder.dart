@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
+import '../core/commands/edit_commands.dart';
 import '../core/model/project.dart';
 import 'caption_cue.dart';
 import 'emphasis.dart';
@@ -66,22 +68,45 @@ class CaptionBuilder {
     }
   }
 
-  /// One-shot: words → commands.
-  static List<Map<String, dynamic>> fromWords(Project project, List<WordTiming> words, CaptionOptions o, {String? stamp}) {
+  /// One-shot: words → commands. [pending]: commands that will run before
+  /// these (e.g. a storyboard's name tags) — captions keep clear of them too.
+  static List<Map<String, dynamic>> fromWords(
+    Project project,
+    List<WordTiming> words,
+    CaptionOptions o, {
+    String? stamp,
+    List<Map<String, dynamic>>? pending,
+  }) {
     final style = CaptionStyles.byId(o.style);
     final list = cues(project.main, words, style, options: o);
-    return build(project, list, style, stamp: stamp, safeArea: o.safeArea);
+    return build(project, list, style, stamp: stamp, safeArea: o.safeArea, obstacles: o.safeArea ? withPending(project, pending) : null);
   }
 
-  /// Commands that add caption layers for [cues] in [style].
+  /// [project] with [pending] commands applied, on a copy (null when there
+  /// is nothing pending or the commands do not run).
+  static Composition? withPending(Project project, List<Map<String, dynamic>>? pending) {
+    if (pending == null || pending.isEmpty) return null;
+    try {
+      final scratch = Project.fromJson(jsonDecode(jsonEncode(project.toJson())) as Map<String, dynamic>);
+      EditCommands.runAtomic(scratch, {'op': 'batch', 'commands': pending});
+      return scratch.main;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Commands that add caption layers for [cues] in [style]. Other text is
+  /// looked up in [obstacles] (default: the project's main composition).
   static List<Map<String, dynamic>> build(
     Project project,
     List<CaptionCue> cues,
     CaptionStyle style, {
     String? stamp,
     bool safeArea = true,
+    Composition? obstacles,
   }) {
     final comp = project.main;
+    final obstacleComp = obstacles ?? comp;
     stamp ??= DateTime.now().microsecondsSinceEpoch.toRadixString(36);
     final deva = TextRules.mostlyDevanagari([for (final c in cues) ...c.words.map((w) => w.word)]);
     final layout = CaptionLayout.of(comp.width, comp.height, style, devanagari: deva);
@@ -99,7 +124,7 @@ class CaptionBuilder {
       // Placement (+ safe area).
       var block = layout.block(lineTexts);
       if (safeArea) {
-        final obs = CaptionSafeArea.obstacles(comp, c.start, c.end, captionPrefix: prefix);
+        final obs = CaptionSafeArea.obstacles(obstacleComp, c.start, c.end, captionPrefix: prefix);
         final dy = CaptionSafeArea.offsetFor(block.rect, obs, top: layout.safeTop, bottom: layout.safeBottom, margin: layout.fontSize * 0.25);
         if (dy != 0) block = block.shift(dy);
       }
@@ -132,7 +157,7 @@ class CaptionBuilder {
           'position': [comp.width / 2, y, 0],
           'font_size': layout.fontSize,
           'font_weight': style.weight,
-          if (family != null) 'font_family': family,
+          'font_family': ?family,
           'text_color': style.color,
           'highlight_color': style.highlightColor,
           'box_color': style.box ?? 'none',
