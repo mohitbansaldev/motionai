@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/engine/text_clusters.dart'; // V2-F
+
 /// Sound effects synthesised on the device (no stock files needed).
 ///
 /// [kinds] is the small set the Director places automatically (whoosh for
@@ -121,11 +123,12 @@ class Sfx {
   /// Offsets (seconds after the layer start) at which the `typewriter` text
   /// animator reveals each visible letter of [text] over [animDuration].
   static List<double> typingTimes(String text, double animDuration) {
-    final n = text.length;
+    final letters = TextClusters.split(text); // V2-F: one click per whole letter (Devanagari clusters)
+    final n = letters.length;
     if (n == 0) return const [];
     return [
       for (int k = 0; k < n; k++)
-        if (text[k].trim().isNotEmpty) (k + 0.5) / n * animDuration,
+        if (letters[k].trim().isNotEmpty) (k + 0.5) / n * animDuration,
     ];
   }
 

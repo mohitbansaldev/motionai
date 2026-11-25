@@ -696,7 +696,7 @@ List<Map<String, dynamic>> _numberTiles(_B b) {
   final fs = b.n('size', b.h * 0.15);
   final tw = fs * 0.82, th = fs * 1.2, gap = fs * 0.1;
   final roll = b.n('roll', 1.2), stagger = b.n('stagger', 0.12);
-  final chars = text.split('');
+  final chars = TextClusters.split(text); // V2-F: whole letters (Devanagari conjuncts stay intact)
   double width = 0;
   for (final ch in chars) {
     width += (ch == ' ' ? tw * 0.45 : tw) + gap;

@@ -11,6 +11,7 @@ import '../core/model/project.dart';
 const libraryKinds = [
   'building', 'plant', 'grass_strip', 'sky', 'ground', 'prop', 'person', 'animal', 'vehicle',
   'icon', 'texture', 'interior', 'map', 'document', 'logo',
+  'plate', 'overlay', 'set_piece', // V2-F: background plates, fx overlays, cut-out set pieces
 ];
 
 /// One reusable file in the cross-project asset library.
@@ -28,6 +29,8 @@ class LibraryAsset {
   DateTime added;
   String hash;
   String origin; // project it came from
+  String original; // V2-F: file name of the untouched original when [file] is a cleaned copy
+  List<String> cleaned; // V2-F: fixes applied to [file]: green_screen, mark
 
   LibraryAsset({
     required this.id,
@@ -47,7 +50,10 @@ class LibraryAsset {
     DateTime? added,
     this.hash = '',
     this.origin = '',
+    this.original = '',
+    List<String>? cleaned,
   })  : tags = tags ?? [],
+        cleaned = cleaned ?? [],
         added = added ?? DateTime.now();
 
   bool get tagged => kind.isNotEmpty;
@@ -85,6 +91,8 @@ class LibraryAsset {
         'added': added.toIso8601String(),
         if (hash.isNotEmpty) 'hash': hash,
         if (origin.isNotEmpty) 'origin': origin,
+        if (original.isNotEmpty) 'orig': original,
+        if (cleaned.isNotEmpty) 'cleaned': cleaned,
       };
 
   static LibraryAsset fromJson(Map<String, dynamic> j) => LibraryAsset(
@@ -105,6 +113,8 @@ class LibraryAsset {
         added: DateTime.tryParse('${j['added'] ?? ''}') ?? DateTime.fromMillisecondsSinceEpoch(0),
         hash: '${j['hash'] ?? ''}',
         origin: '${j['origin'] ?? ''}',
+        original: '${j['orig'] ?? ''}',
+        cleaned: [for (final c in (j['cleaned'] as List? ?? const [])) '$c'],
       );
 
   /// Applies one item of the AI tagging answer (see LibraryTagger).
@@ -321,6 +331,9 @@ class AssetLibrary {
     await tmp.rename(indexFile.path);
   }
 
+  /// Dedupe key of a file (md5 of the first MiB + length).
+  static Future<String> hashFile(String path) => _hash(File(path));
+
   static Future<String> _hash(File f) async {
     final len = await f.length();
     final raf = await f.open();
@@ -335,6 +348,42 @@ class AssetLibrary {
   static String _newId() {
     final t = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
     return 'a$t${math.Random().nextInt(1 << 20).toRadixString(36)}';
+  }
+
+  /// The asset whose source file had [hash] (and whose file still exists).
+  Future<LibraryAsset?> byHash(String hash) async {
+    for (final a in index.assets) {
+      if (a.hash == hash && await File(pathOf(a)).exists()) return a;
+    }
+    return null;
+  }
+
+  /// V2-F: adds [path] as a library asset whose shown file is the already
+  /// processed [prepared] file (e.g. a keyed PNG). The untouched original is
+  /// copied too ([LibraryAsset.original]); the dedupe hash is the original's.
+  Future<LibraryAsset> addPrepared(String path, String prepared,
+      {required MediaType type, String? name, double width = 0, double height = 0, bool transparent = false, List<String> cleaned = const [], String origin = '', bool saveIndex = true}) async {
+    final src = File(path);
+    if (!await src.exists()) throw FileSystemException('File not found', path);
+    final hash = await _hash(src);
+    final dup = await byHash(hash);
+    if (dup != null) return dup;
+    final id = _newId();
+    final base = path.split(RegExp(r'[\\/]')).last;
+    final ext = base.contains('.') ? base.split('.').last.toLowerCase() : 'png';
+    final pext = prepared.contains('.') ? prepared.split('.').last.toLowerCase() : 'png';
+    final orig = '$id.orig.$ext';
+    final file = '${id}_clean.$pext';
+    await src.copy('${filesDir.path}$_sep$orig');
+    await File(prepared).copy('${filesDir.path}$_sep$file');
+    final display = name ?? (base.contains('.') ? base.substring(0, base.lastIndexOf('.')) : base);
+    final a = LibraryAsset(
+      id: id, type: type, file: file, name: display, width: width, height: height, transparent: transparent, hash: hash, origin: origin,
+      original: orig, cleaned: [...cleaned],
+    );
+    index.assets.insert(0, a);
+    if (saveIndex) await save();
+    return a;
   }
 
   /// Copies a file into the library (same file twice → the existing entry).
@@ -384,6 +433,11 @@ class AssetLibrary {
     try {
       await File(pathOf(a)).delete();
     } catch (_) {}
+    if (a.original.isNotEmpty) {
+      try {
+        await File('${filesDir.path}$_sep${a.original}').delete(); // V2-F
+      } catch (_) {}
+    }
     await save();
   }
 

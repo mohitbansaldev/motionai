@@ -4,11 +4,14 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import '../../../core/engine/fx_math.dart';
+import '../../../core/engine/text_clusters.dart'; // V2-F
 
+/// One user-perceived letter (V2-F: a grapheme / Indic conjunct cluster such
+/// as "स्था" or "श्री", never a lone virama or vowel sign).
 class _Glyph {
-  final int rune;
+  final String text;
   final Rect box; // in full-layout coordinates
-  _Glyph(this.rune, this.box);
+  _Glyph(this.text, this.box);
 }
 
 class _Layout {
@@ -61,6 +64,7 @@ class GlyphTextPainter extends CustomPainter {
       fontSize: style.fontSize,
       fontWeight: style.fontWeight,
       fontFamily: style.fontFamily,
+      fontFamilyFallback: style.fontFamilyFallback, // V2-F: keep the Devanagari fallback
       height: style.height,
       letterSpacing: style.letterSpacing,
       shadows: style.shadows,
@@ -75,13 +79,14 @@ class GlyphTextPainter extends CustomPainter {
         fontSize: style.fontSize,
         fontWeight: style.fontWeight,
         fontFamily: style.fontFamily,
+        fontFamilyFallback: style.fontFamilyFallback, // V2-F
         height: style.height,
         letterSpacing: style.letterSpacing,
         color: extrudeColor,
       );
 
   String get _styleKey =>
-      '${style.fontSize}|${style.fontWeight}|${style.fontFamily}|${style.color?.toARGB32()}|${style.shadows?.length ?? 0}|$outline|${extrude > 0 ? extrudeColor.toARGB32() : 0}';
+      '${style.fontSize}|${style.fontWeight}|${style.fontFamily}|${style.fontFamilyFallback?.join(',')}|${style.color?.toARGB32()}|${style.shadows?.length ?? 0}|$outline|${extrude > 0 ? extrudeColor.toARGB32() : 0}';
 
   bool get _perGlyph => animator == 'random_pop' || animator == 'scramble';
 
@@ -98,12 +103,23 @@ class GlyphTextPainter extends CustomPainter {
     }
     final glyphs = <_Glyph>[];
     if (_perGlyph) {
-      var offset = 0;
-      for (final r in text.runes) {
-        final len = r > 0xFFFF ? 2 : 1;
-        final boxes = face.getBoxesForSelection(TextSelection(baseOffset: offset, extentOffset: offset + len));
-        if (boxes.isNotEmpty) glyphs.add(_Glyph(r, boxes.first.toRect()));
-        offset += len;
+      // V2-F: whole clusters (base + virama + conjunct consonants + matras
+      // + nukta / anusvara), boxed by the union of their shaped glyphs.
+      for (final (a, b) in TextClusters.ranges(text)) {
+        final cluster = text.substring(a, b);
+        final boxes = face.getBoxesForSelection(TextSelection(baseOffset: a, extentOffset: b));
+        Rect? box;
+        for (final tb in boxes) {
+          final r = tb.toRect();
+          box = box == null ? r : box.expandToInclude(r);
+        }
+        if (box == null || box.isEmpty) {
+          // Shaped into a neighbour (rare ligatures): pin it at the caret.
+          if (cluster.trim().isEmpty) continue;
+          final o = face.getOffsetForCaret(TextPosition(offset: a), Rect.zero);
+          box = Rect.fromLTWH(o.dx, o.dy, 0, face.preferredLineHeight);
+        }
+        glyphs.add(_Glyph(cluster, box));
       }
     }
     final l = _Layout(face, edge, glyphs);
@@ -114,12 +130,12 @@ class GlyphTextPainter extends CustomPainter {
     return l;
   }
 
-  TextPainter _glyph(int rune, bool edge) {
-    final key = '${edge ? 'e' : 'f'}|$_styleKey|$rune';
+  TextPainter _glyph(String cluster, bool edge) {
+    final key = '${edge ? 'e' : 'f'}|$_styleKey|$cluster';
     final hit = _glyphs.remove(key);
     if (hit != null) return _glyphs[key] = hit;
     final tp = TextPainter(
-      text: TextSpan(text: String.fromCharCode(rune), style: edge ? _edgeStyle() : _faceStyle()),
+      text: TextSpan(text: cluster, style: edge ? _edgeStyle() : _faceStyle()),
       textDirection: TextDirection.ltr,
     )..layout();
     _glyphs[key] = tp;
@@ -150,7 +166,10 @@ class GlyphTextPainter extends CustomPainter {
     final origin = Offset(dx, (size.height - face.height) / 2);
     final (step, steps) = _extrudeSteps();
 
-    if (!_perGlyph) {
+    // V2-F: once every letter has settled the text is drawn as ONE shaped
+    // paragraph — pixel-identical to a plain text layer (conjuncts, matras
+    // and kerning intact).
+    if (!_perGlyph || TextFx.lettersSettled(local, duration)) {
       final edge = lay.edge;
       if (edge != null) {
         for (int k = steps; k >= 1; k--) {
@@ -164,19 +183,19 @@ class GlyphTextPainter extends CustomPainter {
     final n = lay.glyphs.length;
     for (int i = 0; i < n; i++) {
       final g = lay.glyphs[i];
-      if (String.fromCharCode(g.rune).trim().isEmpty) continue;
-      var rune = g.rune;
+      if (g.text.trim().isEmpty) continue;
+      var shown = g.text;
       var scale = 1.0;
       if (animator == 'random_pop') {
         final q = TextFx.randomPopProgress(i, n, local, duration, seed);
         if (q <= 0) continue;
         scale = _back(q);
       } else {
-        rune = TextFx.scrambleRune(g.rune, i, n, local, duration, seed);
+        shown = TextFx.scrambleCluster(g.text, i, n, local, duration, seed);
       }
       if (scale <= 0.001) continue;
       final box = g.box.shift(origin);
-      final tp = _glyph(rune, false);
+      final tp = _glyph(shown, false);
       final pos = Offset(box.left + (box.width - tp.width) / 2, box.top + (box.height - tp.height) / 2);
       final scaled = scale != 1.0;
       if (scaled) {
@@ -186,7 +205,7 @@ class GlyphTextPainter extends CustomPainter {
         canvas.translate(-box.center.dx, -box.center.dy);
       }
       if (extrude > 0) {
-        final ep = _glyph(rune, true);
+        final ep = _glyph(shown, true);
         for (int k = steps; k >= 1; k--) {
           ep.paint(canvas, pos + step * k.toDouble());
         }

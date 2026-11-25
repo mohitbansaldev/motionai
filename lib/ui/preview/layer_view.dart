@@ -9,6 +9,7 @@ import 'package:video_player/video_player.dart';
 import '../../core/engine/chroma.dart'; // CHROMA (Agent M)
 import '../../core/engine/evaluator.dart';
 import '../../core/engine/fx_math.dart';
+import '../../core/engine/text_clusters.dart'; // V2-F
 import '../../core/model/easing.dart';
 import '../../core/model/layer.dart';
 import '../../core/model/project.dart';
@@ -273,7 +274,7 @@ class LayerView extends StatefulWidget {
     Widget content;
     switch (t.animator) {
       case 'typewriter':
-        final n = (t.text.length * p).round();
+        final n = TextClusters.prefixEnd(t.text, (TextClusters.count(t.text) * p).round()); // V2-F: whole letters
         content = Text.rich(
           TextSpan(children: [
             TextSpan(text: t.text.substring(0, n)),

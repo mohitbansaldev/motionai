@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../engine/evaluator.dart';
+import '../engine/text_clusters.dart'; // V2-F
 import '../model/easing.dart'; // SCENE (Agent D)
 import '../model/layer.dart';
 import '../model/project.dart';
