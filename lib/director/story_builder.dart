@@ -4,6 +4,10 @@ import '../core/commands/edit_commands.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../core/presets/components.dart';
+import '../core/presets/motion_presets.dart';
+import '../core/presets/world_map.dart';
+import 'capabilities.dart';
+import 'chapters.dart';
 import 'sfx.dart';
 import '../services/captions.dart';
 
@@ -13,10 +17,40 @@ class Beat {
   String line;
   Map<String, dynamic> visual;
   bool keep = true;
-  Beat(this.start, this.end, this.line, this.visual);
+  int chapter; // Chapter.index
+  int lineIndex; // narration line (-1 = none)
+  String role; // '' | card (chapter title) | split (extra shot of a line) | interrupt
+  Beat(this.start, this.end, this.line, this.visual, {this.chapter = 0, this.lineIndex = -1, this.role = ''});
 
-  Map<String, dynamic> toJson() => {'start': start, 'end': end, 'line': line, 'visual': visual, if (!keep) 'keep': false};
+  double get length => end - start;
+
+  Map<String, dynamic> toJson() => {
+        'start': start,
+        'end': end,
+        'line': line,
+        'visual': visual,
+        if (!keep) 'keep': false,
+        if (chapter != 0) 'chapter': chapter,
+        if (lineIndex >= 0) 'li': lineIndex,
+        if (role.isNotEmpty) 'role': role,
+      };
+
+  static Beat fromJson(Map<String, dynamic> j) => Beat(
+        (j['start'] as num).toDouble(),
+        (j['end'] as num).toDouble(),
+        '${j['line'] ?? ''}',
+        Map<String, dynamic>.from(j['visual'] as Map? ?? const {'aroll': true}),
+        chapter: (j['chapter'] as num?)?.toInt() ?? 0,
+        lineIndex: (j['li'] as num?)?.toInt() ?? -1,
+        role: '${j['role'] ?? ''}',
+      )..keep = j['keep'] != false;
+
+  Beat copy({double? start, double? end, Map<String, dynamic>? visual, String? role}) =>
+      Beat(start ?? this.start, end ?? this.end, line, visual ?? Map<String, dynamic>.from(this.visual),
+          chapter: chapter, lineIndex: lineIndex, role: role ?? this.role)
+        ..keep = keep;
 }
+
 
 class BuildOptions {
   String? arollLayer; // talking-head layer id
@@ -31,6 +65,8 @@ class BuildOptions {
   CaptionOptions? captions;
   String? look; // MotionPresets style for B-roll
   String tag;
+  List<Chapter> chapters; // Director v2: per-chapter ids, looks and atmosphere
+  Capabilities? caps;
 
   BuildOptions({
     this.arollLayer,
@@ -45,6 +81,8 @@ class BuildOptions {
     this.captions,
     this.look,
     String? tag,
+    this.chapters = const [],
+    this.caps,
   }) : tag = tag ?? DateTime.now().millisecondsSinceEpoch.toRadixString(36);
 }
 
@@ -52,6 +90,10 @@ class BuildOptions {
 /// shots from cut-outs (text behind the subject), doc-kit components,
 /// presenter punch-ins, sound effects on cuts, music ducked under the voice,
 /// and captions. Pure Dart, so it is unit-tested.
+///
+/// With chapters (Director v2) every layer a chapter creates starts with
+/// `d<tag>c<chapter>_`, so one chapter can be rebuilt on its own
+/// ([rebuildChapter]); chapters carry their own look and atmosphere.
 class StoryBuilder {
   static const transitions = [
     'fade', 'zoom_in', 'zoom_out', 'slide_left', 'slide_right', 'whip', 'blur', 'pop', 'shatter',
@@ -65,7 +107,7 @@ class StoryBuilder {
   /// Components that are drawn over whatever is below (no backdrop needed).
   static const overlays = [
     'map', 'lower_third', 'cta', 'pin', 'route_arrow', 'map_pin', 'map_route', 'name_tag', 'character_label',
-    'arrow_callout', 'censor_bar', 'foreground_wipe',
+    'arrow_callout', 'censor_bar', 'foreground_wipe', 'needle_pin',
   ];
 
   /// Components that bring their own full-frame backdrop.
@@ -74,23 +116,40 @@ class StoryBuilder {
   /// True when this build knows the 3D scene ops (they come with the scene branch).
   static bool get has3d => EditCommands.ops.contains('make_3d') && EditCommands.ops.contains('camera_shot');
 
-  static List<Map<String, dynamic>> build(Project p, List<Beat> beats, BuildOptions o) {
+  static const _seaColors = {'dark': '#0B1622', 'paper': '#D9CDB4', 'blue': '#0E4A6B'};
+
+  /// Id prefix of everything built for [chapter].
+  static String chapterPrefix(String tag, int chapter) => 'd${tag}c${chapter}_';
+
+  /// Builds the storyboard. With [only], just that chapter's beats (no
+  /// music or captions) — see [rebuildChapter].
+  static List<Map<String, dynamic>> build(Project p, List<Beat> beats, BuildOptions o, {int? only}) {
     final comp = p.main;
     final w = comp.width, h = comp.height;
     final cmds = <Map<String, dynamic>>[];
-    final sfx = <(double, String)>[]; // (time of impact, kind)
-    final brollIds = <String>[];
-    final kept = beats.where((b) => b.keep).toList()..sort((a, b) => a.start.compareTo(b.start));
+    final chaptered = o.chapters.isNotEmpty;
+    final can3d = o.caps?.has3d ?? has3d;
+    final canParticles = o.caps?.particles ?? true;
+    final chapterById = {for (final c in o.chapters) c.index: c};
+    final sfx = <(double, String, int)>[]; // (time of impact, kind, chapter)
+    final brollIds = <int, List<String>>{}; // chapter → B-roll layers (for the look)
+    final atmos = <(double, double, String, int)>[]; // runs of (start, end, particles, chapter)
+    final kept = beats.where((b) => b.keep && (only == null || b.chapter == only)).toList()..sort((a, b) => a.start.compareTo(b.start));
     final aroll = o.arollLayer == null ? null : comp.layerById(o.arollLayer!);
     final arollScale = aroll?.prop(Props.scale).staticValue[0] ?? 100.0;
     var prevWasAroll = true;
-    var n = 0;
+    final counters = <int, int>{};
     var musicFrom = 0.0; // a title slam keeps the intro silent until its drop
+    String prefixOf(int ch) => chaptered ? chapterPrefix(o.tag, ch) : 'd${o.tag}_';
 
     for (final b in kept) {
       final v = b.visual;
       final dur = math.max(0.8, b.end - b.start);
-      final tag = 'd${o.tag}_${n++}';
+      final key = chaptered ? b.chapter : 0;
+      final n = counters[key] ?? 0;
+      counters[key] = n + 1;
+      final tag = '${prefixOf(b.chapter)}$n';
+      final broll = brollIds.putIfAbsent(b.chapter, () => []);
       var trans = transitions.contains(v['transition']) ? '${v['transition']}' : 'fade';
       if (trans == 'foreground_wipe') {
         // Something sweeps past the lens and hides the cut at the beat start.
@@ -111,10 +170,21 @@ class StoryBuilder {
             {'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': b.start + dur - f, 'value': [s1 * 1.02, s1 * 1.02, 100], 'ease': 'hold'},
             {'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': b.start + dur, 'value': [arollScale, arollScale, 100]},
           ]);
-          if (sfxKind != null && sfxKind != 'none') sfx.add((b.start, sfxKind));
+          if (sfxKind != null && sfxKind != 'none') sfx.add((b.start, sfxKind, b.chapter));
         }
         prevWasAroll = true;
         continue;
+      }
+
+      // ---------------------------------------------------- atmosphere (chapter mood or per shot)
+      final atm = v['atmosphere'] is String ? '${v['atmosphere']}' : chapterById[b.chapter]?.atmosphere;
+      final buildable = v['component'] == null || Components.types.contains(v['component']);
+      if (buildable && canParticles && atm != null && atm != 'none' && Capabilities.particleKinds.contains(atm) && v['component'] != 'title_slam') {
+        if (atmos.isNotEmpty && atmos.last.$3 == atm && atmos.last.$4 == b.chapter && b.start - atmos.last.$2 < 0.05) {
+          atmos[atmos.length - 1] = (atmos.last.$1, b.start + dur, atm, b.chapter);
+        } else {
+          atmos.add((b.start, b.start + dur, atm, b.chapter));
+        }
       }
 
       final media = v['media'] is String ? p.media[v['media']] : null;
@@ -122,7 +192,7 @@ class StoryBuilder {
       // ---------------------------------------------------- photo / video beats
       if (v['component'] == null && media != null && media.type != MediaType.audio) {
         var move = moves.contains(v['move']) ? '${v['move']}' : 'ken_burns';
-        if (moves3d.contains(move) && (!has3d || media.type != MediaType.image)) move = move == 'pull_back' ? 'pull_out' : 'push_in';
+        if (moves3d.contains(move) && (!can3d || media.type != MediaType.image)) move = move == 'pull_back' ? 'pull_out' : 'push_in';
         final cut = o.cutouts[media.id];
         if (moves3d.contains(move)) {
           final hasCut = cut != null && p.media[cut.$1] != null && p.media[cut.$2] != null;
@@ -134,11 +204,11 @@ class StoryBuilder {
           cmds.add({'op': 'animate_in', 'layer': ids.first, 'preset': trans, 'duration': 0.35});
           cmds.add({'op': 'make_3d', 'layers': ids, 'bands': hasCut ? {ids[0]: 'far', ids[1]: 'near'} : {ids[0]: 'mid'}, 'start': b.start});
           cmds.add({'op': 'camera_shot', 'move': move, 'target': ids.last, 'start': b.start, 'duration': dur});
-          brollIds.addAll(ids);
+          broll.addAll(ids);
           _overlays(cmds, v, tag, ids.last, b.start, dur);
         } else if (move == 'depth' && cut != null && p.media[cut.$1] != null && p.media[cut.$2] != null) {
           _depthShot(cmds, p, b.start, dur, tag, cut.$2, cut.$1, v['behind_text'] is String ? '${v['behind_text']}' : null, trans);
-          brollIds.addAll(['${tag}_bg', '${tag}_fg']);
+          broll.addAll(['${tag}_bg', '${tag}_fg']);
           _overlays(cmds, v, tag, '${tag}_fg', b.start, dur);
         } else {
           final id = '${tag}_m';
@@ -155,10 +225,11 @@ class StoryBuilder {
           cmds.addAll(_move(id, media, w, h, b.start, dur, move == 'depth' ? 'push_in' : move));
           cmds.add({'op': 'animate_in', 'layer': id, 'preset': trans, 'duration': trans == 'fade' ? 0.25 : 0.4});
           cmds.add({'op': 'add_effect', 'layer': id, 'effect': 'vignette', 'params': {'amount': 50}});
-          brollIds.add(id);
+          broll.add(id);
           _overlays(cmds, v, tag, id, b.start, dur);
         }
-        sfx.add((b.start, sfxKind ?? (prevWasAroll || trans != 'fade' ? 'whoosh' : 'none')));
+        if (v['flash'] == true) _flash(cmds, tag, b.start, w, h);
+        sfx.add((b.start, sfxKind ?? (prevWasAroll || trans != 'fade' ? 'whoosh' : 'none'), b.chapter));
         prevWasAroll = false;
         continue;
       }
@@ -179,7 +250,9 @@ class StoryBuilder {
         ..remove('sfx')
         ..remove('transition')
         ..remove('over_aroll')
-        ..remove('bg');
+        ..remove('bg')
+        ..remove('atmosphere')
+        ..remove('flash');
       if (args['media'] is String && p.media[args['media']] == null) args.remove('media');
       if (type == 'photo_card' && args['media'] == null) continue;
       if (type == 'title_slam') {
@@ -193,7 +266,19 @@ class StoryBuilder {
         final mv = args[k];
         if (mv is List) args[k] = [for (final e in mv) if (p.media['$e'] != null) '$e'];
       }
-      cmds.add({'op': 'add_component', 'type': type, 'id': tag, 'start': b.start, 'duration': dur, ...args});
+      if (type == 'map') {
+        _mapBeat(cmds, args, tag, b.start, dur, w, h);
+      } else if (type == 'map_fly' && args['map'] == null) {
+        // The scene branch's camera flight needs a map to fly over.
+        _mapBeat(cmds, {
+          'countries': [for (final k in ['from', 'to']) if (args[k] is String) args[k]],
+          'style': args['style'] ?? 'paper',
+        }, '${tag}_map', b.start, dur, w, h);
+        cmds.add({'op': 'add_component', 'type': type, 'id': tag, 'start': b.start, 'duration': dur, ...args, 'map': '${tag}_map'});
+      } else {
+        cmds.add({'op': 'add_component', 'type': type, 'id': tag, 'start': b.start, 'duration': dur, ...args});
+      }
+      if (v['flash'] == true) _flash(cmds, tag, b.start, w, h);
       sfx.add((
         b.start,
         sfxKind ??
@@ -204,25 +289,48 @@ class StoryBuilder {
               'scanner' => 'riser',
               'title_slam' || 'foreground_wipe' => 'none',
               _ => 'whoosh',
-            }
+            },
+        b.chapter,
       ));
       prevWasAroll = !needsBg;
     }
 
-    if (o.look != null && brollIds.isNotEmpty) {
-      cmds.add({'op': 'apply_style', 'style': o.look, 'layers': brollIds});
+    // ---------------------------------------------------- looks (per chapter when it has its own)
+    final looks = <String, List<String>>{};
+    for (final e in brollIds.entries) {
+      if (e.value.isEmpty) continue;
+      final own = chapterById[e.key]?.look ?? '';
+      final style = MotionPresets.styles.contains(own) ? own : o.look;
+      if (style != null) looks.putIfAbsent(style, () => []).addAll(e.value);
+    }
+    for (final e in looks.entries) {
+      cmds.add({'op': 'apply_style', 'style': e.key, 'layers': e.value});
+    }
+
+    // ---------------------------------------------------- atmosphere particles
+    final atmCount = <int, int>{};
+    for (final (t0, t1, kind, ch) in atmos) {
+      final k = atmCount[ch] ?? 0;
+      atmCount[ch] = k + 1;
+      final id = '${prefixOf(ch)}atm$k';
+      cmds.add({'op': 'add_layer', 'type': 'solid', 'id': id, 'name': 'Atmosphere $kind', 'color': '#00000000', 'width': w, 'height': h, 'position': [w / 2, h / 2, 0], 'start': t0, 'duration': math.max(0.5, t1 - t0)});
+      cmds.add({'op': 'add_effect', 'layer': id, 'effect': 'particles', 'params': {'kind': kind, 'amount': _atmAmount[kind] ?? 40, 'speed': 1}});
+      cmds.add({'op': 'set_property', 'target': id, 'prop': 'opacity', 'value': 75});
     }
 
     // ---------------------------------------------------- sound effects
     var lastSfx = -10.0;
-    var s = 0;
-    for (final (t, kind) in sfx) {
+    final sfxCount = <int, int>{};
+    for (final (t, kind, ch) in sfx) {
       final media = o.sfxMedia[kind];
       if (kind == 'none' || media == null || p.media[media] == null) continue;
       if (t - lastSfx < 0.6) continue;
       lastSfx = t;
       final start = math.max(0.0, t - Sfx.peak(kind));
-      final id = 'd${o.tag}_sfx${s++}';
+      final key = chaptered ? ch : 0;
+      final s = sfxCount[key] ?? 0;
+      sfxCount[key] = s + 1;
+      final id = chaptered ? '${prefixOf(ch)}sfx$s' : 'd${o.tag}_sfx$s';
       cmds.add({'op': 'add_layer', 'type': 'audio', 'media': media, 'id': id, 'name': 'SFX $kind', 'start': start, 'duration': Sfx.length(kind)});
       cmds.add({'op': 'set_property', 'target': id, 'prop': 'volume', 'value': (o.sfxLevel * 100).roundToDouble()});
     }
@@ -231,6 +339,7 @@ class StoryBuilder {
     var end = kept.isEmpty ? 0.0 : kept.map((b) => b.end).reduce(math.max);
     if (aroll != null) end = math.max(end, aroll.start + aroll.duration);
     if (end > comp.duration) cmds.add({'op': 'set_comp', 'duration': end});
+    if (only != null) return cmds;
 
     // ---------------------------------------------------- music, ducked under the voice
     final music = o.musicMedia == null ? null : p.media[o.musicMedia];
@@ -263,6 +372,99 @@ class StoryBuilder {
       cmds.addAll(CaptionMaker.fromWords(p, o.captionWords!, o.captions ?? CaptionOptions()));
     }
     return cmds;
+  }
+
+  static const _atmAmount = {'rain': 45, 'dust': 30, 'confetti': 55, 'leaves': 35, 'snow': 40, 'smoke': 25, 'bokeh': 35};
+
+  /// Commands that replace one chapter of an existing build: its old layers
+  /// and presenter punch-ins go, the chapter is built again, and the
+  /// captions stay on top. Run them as one batch (one Undo).
+  static List<Map<String, dynamic>> rebuildChapter(Project p, List<Beat> beats, BuildOptions o, int chapter) {
+    final comp = p.main;
+    final prefix = chapterPrefix(o.tag, chapter);
+    final cmds = <Map<String, dynamic>>[
+      for (final l in comp.layers)
+        if (l.id.startsWith(prefix)) {'op': 'remove_layer', 'layer': l.id},
+    ];
+    final mine = [for (final b in beats) if (b.chapter == chapter) b];
+    final aroll = o.arollLayer == null ? null : comp.layerById(o.arollLayer!);
+    if (aroll != null && mine.isNotEmpty) {
+      final scale = aroll.prop(Props.scale);
+      if (scale.isAnimated) {
+        final f = 1 / comp.fps;
+        final t0 = mine.map((b) => b.start).reduce(math.min), t1 = mine.map((b) => b.end).reduce(math.max);
+        for (final k in [...scale.keyframes]) {
+          if (k.time >= t0 - f * 0.5 && k.time <= t1 - f * 0.5) {
+            cmds.add({'op': 'remove_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': k.time});
+          }
+        }
+        final s = scale.staticValue[0];
+        cmds.add({'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': t0, 'value': [s, s, 100], 'ease': 'linear'});
+        cmds.add({'op': 'set_keyframe', 'target': aroll.id, 'prop': 'scale', 'time': t1 - f, 'value': [s, s, 100], 'ease': 'hold'});
+      }
+    }
+    cmds.addAll(build(p, beats, o, only: chapter));
+    final captions = [for (final l in comp.layers) if (l.id.startsWith('cap_')) l.id];
+    for (int i = 0; i < captions.length; i++) {
+      cmds.add({'op': 'reorder_layer', 'layer': captions[i], 'index': i});
+    }
+    return cmds;
+  }
+
+  /// A white flash over the cut (pattern interrupt).
+  static void _flash(List<Map<String, dynamic>> cmds, String tag, double t, double w, double h) {
+    final id = '${tag}_flash';
+    final t0 = math.max(0.0, t - 0.04);
+    cmds.addAll([
+      {'op': 'add_layer', 'type': 'solid', 'id': id, 'name': 'Flash', 'color': '#FFFFFF', 'width': w, 'height': h, 'position': [w / 2, h / 2, 0], 'start': t0, 'duration': 0.45},
+      {'op': 'set_keyframe', 'target': id, 'prop': 'opacity', 'time': t0, 'value': 100, 'ease': 'ease_out'},
+      {'op': 'set_keyframe', 'target': id, 'prop': 'opacity', 'time': t0 + 0.4, 'value': 0, 'ease': 'linear'},
+    ]);
+  }
+
+  /// A map beat: a sea under the map (the map's own ocean sits at the very
+  /// bottom, under a presenter), unknown countries dropped, and the
+  /// optional "route": [from, to] arrow and "pin": label on the focus.
+  static void _mapBeat(List<Map<String, dynamic>> cmds, Map<String, dynamic> args, String tag, double t0, double dur, double w, double h) {
+    final a = Map<String, dynamic>.from(args);
+    final route = a.remove('route');
+    final pin = a.remove('pin');
+    final loaded = WorldMap.loaded;
+    if (loaded) {
+      final cs = a['countries'];
+      if (cs is List) {
+        a['countries'] = [
+          for (final c in cs)
+            if (WorldMap.find(c is Map ? '${c['code'] ?? c['name']}' : '$c') != null) c,
+        ];
+      }
+      if (a['focus'] != null && WorldMap.find('${a['focus']}') == null) a.remove('focus');
+    }
+    final style = _seaColors.containsKey(a['style']) ? '${a['style']}' : 'dark';
+    cmds.add({'op': 'add_layer', 'type': 'solid', 'id': '${tag}_sea', 'name': 'Map sea', 'color': _seaColors[style], 'start': t0, 'duration': dur, 'width': w, 'height': h});
+    cmds.add({'op': 'add_component', 'type': 'map', 'id': tag, 'start': t0, 'duration': dur, ...a});
+    if (!loaded) return;
+    final zoomed = a['focus'] != null && a['zoom'] != false;
+    if (route is List && route.length >= 2 && dur > 1.6) {
+      final from = WorldMap.find('${route[0]}'), to = WorldMap.find('${route[1]}');
+      if (from != null && to != null && from != to) {
+        final s = t0 + math.min(zoomed ? 2.0 : 0.8, dur * 0.4);
+        cmds.add({
+          'op': 'add_component', 'type': 'map_route', 'id': '${tag}_rt', 'map': tag, 'start': s, 'duration': t0 + dur - s,
+          'from': [from.labelLat, from.labelLon], 'to': [to.labelLat, to.labelLon], 'color': '#FF3B30',
+        });
+      }
+    }
+    if (pin is String && pin.trim().isNotEmpty && a['focus'] != null) {
+      final c = WorldMap.find('${a['focus']}');
+      if (c != null) {
+        final s = t0 + math.min(zoomed ? 2.8 : 0.6, dur * 0.6);
+        cmds.add({
+          'op': 'add_component', 'type': 'map_pin', 'id': '${tag}_pin', 'map': tag, 'start': s, 'duration': t0 + dur - s,
+          'lat': c.labelLat, 'lon': c.labelLon, 'label': pin.trim(),
+        });
+      }
+    }
   }
 
   static double _pct(double g) => (g * 1000).roundToDouble() / 10;
