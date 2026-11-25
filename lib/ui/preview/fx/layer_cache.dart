@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/rendering.dart';
+import 'package:flutter/rendering.dart' hide Layer;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -91,21 +91,11 @@ class LayerSig {
 
   /// True when caching [l] as an image is worth it: anything but a bare
   /// image / solid (those already draw as one quad).
-  static bool worthRaster(Layer l) {
-    switch (l.type) {
-      case LayerType.video:
-      case LayerType.comp:
-      case LayerType.audio:
-      case LayerType.nullObject:
-        return false;
-      case LayerType.image:
-      case LayerType.solid:
-        return l.masks.isNotEmpty || l.effects.any((e) => e.enabled && e.type != 'motion_blur');
-      case LayerType.text:
-      case LayerType.shape:
-        return true;
-    }
-  }
+  static bool worthRaster(Layer l) => switch (l.type) {
+        LayerType.video || LayerType.comp || LayerType.audio || LayerType.nullObject => false,
+        LayerType.image || LayerType.solid => l.masks.isNotEmpty || l.effects.any((e) => e.enabled && e.type != 'motion_blur'),
+        LayerType.text || LayerType.shape => true,
+      };
 
   /// Largest on-screen magnification of a layer: composition px per layer
   /// px along its longest projected edge (handles perspective foreshortening).

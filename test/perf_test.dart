@@ -8,7 +8,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
+import 'package:flutter/rendering.dart' hide Layer;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:motionai/core/commands/edit_commands.dart';
 import 'package:motionai/core/engine/evaluator.dart';
