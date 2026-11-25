@@ -6,6 +6,7 @@ import '../../core/engine/evaluator.dart';
 import '../../core/model/project.dart';
 import '../../state/video_pool.dart';
 import 'fx/offscreen.dart';
+import 'fx/datahud_fx.dart'; // V3-C
 import 'layer_view.dart';
 import 'precomp_view.dart'; // PRECOMP (Agent L)
 
@@ -75,6 +76,22 @@ class CompositionCanvas extends StatelessWidget {
         continue;
       }
       // <<< V2-D
+      // V3-C >>> blend modes (screen / add / multiply / lighten …) over everything below
+      final blend = item.matte == null ? LayerBlend.of(item.layer.blendMode) : null;
+      if (blend != null && children.isNotEmpty) {
+        final below = Stack(clipBehavior: Clip.none, children: List.of(children));
+        children
+          ..clear()
+          ..add(Positioned.fill(
+              key: ValueKey('${item.layer.id}#blend'),
+              child: BlendComposite(
+                  mode: blend,
+                  resolution: draft ? 0.5 : 1.0,
+                  below: below,
+                  top: Stack(clipBehavior: Clip.none, children: [_view(item, ValueKey(item.layer.id))]))));
+        continue;
+      }
+      // <<< V3-C
       final matte = item.matte;
       if (matte == null) {
         children.add(_view(item, ValueKey(item.layer.id)));

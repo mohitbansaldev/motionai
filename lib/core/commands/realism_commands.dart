@@ -9,6 +9,7 @@ import '../model/project.dart';
 import '../presets/realism.dart';
 import '../presets/scene3d.dart';
 import 'edit_commands.dart';
+import 'v3_fx_commands.dart'; // V3-D
 
 /// V2-D realism commands, called from [EditCommands] through small hooks:
 /// `match_colour`, `camera_shake`, `set_dof`, looks for `apply_style`,
@@ -166,6 +167,7 @@ class RealismCommands {
   // ----------------------------------------------------------------- set_dof
 
   static String setDof(Composition comp, Map<String, dynamic> c) {
+    if (c['keys'] != null) return V3FxCommands.dofKeys(comp, c); // V3-D: keyframed rack focus
     final rig = comp.camera;
     final focus = c['focus'];
     if (c['enabled'] == false || focus == 'off' || focus == false) {

@@ -5,6 +5,7 @@ import '../model/easing.dart';
 import '../model/effects_catalog.dart';
 import '../model/layer.dart';
 import '../model/project.dart';
+import 'fx_animators.dart'; // V3-D
 
 /// Layer in/out animations (transitions) and one-tap looks (styles).
 class MotionPresets {
@@ -12,6 +13,7 @@ class MotionPresets {
     'fade', 'zoom_in', 'zoom_out', 'slide_left', 'slide_right', 'slide_up', 'slide_down',
     'blur', 'spin', 'pop', 'whip', 'shatter',
     'iris', 'ink', 'smoke', 'flash', 'glitch_flash',
+    ...FxAnimators.presets, // V3-D: punch_in, swing_in, exposure_in
   ];
 
   static String transitionLabel(String t) => const {
@@ -32,6 +34,9 @@ class MotionPresets {
         'smoke': 'Smoke',
         'flash': 'Flash',
         'glitch_flash': 'Glitch Flash',
+        'punch_in': 'Punch In', // V3-D
+        'swing_in': 'Swing In', // V3-D
+        'exposure_in': 'Sun Glare', // V3-D
       }[t] ??
       t;
 
@@ -40,6 +45,12 @@ class MotionPresets {
     if (!transitions.contains(preset)) {
       throw ArgumentError('Unknown transition "$preset". Available: ${transitions.join(', ')}');
     }
+    // V3-D >>> punch_in / swing_in / exposure_in (fx_animators.dart)
+    if (FxAnimators.handles(preset)) {
+      FxAnimators.animate(comp, layer, preset, isIn: isIn, duration: duration);
+      return;
+    }
+    // <<< V3-D
     final d = math.min(duration, layer.duration / 2).clamp(comp.frameDuration, 10.0);
     final tA = isIn ? layer.start : layer.end - d; // animation start
     final tB = isIn ? layer.start + d : layer.end - comp.frameDuration; // animation end

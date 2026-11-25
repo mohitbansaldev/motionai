@@ -13,6 +13,7 @@ import '../../../core/presets/realism.dart'; // V2-D
 import '../shape_painter.dart';
 import 'offscreen.dart';
 import 'realism_painters.dart'; // V2-D
+import 'text_fx_v3.dart'; // V3-C
 
 /// Live-preview caching for layers (Agent O, performance).
 ///
@@ -36,6 +37,7 @@ class LayerSig {
     'grunge', 'silhouette', 'mono', 'duotone', 'edge_blur', 'motion_blur', 'curve', 'glass_frame', 'torn_edge',
     'reveal', 'flash',
     ...Realism.paramFx, // V2-D
+    'disintegrate', // V3-C
   };
 
   static int _prop(AnimProp p, double t) => Object.hashAll(p.isAnimated ? p.valueAt(t) : p.staticValue);
@@ -60,6 +62,7 @@ class LayerSig {
     }
     final c = d.counter;
     if (c != null) h = Object.hash(h, c.valueAt(t));
+    h = Object.hash(h, V3TextFx.sig(l, d, t)); // V3-C
     return h;
   }
 

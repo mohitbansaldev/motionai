@@ -33,7 +33,13 @@ class EffectDef {
 /// Particle kinds for the `particles` effect (stored as an index).
 const List<String> kParticleKinds = [
   'confetti', 'leaves', 'stars', 'rain', 'snow', 'smoke', 'dust', 'bokeh', 'streaks', 'birds', 'clouds',
+  'debris', 'snow_spray', 'ice', // V3-D
 ];
+
+// V3-D >>> `burst` effect choices (powder_burst / debris_burst transitions)
+const List<String> kBurstKinds = ['snow', 'dust', 'sand', 'ash', 'ice', 'glass', 'cloud', 'leaves'];
+const List<String> kBurstOrigins = ['right', 'left', 'center', 'top', 'bottom', 'top_left', 'top_right', 'bottom_left', 'bottom_right'];
+// <<< V3-D
 
 /// Effects available in the editor. Each one is implemented by the
 /// preview renderer (lib/ui/preview/layer_view.dart and lib/ui/preview/fx/).
@@ -137,7 +143,7 @@ class EffectsCatalog {
       ParamDef('amount', 'Amount', [40], 0, 100),
     ], category: 'stylize'),
     EffectDef('particles', 'Particles', [
-      ParamDef('kind', 'Kind', [0], 0, 10, options: kParticleKinds),
+      ParamDef('kind', 'Kind', [0], 0, 13, options: kParticleKinds), // V3-D: max 13 (debris, snow_spray, ice)
       ParamDef('amount', 'Amount', [50], 0, 100),
       ParamDef('speed', 'Speed', [1], 0, 5),
       ParamDef('color', 'Color', [255, 255, 255], 0, 255, color: true),
@@ -239,6 +245,93 @@ class EffectsCatalog {
       ParamDef('flicker', 'Flicker', [25], 0, 100),
     ], category: 'atmosphere'),
     // <<< V2-D
+    // V3-A >>> satellite map base (lib/ui/preview/fx/map_texture.dart; bundled NASA Blue Marble, public domain)
+    EffectDef('map_texture', 'Map Texture (satellite)', [
+      ParamDef('amount', 'Opacity', [100], 0, 100),
+    ], category: 'stylize'),
+    // <<< V3-A
+    // V3-D >>> transitions, mood & character FX (lib/ui/preview/fx/v3_fx_painters.dart)
+    EffectDef('burst', 'Debris / Powder Burst', [
+      ParamDef('kind', 'Kind', [0], 0, 7, options: kBurstKinds),
+      ParamDef('origin', 'From', [0], 0, 8, options: kBurstOrigins),
+      ParamDef('density', 'Density', [80], 0, 100),
+      ParamDef('color', 'Color', [255, 255, 255], 0, 255, color: true),
+      ParamDef('cut', 'Full cover at (s after layer start)', [0.4], 0, 30),
+      ParamDef('rise', 'Burst time (s)', [0.3], 0.02, 5),
+      ParamDef('hold', 'Full cover (s)', [0.08], 0, 2),
+      ParamDef('clear', 'Clearing (s)', [0.25], 0.02, 5),
+      ParamDef('linger', 'Flakes linger (s)', [0.3], 0, 5),
+      ParamDef('pre_roll', 'Sparse lead-in (s)', [0], 0, 5),
+      ParamDef('cover', 'Peak cover', [100], 0, 100),
+    ], category: 'reveal'),
+    EffectDef('radial_blur', 'Radial (Zoom) Blur', [
+      ParamDef('amount', 'Amount', [0], 0, 100),
+      ParamDef('cx', 'Center X %', [50], 0, 100),
+      ParamDef('cy', 'Center Y %', [50], 0, 100),
+    ], category: 'blur'),
+    EffectDef('holes', 'Burn Holes', [
+      ParamDef('progress', 'Progress', [0], 0, 100),
+      ParamDef('count', 'Holes', [45], 5, 120),
+      ParamDef('size', 'Largest hole % of width', [10], 1, 40),
+      ParamDef('rim', 'Rim color', [96, 50, 18], 0, 255, color: true),
+    ], category: 'reveal'),
+    EffectDef('frost', 'Frost Crystals', [
+      ParamDef('progress', 'Progress', [0], 0, 100),
+      ParamDef('corner', 'Grows from', [0], 0, 4, options: ['top_left', 'top_right', 'bottom_left', 'bottom_right', 'center']),
+      ParamDef('color', 'Color', [225, 242, 255], 0, 255, color: true),
+    ], category: 'reveal'),
+    EffectDef('cracks', 'Cracks', [
+      ParamDef('progress', 'Progress', [0], 0, 100),
+      ParamDef('cx', 'Impact X %', [55], 0, 100),
+      ParamDef('cy', 'Impact Y %', [45], 0, 100),
+      ParamDef('color', 'Color', [235, 245, 255], 0, 255, color: true),
+    ], category: 'reveal'),
+    EffectDef('threshold', 'Threshold (B&W)', [
+      ParamDef('level', 'Level', [50], 0, 100),
+      ParamDef('softness', 'Softness', [10], 0, 100),
+      ParamDef('amount', 'Amount', [100], 0, 100),
+    ], category: 'color'),
+    EffectDef('red_paint', 'Red Paint Strokes', [
+      ParamDef('amount', 'Amount', [70], 0, 100),
+      ParamDef('color', 'Color', [200, 16, 26], 0, 255, color: true),
+    ], category: 'stylize'),
+    EffectDef('lightning', 'Lightning', [
+      ParamDef('flash', 'Sky flash', [0], 0, 100),
+      ParamDef('bolt', 'Bolt', [0], 0, 100),
+      ParamDef('x', 'Bolt X %', [62], 0, 100),
+      ParamDef('variant', 'Bolt shape', [0], 0, 99),
+      ParamDef('color', 'Color', [221, 230, 255], 0, 255, color: true),
+    ], category: 'atmosphere'),
+    EffectDef('slices', 'Slice Bands', [
+      ParamDef('progress', 'Progress', [100], 0, 100),
+      ParamDef('bands', 'Bands', [4], 2, 12),
+      ParamDef('stagger', 'Stagger', [30], 0, 100),
+    ], category: 'reveal'),
+    EffectDef('slant_wipe', 'Slant Wipe', [
+      ParamDef('progress', 'Progress', [100], 0, 100),
+      ParamDef('angle', 'Slant °', [10], -45, 45),
+      ParamDef('side', 'Enters from', [0], 0, 3, options: ['left', 'right', 'top', 'bottom']),
+      ParamDef('softness', 'Softness', [0], 0, 100),
+      ParamDef('edge', 'Edge highlight', [0], 0, 100),
+    ], category: 'reveal'),
+    EffectDef('slide_mount', 'Slide Mount (35 mm)', [
+      ParamDef('color', 'Mount color', [236, 228, 206], 0, 255, color: true),
+      ParamDef('print', 'Print color', [200, 40, 140], 0, 255, color: true),
+      ParamDef('window', 'Window % of the mount', [78], 30, 95),
+      ParamDef('number', 'Frame number', [12], 0, 99),
+    ], category: 'stylize'),
+    EffectDef('puff', 'Cartoon Puff', [
+      ParamDef('amount', 'Size', [100], 0, 200),
+      ParamDef('color', 'Color', [255, 255, 255], 0, 255, color: true),
+    ], category: 'reveal'),
+    // <<< V3-D
+    // V3-C >>> (lib/ui/preview/fx/datahud_fx.dart)
+    EffectDef('disintegrate', 'Disintegrate (pixel break-up)', [
+      ParamDef('progress', 'Progress', [0], 0, 100),
+      ParamDef('size', 'Block size px', [14], 2, 120),
+      ParamDef('drift', 'Drift', [50], 0, 100),
+    ], category: 'reveal'),
+    // <<< V3-C
   ];
 
   static const categories = ['keying', 'color', 'blur', 'stylize', 'distort', 'atmosphere', 'reveal']; // CHROMA (Agent M): + keying

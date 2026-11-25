@@ -126,6 +126,14 @@ class FontCatalog {
         dir: 'robotomono', files: ['RobotoMono-VariableFont_wght.ttf'], minWeight: 100, maxWeight: 700,
         devanagariMatch: 'Noto Sans Devanagari',
         use: 'Code, data readouts, scramble/decode text'),
+    // V3-C >>> HUD / comic
+    FontInfo('Share Tech Mono', FontCategory.mono,
+        dir: 'sharetechmono', files: ['ShareTechMono-Regular.ttf'], devanagariMatch: 'Noto Sans Devanagari',
+        use: 'Digital clock / date stamps, VCR timestamps, HUD readouts'),
+    FontInfo('Comic Neue', FontCategory.display,
+        dir: 'comicneue', files: ['ComicNeue-Regular.ttf', 'ComicNeue-Bold.ttf'], maxWeight: 700, devanagariMatch: 'Baloo 2',
+        use: 'Comic speech bubbles and playful dialogue'),
+    // <<< V3-C
     // ---- sans
     FontInfo('Inter', FontCategory.sans,
         dir: 'inter', files: ['Inter-VariableFont_opsz_wght.ttf'], minWeight: 100, maxWeight: 900, devanagariMatch: 'Mukta',
@@ -134,7 +142,7 @@ class FontCatalog {
         dir: 'montserrat', files: ['Montserrat-VariableFont_wght.ttf'], minWeight: 100, maxWeight: 900, devanagariMatch: 'Mukta',
         use: 'Wide geometric titles, YouTube-style captions'),
     FontInfo('Poppins', FontCategory.sans,
-        dir: 'poppins', files: ['Poppins-Regular.ttf', 'Poppins-Bold.ttf', 'Poppins-Black.ttf'], scripts: _both, maxWeight: 900,
+        dir: 'poppins', files: ['Poppins-Regular.ttf', 'Poppins-Bold.ttf', 'Poppins-ExtraBold.ttf' /* V3-C */, 'Poppins-Black.ttf'], scripts: _both, maxWeight: 900,
         use: 'Bold captions in Hinglish (covers Devanagari)'),
     // ---- Devanagari (all also cover Latin)
     FontInfo('Noto Sans Devanagari', FontCategory.devanagari,
@@ -179,6 +187,9 @@ class FontCatalog {
     'title': 'Anton',
     'hindi': 'Mukta',
     'devanagari': 'Mukta',
+    'digital': 'Share Tech Mono', // V3-C
+    'vcr': 'Share Tech Mono', // V3-C
+    'comic': 'Comic Neue', // V3-C
   };
 
   static final Map<String, FontInfo> _byKey = {for (final f in all) _key(f.family): f};

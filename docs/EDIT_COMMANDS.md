@@ -272,3 +272,135 @@ Multiply / recolour marks on screenshots are drawn as a copy of the page (same m
 with a `duotone` (dark → black, light → the ink colour for multiply; dark → the colour for text_color) revealed by
 an animated rect mask (brush: a jagged shape used as a track matte), so the text stays crisp and dark under the ink.
 <!-- <<< V3-B -->
+
+## V3-A: maps & geo (documentary map grammar)
+
+All of these are one command = one undo step. The geo ops are also
+`add_component` types (`{"op":"status_ring",...}` ==
+`{"op":"add_component","type":"status_ring",...}`). Sizes ≤ 1 are a
+fraction of the frame height, larger numbers are pixels. Map places are
+`[lat, lon]`, `{lat, lon}` or a country name / ISO code.
+
+| op / component | fields | when to use |
+|---|---|---|
+| `map` `style: "satellite"` | `countries` [name \| ISO \| `{code, fill, label, at, label_rotate}`], `focus`, `bounds` `[[lat,lon],[lat,lon]]`, `zoom`, `fill_opacity` (0.62), `stroke_width` (screen px, 1.6), `label_size` (0.06), `label_opacity`, `label_rotate` (`"auto"` default on satellite \| degrees \| 0), `label_animator` (`pop` 120→100 % in 0.25 s \| `typewriter` \| `fade_up`), `label_stagger` (0.6 s), `focus_dim` (60), `cities` `[{name, lat, lon, at, side}]`, `tilt` (+ `tilt_at`, `roll`), `zoom_rotation` (degrees turned during the zoom; map-only shots), `texture_opacity`, `border_width` | a country/city is named: reveal it on the word with `at` |
+| `map_pin` `tag_style: "box"` | `map`?, `lat`, `lon` \| `country`, `label`, `side`, `label_size` | a city/site is named (white box, black caps, constant screen size) |
+| `route_follow` | `from`, `to`, `map`?, `style` (satellite), `arrow_head` (true), `line_style` (`solid` \| `dashed`), `draw` (2.2 s), `vehicle` (cut-out id, faces right), `orient` (true), `vehicle_angle`, `vehicle_size`, `trail_fade` (true \| 0..1), `land_highlight` (`{fill, label}` \| false), `from_highlight`, `label` + `label_at` (0.5) + `follow_tangent` (true), `follow` (0.35), `push` (0.08), `fill` (0.62) | "went from X to Y": white arc draws A→B, map keeps the tip in frame, B fills + label pops on arrival |
+| `map_route` | `map`, `from`, `to`, `label`, `label_at`, `follow_tangent`, `line_style`, `arrow_head`, `draw`, `line_width`, `label_size` | travel time / distance label ("11 MINS") wiping in along the arc |
+| `camera_move` `preset: "punch_in"` | `point` [x,y] \| `target` layer, `amount` (×2.6), `duration` (0.45), `start`, `ease` (ease_in), `layer` \| `map` (punch a layer / map group instead of the 2D camera — required when the camera is 3D), `center`, `blur` (true), `sound` (true \| sfx kind \| false) | emphasis / right before a twist (motion blur + whoosh) |
+| `map_tilt` | `map`?, `tilt` (38), `roll` (−10), `at`, `duration` (0.6), `scale` | mountains, rivers, borders: the map pitches back in 3D (moved into precomp `<map>_tilt`, comp layer `<map>_tilted`; later map ops on it need `in_comp`) |
+| `terrain_label` | `map`?, `text`, `along` `[[lat,lon],…]`, `size` (0.045), `spread` (0.8), `stagger`, `glyphs` (`peaks` \| `none`), `opacity` | a mountain range / river / border is named (letters along the feature + peak hatches) |
+| `map_watermark` | `map`?, `code`, `text`, `size` (0.35), `opacity` (60), `rotate` (`auto` \| degrees) | establishing the country: giant ghost word along its axis |
+| `status_ring` | `attach` \| `lat`+`lon` \| `x`,`y` \| `at`, `size` (0.06), `color` (#D0202A), `dashed`, `dashes`, `spin` (4 s/turn), `glow` | marking the tracked vehicle / subject |
+| `signal_rings` | `attach` \| place \| point, `color` (red), `count` (3), `period` (0.75), `flatten` (0.35), `max_radius` (0.12), `opacity`, `delay` | radio calls, distress signals |
+| `pulse_rings` | same; white, 4 rings, 1.2 s, round | "here", epicentre, a location pinging |
+| `geo_label` | `text`, `at` [x,y] (comp px) \| `lat`+`lon` \| `at:{lat,lon}` \| `attach`, `pointer` (`hook` \| `line` \| `none`), `side`, `length`, `size` (0.04), `animator` (typewriter), `color` | a specific spot on the ground ("CRASH SITE") |
+| `path_text` | `text`, `path_layer` (shape layer with points) \| `points`, `offset`, `size`, `spacing`, `lift`, `typing` (true), `cps` (14), `color` | naming a planned route along a (dashed) line |
+| `search_sweep` | `place`, `label`, `vehicle` (top-down cut-out, else vector helicopter), `ground` (media, else slate snow), `beam_size` (0.12), `path` [[x,y] 0..1], `snow` (true), `duration` (4.5) | "a search began over X" |
+| `sketch_map` | `items` `[{icon: mountain\|camp\|crash\|x\|river\|dot, x, y, label, arrow, at}]`, `compass` (`{x, y, size, heading:[{at, deg}]}` \| false), `directions` `[{label, side, at, reveal: photo}]`, `paper`, `duration` (7) | directions / "which way": parchment sketch, chrome compass, red block arrows, photo reveals |
+
+The satellite texture is NASA Blue Marble (public domain), bundled as
+`assets/maps/blue_marble_dark.jpg` (4096×2048, ocean graded dark teal) and
+drawn by the `map_texture {amount}` effect on the map's `<id>_sat` layer.
+If it cannot be loaded the dark vector map underneath stays visible.
+<!-- V3-D >>> -->
+## V3-D: transitions, mood & character FX (documentary patterns 35–54)
+
+New `transition` types (same op, same rules as V2-C: one undo step, eased keys, helper layers `tr_<to>_*`, default SFX peak on the cut; `sequence` picks them up too):
+
+| type | params | when to use |
+|---|---|---|
+| `powder_burst` | `direction` right/left/center/top/bottom, `kind` snow/dust/sand/ash, `color`, `density` 80, `linger` 0.3 | signature cut for snowy/desert stories, in/out of the presenter; full cover 2–3 frames at the cut, flakes linger (powder_whoosh) |
+| `debris_burst` | `kind` ice/snow/cloud/glass/dust/leaves, `from` (9 origins), `pre_roll` 1.2, `peak_cover` 100, `tail` 0.5, `tone`, `density` | the most frequent scene change: sparse shards, dense burst toward the lens, clears over the next shot (ice_crash) |
+| `frost_shatter` | `corner` | cold/ice stories: frost grows from a corner, then the shot shatters with a radial blur |
+| `zoom_blur` | `zoom` 2.5, `flash`, `grain`, `cx`, `cy` | evidence → reenactment, macro → presenter, leaving an archive photo |
+| `eye_reflection` | `point` (pupil), `size` (15% w), `opacity` 70, `linger` 0.8 | event → witness reaction; incoming eye ECU pulls back 5× → 1× |
+| `holes` | `count` 45, `size` 10, `rim` | harsh exit from a gruesome still |
+| `shatter` | `tone` glass/ice/gold, `lead_in` 1.0, `shard_color`, `cx`, `cy` | impact: cracks spread, then the break |
+| `slice` | `bands` 4, `stagger` 30 | fast topic changes |
+| `slant_wipe` | `direction` (enters from), `angle` 10, `edge` 60 | a slanted panel slides in, the old shot compresses aside |
+| `shrink_to_card` | `size` 0.45, `bg` grunge_red/none, `tilt`, `hold` 1.5, `border` | footage becomes an evidence card over the next shot |
+| `emerge` | `target` / `point`, `from` 0.05 | next card grows out of a point/layer |
+| `zoom_out_of_photo` | `layer` (photo in the incoming shot / precomp) or `photo_box` [x0,y0,x1,y1] or `point`+`size` | pull back from a full-frame photo into the article/book it is in |
+| `slide_film` | `size` 0.55, `pink` 30 | reconstruction → real archive photo (35 mm slide carousel) |
+| `exposure_in` | `from` 3.0, `color` | sun-glare entry |
+| `punch_in` | — | presenter return: 150% blurred → 100% in 0.25 s |
+| `cut_to_black` | `silence` true (duration = black hold) | crash → black + silence |
+| `ink_bleed` | + `incoming`: "duotone_of_outgoing" (no `to` = split the outgoing at `at`) | turning point: navy duotone of the same image |
+
+Ops (lib/core/commands/v3_fx_commands.dart):
+
+| op | fields | when to use |
+|---|---|---|
+| `mood_flood` | `at`, `duration` 0.9, `hold` 2.5, `color` "#E0283A", `dark` "#5A0A10", `from` corner, `keep` [ids], `sfx` "braam" | dread/despair/negative twist: red monochrome ink flood from a corner, kept layers stay in colour (copies above the flood), hard end |
+| `tint_wipe` | `at`, `color`, `amount` 70, `from`, `duration` 0.6, `hold` 2 | a colour mood sweeping across |
+| `grade_swap` | `to` hope/warm/cold/dread/archive/normal, `at`, `duration` (0 = snap), `until` | story turns (hope = saturated green/warm); ends a running grade_swap |
+| `spotlight_subject` | `keep` [ids], `layers` / `shot`, `others` {mono 100, dim 15, blur}, `tint` {color, amount}, `start`, `duration` 3, `attack` 0.25, `release` 0.5 | one person among many, injury/danger |
+| `pulse` | `layer`, `effect` (tint default) / `prop`, `param`, `from`, `to`, `period` 1, `start`, `duration` 3, `sync` [ids], `sfx` | red pain pulse, blinking, heartbeat |
+| `cut_to_black` | `at`, `hold` 1.5, `silence` true, `sfx` "impact" | crash → black + silence |
+| `lightning` | `at` s or [s…], `bolt` true, `x` 0.62, `color`, `sfx` "thunder" | storms, shock flashes |
+| `montage` | `media` [ids], `start`, `every` 0.35, `looks` [threshold, duotone_green, red_paint, magenta, grunge, crop], `zoom` 8, `sound` | one-breath recap before the presenter |
+| `swap_layer` | `layer`, `with` (layer or media id), `at`, `transition` pop/cut/fade/flash, `duration`, `sfx` | an object/photo changes in place |
+| `set_dof` | + `keys` [{`t`, `focus` px or 3D layer id}] | keyframed rack focus |
+
+`animate_in` / `animate_out` presets: `punch_in`, `swing_in` {`rotation` 20, `scale_from` 2.5, `background` layer id blurred → sharp}, `exposure_in` {`from` 3.0, `color`}.
+
+`speech_bubble` (add_component): `text` or `messages` [{`text`, `at`}], `style` comic/clean/radio (`classic` = the V1 bubble), `tail_to` [x,y] or layer id, `attach` layer id (parented, follows it), `cps` 30, `type_delay` 0.15, `caps` true, `exit` pop/puff/fade/none, `blink` period, `auto_fade`, `sound` (pop / radio_crackle + typing + puff). Pops 0 → 110 → 100 % in 0.2 s; Comic Neue (OFL, assets/fonts/comicneue) for comic.
+
+Effects: `burst` (powder/debris engine: kind, origin, density, color, cut/rise/hold/clear/linger/pre_roll in s after the layer start, cover), `radial_blur` {amount, cx, cy}, `holes` {progress, count, size, rim}, `frost` {progress, corner, color}, `cracks` {progress, cx, cy, color}, `threshold` {level, softness, amount}, `red_paint` {amount, color}, `lightning` {flash, bolt, x, variant, color}, `slices` {progress, bands, stagger}, `slant_wipe` {progress, angle, side, softness, edge}, `slide_mount` {color, print, window, number}, `puff` {amount, color}. Particle kinds + `debris`, `snow_spray`, `ice`. Sounds + `thunder`, `powder_whoosh`, `ice_crash`, `puff`, `marker`, `radio_crackle`.
+<!-- <<< V3-D -->
+<!-- V3-C >>> -->
+## V3-C: data, HUD & overlays (documentary pattern library 21–34, 61–64)
+
+All are `add_component` types (one undo step, group `<id>_g`, children `<id>_<part>`); common keys `id`, `start`,
+`duration` (5; social_cta/bug: 0.4 + hold + 0.3), `x`, `y`, `scale`, `sfx` (false = no sounds). Sizes ≤ 1.5 are fractions
+of the frame where noted. Code: `lib/core/presets/components_datahud.dart`, icons `vector_icons.dart`, flags `flags.dart`.
+
+| type | keys (defaults) | when |
+|---|---|---|
+| `unit_chart` | `total_label`, `groups` [{`count`, `color`, `label`, `at`}], `icon` (person; seat or any vector icon or media id), `cols` (10), `area` [x0,y0,x1,y1] (0..1), `stagger` (0.03), `label_x` | total + breakdown (label fades in from a blur, pictograms pop row by row 0→115→100 %, group number + 2-line label at the left at `at`) |
+| `people_grid` | `total` (16), `alive` (6), `alive_color` #C62828, `dead_color` #8A8A8A, `dead` fade/grey/x, `dead_at` (1.6), `rows` (2), `names` [{name, role}] (3 cols, top 35 %), `count_text`, `count_at`, `media` (20 % mono underlay), `alive_index` | survivor / casualty tallies |
+| `stat_figure` | `icon` (scale; money, clock, fuel, media), `from`, `to`, `steps` (6), `step_time` (0.25) or `count` (total s), `label`, `unit`, `prefix`, `decimals`, `figure` human/media/none, `color_from` #FFFFFF, `color_to` #E53935, `delay` (0.6) | a value changing over time (number rolls up step by step and turns red, silhouette tints grey → red) |
+| `calendar_flip` | `from` (1), `to` (72), `rate` (4 pages/s), `header_color` #E0245E, `label` CALENDAR, `size` (0.2 w), `tilt` [50,0,-20], `caption`, `max_pages` (40) | durations in days ("kitne din?") — 3D tear-off pages flip over the binding (paper sfx) |
+| `clock_stamp` | `lines` [text or {text, at}], `x` (0.045 w), `y`, `size` (0.058 h), `cps` (13), `blink_colon` (true, 1 Hz), `retype` [{text, at, line?}], `darken_below` (0.3), `persist`, `font` (Share Tech Mono), `italic` (true) | exact date / time / day count spoken |
+| `clock_overlay` | `opacity` (30), `scale` (140), `spin` (1 minute-hand turn/s; hour hand 1/12), `style` face/line, `enter` fade/rise, `glow`, `numerals`, `blend`, `sfx` (clock_tick bed) | a duration passing behind a stat |
+| `split_screen` | `orientation` vertical/horizontal/diagonal, `angle` (10 for diagonal), `a`/`b` {`media` or `layer` (gets a track matte), `label`, `value`, `value_text`, `unit`, `note`, `color`, `bar_color`}, `max`, `divider` {color #FFE000, width}, `middle` (cut-out media) | two clashing numbers — divider draws 0.25 s, halves wipe out from it, labels pop, yellow bars grow |
+| `gauge_hud` | `from` (20000), `to` (12000), `step` (1000), `unit` FT, `label_every`, `side` right/left (or top/bottom with `orientation: horizontal`), `pointer_color` #E01010, `scroll` (s), `spacing`, `height` | altitude / speed / depth changing (tape scrolls under a fixed red pointer, soft-edged window matte) |
+| `icon_sticker` | `items` [{`icon`/`media`/`text`, `at`}], `color` #FFE500, `icon_color` #111111, `x` (0.8 w), `y` (0.45 h), `size` (0.13 h), `swap` squash/pop/flip | presenter lists items on camera |
+| `icon_drop` | `icon`/`preset` (stop) or `media`, `enter` drop/rise, `bounce` (true), `size` (0.22 h), `color`, `detail_color`, `shadow` | one concept landing (STOP, deal, yes/no, warning) |
+| `social_cta` | `platform` youtube/whatsapp/facebook/twitter/x/instagram/telegram/custom, `line1`, `line2`, `handle` (Mohitflix; "none" hides), `color`, `size`, `hold` (2.8), `exit` fade/disintegrate/<animate_out preset> | presenter stint > 5 s |
+| `social_bug` | as social_cta, `exit` disintegrate | channel bug once per ~40 s |
+| `ui_toggle` | `from` off/on, `to`, `at` (0.5), `size` (0.1 w), `height` (size/2), `on_color` #2ECC40, `off_color` #8E8E93, `label`, `labels` true/[off, on] | a device / system starts or stops (ui_click sfx) |
+| `audio_wave` | `width` (0.42), `height` (0.16), `bars` (40), `color` #7FB2FF, `bg` #0B1E6B, `speed`, `levels` [0..1], `label`, `card` | broadcast / radio / announcement |
+| `flag_badge` | `country` (ISO-2/ISO-3/English name; ~50 simple drawn flags, else colour disc + code), `size` (0.12 h), `ring`, `ring_width`, `label` (text or true) | a country named |
+| `presenter_stats` | `lines` [{text, at, size?, color?, lead_color?}], `x` (0.67 w), `y` (0.3 h), `size` (0.03 h), `gap`, `cps` (22), `animator` | stat lines beside the presenter |
+| `lower_third` | `style: "bar_wipe"`, `text`, `gradient` [c1, c2], `kicker`, `width` (0.42), `height`, `animator` | CTA / chapter bar (wipes L→R 0.25 s, slides down on exit) |
+| `info_card` | `title`, `lines` [..], `width` (0.3), `accent` #2EE6E6 | event title / date / address card (dark glass) |
+| `stat_title` | `line1`, `line2`, `emphasis` (1.6), `style` red_outline/yellow/white, `size` (0.06 h), `at2` | a stat that is the whole sentence |
+
+Vector icons (`VectorIcons`, own drawings as shape paths): person, seat, scale, money, clock, fuel, stop, handshake,
+check, cross, warning, music, heart, radio, plane, helicopter, globe (+ aliases: passenger, chair, deal, yes, no, danger,
+airplane, chopper, world …).
+
+**Text keys** (`add_layer` / `update_layer`): `stroke` (px edge behind filled letters, or `{width, color}`, `"none"`),
+`stroke_color`, `italic`, `letter_spacing` (px), `lead_color` + `lead_chars` (3; typewriter's newest letters coloured),
+`word_times` [s after the layer start, one per word], `dim_color` (word_fade_grey; default #8A8A8A).
+
+**Animators**: `typewriter_soft` (per letter opacity 0→1 + blur 8→0 over 0.12 s, spread over `anim_duration`),
+`letter_drop` (letters drop from 1.1 font sizes above with a small bounce, stagger ≤ 0.08 s), `word_fade_grey` (line shown
+grey, each word eases to its colour in 0.2 s at `word_times`, else spread over `anim_duration`).
+
+**Text styles**: `caption_red_outline`, `stat_red_outline`, `osd_timestamp`, `label_yellow_outline`, `stat_yellow`.
+**Fonts**: Share Tech Mono, Comic Neue (OFL, google/fonts), Poppins ExtraBold (800).
+
+**Blend**: `update_layer {blend}` — normal, screen, add, lighten, multiply, overlay, darken, soft_light, hard_light,
+color_dodge, difference (validated). Rendered by `BlendComposite` (lib/ui/preview/fx/datahud_fx.dart): everything below
+and the layer are drawn to images and composited with the blend mode (falls back to normal over a live video texture in
+the preview; export blends). A layer with a track matte ignores its blend. Each blended layer snapshots the frame
+below it (two full-frame images per frame), so blend a few layers, not dozens.
+
+**Effect**: `disintegrate` {progress 0–100, size (block px, 14), drift (50)} — blocks drop out in random order sweeping
+left → right; the breaking edge drifts up-right.
+
+Templates: `stat_title`, `date_stamp`, `day_counter`, `passenger_tally`, `social_bug`.
+<!-- <<< V3-C -->

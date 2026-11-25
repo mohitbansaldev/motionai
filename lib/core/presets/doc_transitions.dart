@@ -12,6 +12,8 @@ import '../model/layer.dart';
 import '../model/project.dart';
 import 'camera_presets.dart';
 
+part 'doc_transitions_v3.dart'; // V3-D: powder/debris bursts, zoom blur, eye reflection, holes, shatter, slice, film slide…
+
 // V2-C: documentary transitions between two shots / layers.
 //
 // Everything here is pure model code: a transition only writes keyframes,
@@ -151,7 +153,8 @@ class DocTransitions {
     TransitionDef('film_burn', 'Film Burn', 'flashbacks, memories, vintage footage', duration: 1.0, sounds: ['reverse_cymbal'], params: [_tone]),
     TransitionDef('light_leak_wipe', 'Light Leak Wipe', 'travel, warm nostalgic moments', duration: 1.0, sounds: ['swoosh_long'], params: [_tone]),
     TransitionDef('ink_bleed', 'Ink Bleed', 'history, art, handwritten documents', duration: 1.2, sounds: ['swoosh_long'],
-        params: [..._center, TransitionParam('tone', 'string', 'neutral', 'ink tint', options: ['warm', 'cold', 'neutral'])]),
+        params: [..._center, TransitionParam('tone', 'string', 'neutral', 'ink tint', options: ['warm', 'cold', 'neutral']),
+          TransitionParam('incoming', 'string', null, 'V3-D: "duotone_of_outgoing" = the incoming is a navy duotone of the same image (turning points)')]),
     TransitionDef('smoke_reveal', 'Smoke Reveal', 'war, mystery, legends', duration: 1.4, sounds: ['swoosh_long'],
         params: [TransitionParam('tone', 'string', 'neutral', 'smoke colour', options: ['warm', 'cold', 'neutral'])]),
     TransitionDef('bw_to_colour', 'B&W to Colour', 'the past coming to life: an old photo blooms into colour',
@@ -161,6 +164,9 @@ class DocTransitions {
         sounds: ['swoosh_reverse', 'hit'], params: [TransitionParam('color', 'color', '#FFFFFF', 'flash colour'), _tone]),
     TransitionDef('dip_to_black', 'Dip to Black', 'time passing, chapter ends, solemn moments', duration: 0.9,
         sounds: ['swoosh_reverse'], params: [TransitionParam('color', 'color', '#000000', 'dip colour')]),
+    // V3-D >>> transitions, mood & character FX (doc_transitions_v3.dart)
+    ..._v3Catalog,
+    // <<< V3-D
   ];
 
   static List<String> get types => [for (final d in catalog) d.id];
@@ -242,6 +248,10 @@ class DocTransitions {
         x.flashCut();
       case 'dip_to_black':
         x.dipToBlack();
+      // V3-D >>>
+      default:
+        x.v3(type);
+      // <<< V3-D
     }
     if (comp.duration < b.end) comp.duration = b.end;
     return TransitionResult(type, x.cut, x.t0, x.t1, x.created, x.log);
@@ -1027,6 +1037,7 @@ class _Ctx {
     }
     key(b.prop(Props.scale), t0, [bScale[0] * 1.05, bScale[1] * 1.05, bScale[2]], _outCubic);
     key(b.prop(Props.scale), t1, bScale, _outCubic);
+    v3InkDuo(); // V3-D: incoming "duotone_of_outgoing"
   }
 
   // 11d. Smoke reveal with drifting smoke over the cut.

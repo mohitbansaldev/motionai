@@ -7,11 +7,16 @@ import '../model/layer.dart';
 import '../model/project.dart';
 import 'world_map.dart';
 import 'motion_presets.dart'; // V3-B
+import 'vector_icons.dart'; // V3-C
+import 'flags.dart'; // V3-C
 
 part 'components_doc.dart';
 part 'components_article.dart';
 part 'map_kit.dart'; // SCENE (Agent D): maps + 3D room/board
 part 'components_evidence.dart'; // V3-B: evidence kit (articles, books, cards, notes)
+part 'map_geo.dart'; // V3-A: maps & geo patterns
+part 'components_fx.dart'; // V3-D: speech_bubble upgrade (messages, typing, tail_to/attach, styles, puff exit)
+part 'components_datahud.dart'; // V3-C: data, HUD & overlays
 
 /// Documentary kit: ready-made, fully editable groups of layers built from
 /// ordinary edit commands. Every component is a null "group" layer (anchor at
@@ -27,6 +32,8 @@ class Components {
     'number_tiles', 'date_title', 'article',
     ..._sceneTypes, // SCENE (Agent D)
     ..._evTypes, // V3-B
+    ..._geoTypes, // V3-A
+    ..._dataHudTypes, // V3-C
   ];
 
   static String label(String t) => const {
@@ -64,6 +71,8 @@ class Components {
       }[t] ??
       _sceneLabels[t] ?? // SCENE (Agent D)
       _evLabels[t] ?? // V3-B
+      _geoLabels[t] ?? // V3-A
+      _dataHudLabels[t] ?? // V3-C
       t;
 
   static List<Map<String, dynamic>> build(Project p, Map<String, dynamic> c, double now) {
@@ -73,10 +82,14 @@ class Components {
     }
     final comp = p.editComp; // PRECOMP (Agent L): the comp being edited
     final b = _B(comp.width, comp.height, c, now, '${c['id'] ?? Ids.next(type)}');
+    final geo = _geoBuild(p, c, b); // V3-A: satellite maps, routes, rings, geo labels
+    if (geo != null) return geo; // V3-A
     final scene = _sceneBuild(p, c, b); // SCENE (Agent D)
     if (scene != null) return scene;
     final ev = _evBuild(p, c, b); // V3-B
     if (ev != null) return ev;
+    final dataHud = _dataHudBuild(p, c, b); // V3-C
+    if (dataHud != null) return dataHud;
     switch (type) {
       case 'source_card':
         return _sourceCard(b);
@@ -91,7 +104,7 @@ class Components {
       case 'route_arrow':
         return _route(b, null);
       case 'speech_bubble':
-        return _bubble(b);
+        return c['style'] == 'classic' ? _bubble(b) : _bubbleV3(b, p, comp); // V3-D
       case 'cta':
         return _cta(b);
       case 'timeline':
@@ -190,6 +203,7 @@ class Components {
   }
 
   static List<Map<String, dynamic>> _lowerThird(_B b) {
+    if (b.str('style', '') == 'bar_wipe') return _lowerThirdBarWipe(b); // V3-C
     final w = b.n('width', b.w * 0.5);
     final fs = b.n('size', b.h * 0.026);
     final x = b.n('x', b.w * 0.05), y = b.n('y', b.h * 0.84);

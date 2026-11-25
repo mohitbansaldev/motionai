@@ -37,6 +37,8 @@ flutter:
     - shaders/chroma_key.frag
   assets:
     - assets/world_countries.json
+    # V3-A: dark satellite map base (NASA Blue Marble, public domain; ocean graded dark teal)
+    - assets/maps/blue_marble_dark.jpg
     # FONTS (Agent I): font licences (shown from the font picker)
     - assets/fonts/anton/OFL.txt
     - assets/fonts/bebasneue/OFL.txt
@@ -61,6 +63,10 @@ flutter:
     - assets/fonts/rozhaone/OFL.txt
     - assets/fonts/yatraone/OFL.txt
     - assets/fonts/kalam/OFL.txt
+    # V3-C >>> data/HUD fonts (OFL, github.com/google/fonts)
+    - assets/fonts/sharetechmono/OFL.txt
+    - assets/fonts/comicneue/OFL.txt
+    # <<< V3-C
   # FONTS (Agent I): bundled OFL/Apache fonts from github.com/google/fonts (see lib/fonts/font_catalog.dart)
   fonts:
     - family: Anton
@@ -119,6 +125,8 @@ flutter:
           weight: 400
         - asset: assets/fonts/poppins/Poppins-Bold.ttf
           weight: 700
+        - asset: assets/fonts/poppins/Poppins-ExtraBold.ttf # V3-C
+          weight: 800
         - asset: assets/fonts/poppins/Poppins-Black.ttf
           weight: 900
     - family: Noto Sans Devanagari
@@ -153,3 +161,14 @@ flutter:
           weight: 400
         - asset: assets/fonts/kalam/Kalam-Bold.ttf
           weight: 700
+    # V3-C >>> digital/HUD mono + comic bubble font
+    - family: Share Tech Mono
+      fonts:
+        - asset: assets/fonts/sharetechmono/ShareTechMono-Regular.ttf
+    - family: Comic Neue
+      fonts:
+        - asset: assets/fonts/comicneue/ComicNeue-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/comicneue/ComicNeue-Bold.ttf
+          weight: 700
+    # <<< V3-C

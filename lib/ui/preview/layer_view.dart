@@ -23,7 +23,11 @@ import 'fx/particles.dart';
 import 'fx/realism_painters.dart'; // V2-D
 import '../../core/presets/realism.dart'; // V2-D
 import 'fx/text_fx.dart';
+import 'fx/text_fx_v3.dart'; // V3-C
+import 'fx/datahud_fx.dart'; // V3-C
 import 'fx/transition_painters.dart'; // V2-C
+import 'fx/map_texture.dart'; // V3-A
+import 'fx/v3_fx_painters.dart'; // V3-D
 import 'precomp_view.dart'; // PRECOMP (Agent L)
 import 'shape_painter.dart';
 
@@ -108,6 +112,10 @@ class LayerView extends StatefulWidget {
     }
     if (item.opacity < 0.999) child = Opacity(opacity: item.opacity, child: child);
     Widget out = Transform(transform: item.matrix, child: child);
+    // V3-C >>> no semantics under perspective: a steep 3D plane (tilted calendar
+    // text) makes the inverse-mapped semantics clip non-finite (debug assert)
+    if (l.is3D) out = ExcludeSemantics(child: out);
+    // <<< V3-C
     // Motion blur from on-screen velocity (comp px/frame), in screen space.
     final mb = _motionBlur(l);
     if (mb != null) {
@@ -199,7 +207,7 @@ class LayerView extends StatefulWidget {
 
   Widget _text(Layer l, TextData t) {
     final weightIndex = ((t.fontWeight ~/ 100) - 1).clamp(0, FontWeight.values.length - 1);
-    final style = TextStyle(
+    final style = V3TextFx.style(TextStyle( // V3-C: italic, letter_spacing
       fontSize: t.fontSize,
       color: Color(t.color),
       fontWeight: FontWeight.values[weightIndex],
@@ -211,7 +219,7 @@ class LayerView extends StatefulWidget {
       shadows: t.shadow
           ? [Shadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: t.fontSize * 0.12, offset: Offset(0, t.fontSize * 0.04))]
           : null,
-    );
+    ), t);
     final align = switch (t.align) { 'left' => TextAlign.left, 'right' => TextAlign.right, _ => TextAlign.center };
     final wrapAlign = switch (t.align) {
       'left' => WrapAlignment.start,
@@ -247,6 +255,12 @@ class LayerView extends StatefulWidget {
           layer: layer,
         );
 
+    // V3-C >>> coloured text edge + typewriter_soft / letter_drop / word_fade_grey / lead colour
+    if (V3TextFx.handles(t)) {
+      final v3 = V3TextFx.build(l, t, style, align, shown, local, draft: draft);
+      return V3TextFx.selfAnimated.contains(t.animator) ? v3 : intro(v3);
+    }
+    // <<< V3-C
     // Per-letter animators and the 3D extruded edge (also on counters, and
     // combined with highlight/circle/underline marks).
     if (perGlyph || (t.extrude > 0 && t.marks.isEmpty)) {
@@ -686,6 +700,21 @@ class LayerView extends StatefulWidget {
           shaderCallback: (_) => RevealMask.shader(kind, prog / 100, soft, cx, cy, seed, size, draft: draft),
           child: child,
         );
+      // V3-D >>> transition, mood & character FX (fx/v3_fx_painters.dart)
+      case 'burst':
+      case 'radial_blur':
+      case 'holes':
+      case 'frost':
+      case 'cracks':
+      case 'threshold':
+      case 'red_paint':
+      case 'lightning':
+      case 'slices':
+      case 'slant_wipe':
+      case 'slide_mount':
+      case 'puff':
+        return v3dEffect(e, child, l, time, draft: draft, playing: playing) ?? child;
+      // <<< V3-D
       case 'motion_blur':
         return child; // applied in screen space in build()
       case 'chroma_key': // CHROMA (Agent M): video/image keyed in _content
@@ -723,6 +752,16 @@ class LayerView extends StatefulWidget {
         return PageCurlFx(
             progress: p('progress') / 100, angle: p('angle'), shadow: p('shadow') / 100, back: rgb('back'), size: Size(l.width, l.height), child: child);
       // <<< V2-C
+      // V3-A >>> satellite map texture
+      case 'map_texture':
+        return MapTextureFx(amount: p('amount'), draft: draft, child: child);
+      // <<< V3-A
+      // V3-C >>> pixel break-up exit (social_bug)
+      case 'disintegrate':
+        return DisintegrateFx.wrap(
+            child: child, progress: p('progress') / 100, block: p('size'), drift: p('drift'),
+            seed: stableHash(e.id) & 0xFFFF, size: Size(l.width, l.height));
+      // <<< V3-C
       default:
         return realismEffect(e, child, l, time, draft: draft, playing: playing) ?? child; // V2-D
     }
