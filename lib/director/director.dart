@@ -12,6 +12,7 @@ import '../ai/phrase_finder.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../core/commands/edit_commands.dart';
+import '../library/library_director.dart'; // Library (Agent G)
 import '../services/captions.dart';
 import '../services/media_bridge.dart';
 import '../services/speech.dart';
@@ -283,10 +284,12 @@ Return ONLY JSON: {"title":"...","lines":["sentence", ...]}''',
               if (m.duration > 0) 'seconds': double.parse(m.duration.toStringAsFixed(1)),
               'about': m.description.isEmpty ? m.name : m.description,
             },
+        ...LibraryDirector.mediaEntries(p), // Library (Agent G): "lib:<id>" assets, imported on use in prepare()
       ];
 
   Future<(List<Beat>, String)> plan(DirectorInput o, NarrationResult n) async {
     final s = await AiSettings.load();
+    await LibraryDirector.warmUp(); // Library (Agent G)
     final beats = <Beat>[];
     var look = o.look;
     final used = <String, int>{};
@@ -396,6 +399,7 @@ DIRECTING RULES
   /// project media.
   Future<BuildOptions> prepare(List<Beat> beats, DirectorInput o, NarrationResult n, String look) async {
     final dir = await c.storage.mediaDir();
+    await LibraryDirector.importUsed(p, [for (final b in beats) b.visual], dir); // Library (Agent G): lib:<id> → project media
     final cutouts = <String, (String, String)>{};
     if (o.depth) {
       final want = {
