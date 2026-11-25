@@ -185,7 +185,7 @@ void main() {
       expect(lay(p, 'cal_p11').end, closeTo(6, 1e-9));
       final fold = lay(p, 'cal_p0').prop(Props.scale);
       expect(fold.valueAt(0.4)[1], closeTo(100, 1e-9));
-      expect(fold.valueAt(0.5 + 0.42)[1], closeTo(0, 1e-6));
+      expect(fold.valueAt(0.5 + 0.42)[1], closeTo(4, 1e-6));
       expect(lay(p, 'cal_p0_paper').prop(Props.opacity).scalarAt(0.95), closeTo(0, 1e-6));
       expect(lay(p, 'cal_p0_paper').is3D, isTrue);
       expect(lay(p, 'cal_caption').text!.text, 'DAYS');

@@ -110,6 +110,10 @@ class LayerView extends StatefulWidget {
     }
     if (item.opacity < 0.999) child = Opacity(opacity: item.opacity, child: child);
     Widget out = Transform(transform: item.matrix, child: child);
+    // V3-C >>> no semantics under perspective: a steep 3D plane (tilted calendar
+    // text) makes the inverse-mapped semantics clip non-finite (debug assert)
+    if (l.is3D) out = ExcludeSemantics(child: out);
+    // <<< V3-C
     // Motion blur from on-screen velocity (comp px/frame), in screen space.
     final mb = _motionBlur(l);
     if (mb != null) {
