@@ -207,13 +207,19 @@ class EditCommands {
         final l = _layer(comp, c['layer']);
         final type = c['effect'] as String? ?? '';
         final id = (c['id'] as String?) ?? Ids.next('fx');
-        final e = EffectsCatalog.create(type, id);
+        final lenient = contractEffects.contains(type);
+        final e = lenient && EffectsCatalog.byType(type) == null ? Effect(id: id, type: type) : EffectsCatalog.create(type, id);
         final params = c['params'];
         if (params is Map) {
           params.forEach((k, v) {
             final ap = e.params[k];
-            if (ap == null) throw CommandError('Effect "$type" has no param "$k". Params: ${e.params.keys.join(', ')}');
-            ap.staticValue = _fitList(ap, _values(v));
+            final values = _paramValues(type, '$k', v);
+            if (ap == null) {
+              if (!lenient) throw CommandError('Effect "$type" has no param "$k". Params: ${e.params.keys.join(', ')}');
+              e.params['$k'] = AnimProp(values);
+            } else {
+              ap.staticValue = _fitList(ap, values);
+            }
           });
         }
         l.effects.add(e);
@@ -233,7 +239,8 @@ class EditCommands {
         final ap = e.params[key];
         if (ap == null) throw CommandError('Effect "${e.type}" has no param "$key". Params: ${e.params.keys.join(', ')}');
         final t = _optNum(c, 'time');
-        _write(ap, null, t ?? now, c['value'], keyframe: t != null, ease: _ease(c['ease']));
+        final value = c['value'] is String ? _paramValues(e.type, key, c['value']) : c['value'];
+        _write(ap, null, t ?? now, value, keyframe: t != null, ease: _ease(c['ease']));
         break;
 
       case 'set_camera_mode':
@@ -278,8 +285,11 @@ class EditCommands {
       case 'animate_in':
       case 'animate_out':
         final l = _layer(comp, c['layer']);
-        MotionPresets.animate(comp, l, c['preset'] as String? ?? 'fade',
-            isIn: op == 'animate_in', duration: _optNum(c, 'duration') ?? 0.6);
+        var preset = c['preset'] as String? ?? 'fade';
+        if (!MotionPresets.transitions.contains(preset) && contractTransitions.containsKey(preset)) {
+          preset = contractTransitions[preset]!; // renderer transition not on this build yet
+        }
+        MotionPresets.animate(comp, l, preset, isIn: op == 'animate_in', duration: _optNum(c, 'duration') ?? 0.6);
         break;
 
       case 'apply_style':
@@ -356,6 +366,8 @@ class EditCommands {
         if (c['fps'] != null) comp.fps = _num(c, 'fps').clamp(1, 120).toDouble();
         if (c['duration'] != null) comp.duration = math.max(comp.frameDuration, _num(c, 'duration'));
         if (c['background'] != null) comp.background = _color(c['background']);
+        // "motion_blur": true|false → comp.motionBlur (renderer contract, parsed once feat/fx is merged).
+        if (c['motion_blur'] != null && c['motion_blur'] is! bool) throw CommandError('"motion_blur" must be true or false');
         break;
 
       default:
@@ -599,7 +611,7 @@ class EditCommands {
     if (c['text_color'] != null) t.color = _color(c['text_color']);
     if (c['animator'] != null) {
       final a = '${c['animator']}';
-      if (!TextAnimators.all.contains(a)) {
+      if (!TextAnimators.all.contains(a) && !contractAnimators.contains(a)) {
         throw CommandError('Unknown animator "$a". Available: ${TextAnimators.all.join(', ')}');
       }
       t.animator = a;
@@ -662,6 +674,45 @@ class EditCommands {
     if (end > comp.duration) comp.duration = end;
   }
 
+  // ------------------------------------------- V1 renderer contract (B/C)
+  // Names from docs/V1_PLAN.md that the renderer branch (feat/fx) implements.
+  // Until both branches are merged they are accepted and stored as plain data
+  // so components and the AI can already use them; afterwards these lists are
+  // harmless (known names take the normal path).
+  static const contractEffects = [
+    'silhouette', 'mono', 'duotone', 'edge_blur', 'curve', 'glass_frame', 'torn_edge',
+    'particles', 'light_rays', 'sway', 'reveal', 'motion_blur',
+  ];
+  static const contractAnimators = ['random_pop', 'scramble'];
+
+  /// Contract transitions → closest existing one when the renderer lacks it.
+  static const contractTransitions = {
+    'iris': 'zoom_in', 'ink': 'fade', 'smoke': 'blur', 'spin': 'spin', 'flash': 'fade', 'glitch_flash': 'whip',
+  };
+  static const contractProps = <String, List<double>>{'path_progress': [0]};
+
+  /// String options of effect params, stored as their index.
+  static const contractEnums = <String, Map<String, List<String>>>{
+    'particles': {'kind': ['confetti', 'leaves', 'stars', 'rain', 'snow', 'smoke', 'dust', 'bokeh', 'streaks', 'birds', 'clouds']},
+    'reveal': {'kind': ['iris', 'ink', 'smoke', 'wipe']},
+    'torn_edge': {'side': ['top', 'bottom', 'left', 'right']},
+  };
+
+  /// Effect param value: numbers, "#RRGGBB" colours (→ [r, g, b]) or enum names (→ index).
+  static List<double> _paramValues(String effect, String key, dynamic v) {
+    if (v is bool) return [v ? 1 : 0];
+    if (v is String) {
+      final options = contractEnums[effect]?[key];
+      if (options != null) {
+        if (options.contains(v)) return [options.indexOf(v).toDouble()];
+        throw CommandError('Effect "$effect": unknown $key "$v". Use ${options.join(', ')}');
+      }
+      final argb = _color(v);
+      return [((argb >> 16) & 0xFF).toDouble(), ((argb >> 8) & 0xFF).toDouble(), (argb & 0xFF).toDouble()];
+    }
+    return _values(v);
+  }
+
   // --------------------------------------------------------------- helpers
 
   static Layer _layer(Composition comp, dynamic id) {
@@ -716,7 +767,10 @@ class EditCommands {
     } else {
       props = _layer(comp, target).props;
     }
-    final p = props[key];
+    var p = props[key];
+    if (p == null && target != 'camera' && c['effect'] == null && c['mask'] == null && contractProps.containsKey(key)) {
+      p = props[key] = AnimProp(List.of(contractProps[key]!)); // e.g. path_progress before the renderer merge
+    }
     if (p == null) throw CommandError('No property "$key" on $target. Properties: ${props.keys.join(', ')}');
     if (component != null && component >= p.dims) throw CommandError('"$key" has only ${p.dims} dimension(s)');
     return (prop: p, component: component);
