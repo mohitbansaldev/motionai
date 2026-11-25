@@ -1042,9 +1042,9 @@ class _Geo {
     final b = b0.c['duration'] == null ? _B(b0.w, b0.h, {...b0.c, 'duration': 7.0}, b0.now, b0.root) : b0;
     final w = b.w, h = b.h;
     final cmds = <Map<String, dynamic>>[
-      {...b.backdrop('bg', b.str('bg', '#123236'), color2: '#071619', name: 'Sketch backdrop')},
+      b.backdrop('backdrop', b.str('bg', '#123236'), color2: '#071619', name: 'Sketch backdrop'),
     ];
-    cmds.add(b.fx(b.id('bg'), 'vignette', {'amount': 60, 'size': 55}));
+    cmds.add(b.fx(b.id('backdrop'), 'vignette', {'amount': 60, 'size': 55}));
     final dirs = b.specs('directions', 'label');
     // Terrain photos revealed per direction (under the parchment).
     for (int i = 0; i < dirs.length; i++) {
