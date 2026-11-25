@@ -489,8 +489,9 @@ void main() {
       ]);
       final w = colors.length, h = 4;
       final px = Uint8List(w * h * 4);
+      // Each row shifted, so a flipped/mirrored result would not match.
       for (int y = 0; y < h; y++) {
-        px.setAll(y * w * 4, row(colors));
+        px.setAll(y * w * 4, row([for (int i = 0; i < w; i++) colors[(i + y * 7) % w]]));
       }
       final c = Completer<ui.Image>();
       ui.decodeImageFromPixels(px, w, h, ui.PixelFormat.rgba8888, c.complete);
@@ -501,12 +502,13 @@ void main() {
         final bd = (await keyed.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!;
         final gpu = bd.buffer.asUint8List();
         final cpu = ChromaMath.key(px, w, h, s);
-        for (int i = 0; i < w; i++) {
-          final o = (w + i) * 4; // row 1
-          expect((gpu[o + 3] - cpu[o + 3]).abs(), lessThanOrEqualTo(6), reason: 'alpha ${colors[i]} $s gpu ${gpu[o + 3]} cpu ${cpu[o + 3]}');
+        for (int i = 0; i < w * h; i++) {
+          final o = i * 4;
+          final at = 'pixel ${i % w},${i ~/ w} (${px[o]},${px[o + 1]},${px[o + 2]}) $s';
+          expect((gpu[o + 3] - cpu[o + 3]).abs(), lessThanOrEqualTo(6), reason: 'alpha $at gpu ${gpu[o + 3]} cpu ${cpu[o + 3]}');
           if (cpu[o + 3] > 60) {
             for (int ch = 0; ch < 3; ch++) {
-              expect((gpu[o + ch] - cpu[o + ch]).abs(), lessThanOrEqualTo(8), reason: 'rgb ${colors[i]} $s');
+              expect((gpu[o + ch] - cpu[o + ch]).abs(), lessThanOrEqualTo(8), reason: 'rgb $at');
             }
           }
         }
