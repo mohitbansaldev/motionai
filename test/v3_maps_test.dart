@@ -386,7 +386,8 @@ void main() {
       expect(last.start, greaterThan(first.start)); // typed on
       // Rising first part of the path: negative (counter-clockwise) rotation.
       expect(first.prop(Props.rotation).valueAt(5)[2], lessThan(-5));
-      final (x0, _) = centre(comp, 'pt_ch0', 5.4), (x1, _) = centre(comp, 'pt_ch7', 5.4);
+      final (x0, _) = centre(comp, 'pt_ch0', 5.4);
+      final (x1, _) = centre(comp, 'pt_ch7', 5.4);
       expect(x1, greaterThan(x0 + 200));
       expect(() => run(p, {'op': 'path_text', 'path_layer': 'pt_ch0'}), throwsA(isA<CommandError>()));
       run(p, {'op': 'path_text', 'id': 'pd'}); // defaults
@@ -406,7 +407,8 @@ void main() {
       expect(a.parentId, 'tl_map_g');
       final rot = a.prop(Props.rotation).valueAt(3)[2];
       expect(rot, inInclusiveRange(-120, -55)); // vertical range: text goes up
-      final (_, ya) = centre(comp, 'tl_l0', 3), (_, ys) = centre(comp, 'tl_l4', 3);
+      final (_, ya) = centre(comp, 'tl_l0', 3);
+      final (_, ys) = centre(comp, 'tl_l4', 3);
       expect(ya, greaterThan(ys)); // first letter lowest
       expect(comp.requireLayer('tl_peaks').shape!.rings.length, greaterThan(4));
       evalAll(p);
