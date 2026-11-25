@@ -96,7 +96,58 @@ List<SceneTemplate> setTemplates() => const [
         ],
         builder: _pinnedPortraits,
       ),
+      SceneTemplate(
+        id: 'set_room', name: 'Room set (real 3D)', category: '3D sets',
+        subtitle: 'Back wall, side walls and floor from separate images; people stand on the floor; slow arc with depth of field',
+        duration: 8, previewTime: 4,
+        slots: [
+          TemplateSlot('back', 'Back wall (straight-on)', kind: 'media', media: 'image'),
+          TemplateSlot('left', 'Left wall (straight-on)', kind: 'media', media: 'image'),
+          TemplateSlot('right', 'Right wall (straight-on)', kind: 'media', media: 'image'),
+          TemplateSlot('floor', 'Floor (top-down)', kind: 'media', media: 'image'),
+          TemplateSlot('people', 'People / props (cut-outs, 1–4)', kind: 'medias', media: 'image', max: 4),
+          TemplateSlot('foreground', 'Foreground object (cut-out, optional)', kind: 'media', media: 'image'),
+          TemplateSlot('duration', 'Duration (s)', initial: '8'),
+        ],
+        builder: _roomSet,
+      ),
     ];
+
+// ------------------------------------------------------------ room set
+
+List<Map<String, dynamic>> _roomSet(TemplateCtx c) {
+  const id = 'roomset';
+  final w = c.w, h = c.h, k = w / 1920;
+  final du = c.n('duration', 8).clamp(4.0, 30.0).toDouble();
+  final cmds = _comp(c, id, 'Room set', du, bg: '#050505');
+  final people = c.medias('people');
+  final fg = c.media('foreground');
+  final n = people.length;
+  cmds.add(_in(id, {
+    'op': 'add_component', 'type': 'room', 'id': 'room', 'start': 0, 'duration': du,
+    if (c.media('back') != null) 'back': c.media('back')!.id,
+    if (c.media('left') != null) 'left': c.media('left')!.id,
+    if (c.media('right') != null) 'right': c.media('right')!.id,
+    if (c.media('floor') != null) 'floor': c.media('floor')!.id,
+    'items': [
+      for (var i = 0; i < n; i++)
+        {'media': people[i].id, 'x': n == 1 ? 0.5 : 0.25 + 0.5 * i / (n - 1), 'z': i.isEven ? 0.45 : 0.62},
+    ],
+    if (fg != null) 'foreground': [{'media': fg.id, 'x': 0.1, 'z': -0.35}],
+  }));
+  // Slow arc + push-in: the walls and floor change perspective (real parallax).
+  final z0 = -2667 * k;
+  cmds.addAll([
+    _k(id, 'camera', 'position', 0, [w / 2 - 260 * k, h / 2 - 30 * k, z0 + 250 * k], 'easy_ease'),
+    _k(id, 'camera', 'position', du, [w / 2 + 220 * k, h / 2 - 10 * k, z0 + 900 * k], 'easy_ease'),
+    _k(id, 'camera', 'poi', 0, [w / 2 - 60 * k, h / 2 + 20 * k, 400], 'easy_ease'),
+    _k(id, 'camera', 'poi', du, [w / 2 + 40 * k, h / 2 + 20 * k, 400], 'easy_ease'),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'aperture', 'value': 16}),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'focus', 'value': 2300 * k}),
+  ]);
+  cmds.addAll(_finish(c, id, du, vignette: 55, grain: 16));
+  return cmds;
+}
 
 // ------------------------------------------------------------ photo pile → title
 
