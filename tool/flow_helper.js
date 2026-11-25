@@ -53,14 +53,33 @@
       .filter((e) => e.scrollHeight > e.clientHeight + 200 && /auto|scroll/.test(getComputedStyle(e).overflowY))
       .sort((a, b) => b.scrollHeight - a.scrollHeight)[0];
 
-  /** Image src → queued id, by the prompt text of the card the image is in. */
+  /** Image src → queued id, by the prompt text of the card the image is in.
+   *  A card = the nearest ancestor of the prompt block with 1–4 big images
+   *  (one Flow batch); never a whole list (that matched 14 images to 1 prompt). */
+  const bigImgs = (el) => [...el.querySelectorAll('img')].filter((i) => i.naturalWidth >= 300);
   const scan = (found) => {
+    for (const it of S.items) {
+      const p = norm(it.prompt).slice(0, 170);
+      for (const info of document.querySelectorAll('flow-batch-info, flow-expandable-prompt')) {
+        if (!norm(info.innerText).includes(p)) continue;
+        let a = info;
+        for (let k = 0; k < 6 && a; k++) {
+          a = a.parentElement;
+          if (!a) break;
+          const imgs = bigImgs(a);
+          if (!imgs.length) continue;
+          if (imgs.length <= 4) for (const i of imgs) if (!found.has(i.src)) found.set(i.src, it.id);
+          break;
+        }
+      }
+    }
+    // Fallback (other layouts): climb from each image, stop at lists.
     for (const img of document.querySelectorAll('img')) {
       if (img.naturalWidth < 300 || found.has(img.src)) continue;
       let a = img;
       for (let k = 0; k < 10 && a; k++) {
         a = a.parentElement;
-        if (!a) break;
+        if (!a || bigImgs(a).length > 4) break;
         const t = norm(a.innerText);
         const hits = S.items.filter((it) => t.includes(norm(it.prompt).slice(0, 170)));
         if (hits.length === 1) {
