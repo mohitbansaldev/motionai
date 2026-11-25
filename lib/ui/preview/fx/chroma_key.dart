@@ -138,8 +138,10 @@ class ChromaKeyer {
           return;
         }
         final bytes = bd.buffer.asUint8List(bd.offsetInBytes, bd.lengthInBytes);
-        final out = w * h > 160000 ? await _keyInIsolate(bytes, w, h, s, chokePx) : ChromaMath.key(bytes, w, h, s, chokePx: chokePx);
+        final out =
+            w * h > 160000 ? await _keyInIsolate(bytes, w, h, s, chokePx) : ChromaMath.keyPremultiplied(bytes, w, h, s, chokePx: chokePx);
         final img = Completer<ui.Image>();
+        // Premultiplied RGBA (decodeImageFromPixels does not premultiply).
         ui.decodeImageFromPixels(out, w, h, ui.PixelFormat.rgba8888, img.complete);
         c.complete(await img.future);
       } catch (e) {
@@ -158,7 +160,7 @@ class ChromaKeyer {
   // Only plain values are captured (a ui.Image in the closure context
   // could not be sent to the isolate).
   static Future<Uint8List> _keyInIsolate(Uint8List bytes, int w, int h, ChromaSettings s, double chokePx) =>
-      Isolate.run(() => ChromaMath.key(bytes, w, h, s, chokePx: chokePx));
+      Isolate.run(() => ChromaMath.keyPremultiplied(bytes, w, h, s, chokePx: chokePx));
 }
 
 /// Draws [source] keyed with [settings], stretched to its box.
@@ -331,6 +333,12 @@ class _ChromaSourceState extends State<ChromaSource> {
 
   Layer get l => widget.layer;
   MediaAsset? get _asset => widget.project.media[l.mediaId];
+
+  @override
+  void initState() {
+    super.initState();
+    ChromaKeyer.ensureLoaded();
+  }
 
   @override
   void didChangeDependencies() {

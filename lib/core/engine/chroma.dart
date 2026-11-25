@@ -152,7 +152,24 @@ class ChromaMath {
   /// Keys [rgba] (straight alpha, w×h) and returns a new straight-alpha
   /// RGBA buffer. [chokePx] is the choke radius in pixels of this buffer
   /// (positive shrinks, negative grows).
-  static Uint8List key(Uint8List rgba, int w, int h, ChromaSettings s, {double chokePx = 0}) {
+  static Uint8List key(Uint8List rgba, int w, int h, ChromaSettings s, {double chokePx = 0}) =>
+      _key(rgba, w, h, s, chokePx);
+
+  /// Like [key], with premultiplied output (for ui.decodeImageFromPixels,
+  /// which takes premultiplied RGBA).
+  static Uint8List keyPremultiplied(Uint8List rgba, int w, int h, ChromaSettings s, {double chokePx = 0}) {
+    final out = _key(rgba, w, h, s, chokePx);
+    for (int o = 0; o < out.length; o += 4) {
+      final a = out[o + 3];
+      if (a == 255) continue;
+      out[o] = (out[o] * a / 255).round();
+      out[o + 1] = (out[o + 1] * a / 255).round();
+      out[o + 2] = (out[o + 2] * a / 255).round();
+    }
+    return out;
+  }
+
+  static Uint8List _key(Uint8List rgba, int w, int h, ChromaSettings s, double chokePx) {
     final n = w * h;
     final out = Uint8List(n * 4);
     final kx0 = _cb(s.r / 255, s.g / 255, s.b / 255), ky0 = _cr(s.r / 255, s.g / 255, s.b / 255);

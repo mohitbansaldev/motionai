@@ -467,6 +467,56 @@ void main() {
     });
   });
 
+  testWidgets('GPU shader matches the CPU keyer', (tester) async {
+    await tester.runAsync(() async {
+      await ChromaKeyer.load();
+      if (!ChromaKeyer.gpuReady) {
+        // ignore: avoid_print
+        print('chroma_key shader not available in flutter test: CPU keyer only');
+        return;
+      }
+      // Blend green → skin (soft edge) + green → white fringes, 4 rows.
+      final colors = <List<int>>[];
+      for (int i = 0; i <= 20; i++) {
+        final t = i / 20;
+        colors.add([(224 * t).round(), (177 - 5 * t).round(), (64 + 76 * t).round()]);
+      }
+      colors.addAll([
+        [0, 255, 0],
+        [112, 174, 102],
+        [128, 216, 160],
+        [255, 255, 255],
+      ]);
+      final w = colors.length, h = 4;
+      final px = Uint8List(w * h * 4);
+      for (int y = 0; y < h; y++) {
+        px.setAll(y * w * 4, row(colors));
+      }
+      final c = Completer<ui.Image>();
+      ui.decodeImageFromPixels(px, w, h, ui.PixelFormat.rgba8888, c.complete);
+      final src = await c.future;
+      for (final s in const [ChromaSettings(), ChromaSettings(softness: 80, spill: 100), ChromaSettings(tolerance: 30, contrast: 40)]) {
+        final shader = ChromaKeyer.newShader()!;
+        final keyed = ChromaKeyer.gpuKey(shader, src, s, 0)!;
+        final bd = (await keyed.toByteData(format: ui.ImageByteFormat.rawStraightRgba))!;
+        final gpu = bd.buffer.asUint8List();
+        final cpu = ChromaMath.key(px, w, h, s);
+        for (int i = 0; i < w; i++) {
+          final o = (w + i) * 4; // row 1
+          expect((gpu[o + 3] - cpu[o + 3]).abs(), lessThanOrEqualTo(6), reason: 'alpha ${colors[i]} $s gpu ${gpu[o + 3]} cpu ${cpu[o + 3]}');
+          if (cpu[o + 3] > 60) {
+            for (int ch = 0; ch < 3; ch++) {
+              expect((gpu[o + ch] - cpu[o + ch]).abs(), lessThanOrEqualTo(8), reason: 'rgb ${colors[i]} $s');
+            }
+          }
+        }
+        keyed.dispose();
+        shader.dispose();
+      }
+      src.dispose();
+    });
+  });
+
   test('shader source exists and is declared', () {
     expect(File('shaders/chroma_key.frag').existsSync(), isTrue);
     expect(File('pubspec.yaml').readAsStringSync(), contains('shaders/chroma_key.frag'));
