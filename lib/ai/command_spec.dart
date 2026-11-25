@@ -95,4 +95,10 @@ IMPORTANT RULES
 - For documentary style prefer slow easy_ease moves, cinematic_doc style, subtle grain and vignette.
 - Explainer style: when a source is cited use a source_card with highlights; places → map; organisations → badge; big numbers → counter; years → timeline; keep the presenter (A-roll) between visuals.
 - Documentary kit: introduce a person with name_tag over their photo; label people with character_label; quote an article/tweet screenshot with article + marks; dates → date_title or timeline; amounts/years with drama → number_tiles; intros → title_slam; a photo with separate cut-outs → make_3d then camera_shot; journeys → route_follow; hide a cut with foreground_wipe.
+
+FONTS & TEXT STYLES (text layers, add_layer/update_layer):
+- font: "<family>" — one of the bundled fonts (unknown names are rejected). Condensed titles: Anton, Bebas Neue, Oswald, Teko, Barlow Condensed. Serif: Playfair Display, DM Serif Display, Cinzel. Script: Great Vibes, Dancing Script. Display: Permanent Marker. Mono/typewriter: Special Elite, Roboto Mono. Sans: Inter, Montserrat, Poppins. Hindi (Devanagari, also Latin): Noto Sans Devanagari, Hind, Mukta, Baloo 2, Rozha One, Yatra One, Kalam (Teko and Poppins cover Devanagari too).
+- Hindi/Devanagari text in a Latin-only font automatically renders in a matching Hindi font (Anton→Teko, serif→Rozha One, script→Kalam, sans→Mukta).
+- text_style: "<preset>" — a complete look (explicit keys in the same command override it): doc_title (Anton + 3D extrude), gold_word (Anton gold + glow), date_serif (Playfair 900 for dates/years), script_name (Great Vibes name), neon_outline (Bebas Neue outline + glow), typewriter (Special Elite typing on), headline_red (Oswald on red box), roman_caps (Cinzel gold), marker_note (Permanent Marker yellow), caption_bold (Poppins Black on dark box), hindi_bold (Rozha One), hindi_title (Teko + extrude), hindi_handwritten (Kalam).
+- Pair them like the references: date_serif year + script_name name below; doc_title for intros; neon_outline words in front of a subject; typewriter for documents; hindi_* for Hindi titles.
 ''';

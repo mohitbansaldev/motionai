@@ -11,6 +11,7 @@ import '../../core/engine/fx_math.dart';
 import '../../core/model/easing.dart';
 import '../../core/model/layer.dart';
 import '../../core/model/project.dart';
+import '../../fonts/font_catalog.dart'; // FONTS (Agent I)
 import '../../state/video_pool.dart';
 import 'fx/fx_painters.dart';
 import 'fx/offscreen.dart';
@@ -150,7 +151,9 @@ class LayerView extends StatelessWidget {
       fontSize: t.fontSize,
       color: Color(t.color),
       fontWeight: FontWeight.values[weightIndex],
-      fontFamily: t.fontFamily,
+      // FONTS (Agent I): bundled family/alias + Devanagari fallback
+      fontFamily: FontCatalog.resolve(t.fontFamily, t.text),
+      fontFamilyFallback: FontCatalog.fallbackFor(t.fontFamily),
       height: 1.15,
       decoration: TextDecoration.none,
       shadows: t.shadow
