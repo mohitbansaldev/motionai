@@ -82,12 +82,12 @@ void main() {
       _run(p, {'op': 'set_property', 'target': 's', 'prop': 'rotation', 'value': [0, 25, 0]});
       _run(p, {'op': 'set_camera_mode', 'mode': '3d'});
       final key = GlobalKey();
-      Future<List<int>> shot(double? scale) async {
+      Future<List<int>> shot(double? scale, {bool playing = true}) async {
         await tester.pumpWidget(Directionality(
           textDirection: TextDirection.ltr,
           child: Center(
             child: RepaintBoundary(
-                key: key, child: CompositionCanvas(project: p, time: 1, draft: true, playing: true, previewScale: scale)),
+                key: key, child: CompositionCanvas(project: p, time: 1, draft: true, playing: playing, previewScale: scale)),
           ),
         ));
         await tester.pump();
@@ -119,6 +119,20 @@ void main() {
       final edited = await shot(1);
       expect(edited[0], lessThan(60), reason: 'edit shows up (no red)');
       expect(edited[1], greaterThan(200), reason: 'edit shows up (green)');
+
+      // Depth of field (paused): baked into the cached image ≈ the live blur.
+      _run(p, {'op': 'set_property', 'target': 'camera', 'prop': 'aperture', 'value': [60]});
+      _run(p, {'op': 'set_property', 'target': 'camera', 'prop': 'focus', 'value': [200]});
+      final dofDirect = await shot(null, playing: false);
+      final dofCached = await shot(1, playing: false);
+      await shot(1, playing: false);
+      final dofCached2 = await shot(1, playing: false);
+      for (final px in [dofCached, dofCached2]) {
+        for (int i = 0; i < px.length; i++) {
+          expect((px[i] - dofDirect[i]).abs(), lessThan(48), reason: 'dof channel $i');
+        }
+      }
+      expect(dofDirect[1], greaterThan(120), reason: 'blurred green centre');
     });
   });
 }

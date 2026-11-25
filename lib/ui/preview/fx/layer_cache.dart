@@ -246,15 +246,19 @@ class RenderLayerRaster extends RenderProxyBox {
   ui.Image? _blurredFrom;
   double _blurredQ = 0;
 
-  /// Quantised blur: 0 below 0.3 px, else 1.2^k.
-  static double quantizeBlur(double s) {
+  static const double _blurStep = 1.3;
+
+  /// Quantised blur: 0 below 0.3 px, else 1.3^k; stays on [current] while
+  /// [s] is within ±65% of a step of it (no flicker between two steps).
+  static double quantizeBlur(double s, [double current = 0]) {
     if (!(s > 0.3)) return 0;
-    final k = (math.log(s) / math.log(1.2)).round();
-    return math.pow(1.2, k).toDouble();
+    if (current > 0 && (math.log(s / current)).abs() < 0.65 * math.log(_blurStep)) return current;
+    final k = (math.log(s) / math.log(_blurStep)).round();
+    return math.pow(_blurStep, k).toDouble();
   }
 
   set blur(double v) {
-    final q = quantizeBlur(v);
+    final q = quantizeBlur(v, _blurQ);
     if (q == _blurQ) return;
     _blurQ = q;
     if (_enabled && _image != null) {
@@ -451,28 +455,36 @@ class RenderLayerRaster extends RenderProxyBox {
     final img = _image!;
     _paint.filterQuality = _fast ? FilterQuality.low : FilterQuality.medium;
     if (_blurQ > 0) {
-      // Blurred copy with a 3σ margin (the blur spills past the layer edge).
+      // Blurred copy with a 3σ margin (the blur spills past the layer edge),
+      // stored smaller the stronger the blur (it has no fine detail left).
       final k = img.width / size.width; // image px per layer px
-      final pad = (3 * _blurQ * k).ceilToDouble();
+      final sigma = _blurQ * k; // in image px
+      final ds = (2.0 / sigma).clamp(0.08, 1.0).toDouble();
+      final pad = 3 * sigma; // image px
       if (_blurred == null || !identical(_blurredFrom, img) || _blurredQ != _blurQ) {
         _blurred?.dispose();
+        final bw = math.max(1, ((img.width + 2 * pad) * ds).ceil()), bh = math.max(1, ((img.height + 2 * pad) * ds).ceil());
         final rec = ui.PictureRecorder();
-        Canvas(rec).drawImage(
+        Canvas(rec).drawImageRect(
           img,
-          Offset(pad, pad),
-          Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: _blurQ * k, sigmaY: _blurQ * k, tileMode: TileMode.decal),
+          Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
+          Rect.fromLTWH(pad * ds, pad * ds, img.width * ds, img.height * ds),
+          Paint()
+            ..filterQuality = FilterQuality.low
+            ..imageFilter = ui.ImageFilter.blur(sigmaX: sigma * ds, sigmaY: sigma * ds, tileMode: TileMode.decal),
         );
         final pic = rec.endRecording();
-        _blurred = pic.toImageSync(img.width + 2 * pad.toInt(), img.height + 2 * pad.toInt());
+        _blurred = pic.toImageSync(bw, bh);
         pic.dispose();
         _blurredFrom = img;
         _blurredQ = _blurQ;
       }
       final b = _blurred!;
+      final m = pad / k; // layer px
       context.canvas.drawImageRect(
         b,
         Rect.fromLTWH(0, 0, b.width.toDouble(), b.height.toDouble()),
-        (offset & size).inflate(pad / k),
+        Rect.fromLTWH(offset.dx - m, offset.dy - m, b.width / ds / k, b.height / ds / k),
         _paint,
       );
       return;
