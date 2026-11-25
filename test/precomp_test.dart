@@ -137,7 +137,7 @@ void main() {
       expect(gl.type, LayerType.comp);
       expect(p.main.indexOf('gl'), 0, reason: 'takes the place of the top moved layer');
       expect(gl.start, 0, reason: 'from the earliest moved layer (the matte starts at 0)');
-      expect(gl.end, closeTo(5, 1e-9));
+      expect(gl.end, closeTo(10, 1e-9)); // V2-B: the matte layer (no start/duration) now spans the whole 10 s comp (was 5 s)
       for (final t in times) {
         expectSameScreen(before[t]!, screen(p, t), 't=$t');
       }

@@ -50,7 +50,7 @@ class ShotCommands {
           break;
       }
     } on CommandError catch (e) {
-      throw CommandError(e.message.startsWith('$op') ? e.message : '$op: ${e.message}');
+      throw CommandError(e.message.startsWith(op) ? e.message : '$op: ${e.message}');
     } on ArgumentError catch (e) {
       throw CommandError('$op: ${e.message}');
     }
@@ -318,13 +318,13 @@ class ShotCommands {
       final cmd = <String, dynamic>{
         'op': 'camera_shot', 'move': mv, 'start': st, 'duration': du,
         'intensity': m['intensity'] ?? m['amount'] ?? 0.5,
-        if (tg != null) 'target': tg,
+        'target': ?tg,
         if (m['point'] != null) 'point': m['point'],
         if (m['ease'] != null) 'ease': m['ease'],
         if (m['direction'] != null) 'direction': m['direction'],
       };
       x(cmd);
-      camLog.add({'move': mv, 'start': st, 'duration': du, if (tg != null) 'target': tg});
+      camLog.add({'move': mv, 'start': st, 'duration': du, 'target': ?tg});
     }
     comp.duration = dur; // camera_shot may extend the comp; the shot keeps its length
 

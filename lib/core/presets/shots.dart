@@ -434,14 +434,14 @@ class ShotGeometry {
         }
         if (worst <= 0.5) break;
         touched = true;
-        final k = math.min(1.6, (hWorst + worst) / math.max(1.0, hWorst));
+        final k = math.min(1.6, (hWorst + worst + 1) / math.max(1.0, hWorst));
         final bottom = bottomOf(comp, f, 0);
         final a = f.prop(Props.anchor).staticValue;
         _map(f.prop(Props.scale), (v) => [v[0] * k, v[1] * k, v[2]]);
         final sy = f.prop(Props.scale).valueAt(0)[1].abs() / 100;
         final newY = bottom - (f.height - a[1]) * sy;
         _map(f.prop(Props.position), (v) => [v[0], newY, v[2]]);
-        final rest = worst - hWorst * (k - 1);
+        final rest = worst + 1 - hWorst * (k - 1);
         if (rest > 0.5) {
           final cam = Evaluator.camera3D(comp, tWorst);
           final b = Scene3D.worldBox(comp, f, tWorst);

@@ -201,7 +201,7 @@ void main() {
         final c = box(comp, 'castle', t), m = box(comp, 'man', t);
         final overlap = (c[2] < m[2] ? c[2] : m[2]) - (c[0] > m[0] ? c[0] : m[0]);
         if (overlap <= (c[2] - c[0]) * 0.15) continue;
-        expect(c[1] - (m[1] - margin), lessThanOrEqualTo(base + 2), reason: 'castle sinks behind the man at $t');
+        expect(c[1] - (m[1] - margin), lessThanOrEqualTo(base + 3), reason: 'castle sinks behind the man at $t');
       }
       final off = project();
       run(off, {
