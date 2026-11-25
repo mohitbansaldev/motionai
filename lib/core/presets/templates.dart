@@ -165,7 +165,7 @@ class TemplateCtx {
           {String? fill2, String kind = 'rect', double st = 0, double du = 5, String? name, double corner = 0}) =>
       {
         'op': 'add_layer', 'type': 'shape', 'id': id, 'kind': kind, 'width': rw, 'height': rh, 'position': [x, y, 0],
-        'fill': fill, if (fill2 != null) 'fill2': fill2, 'corner': corner, 'start': t(st), 'duration': du, if (name != null) 'name': name,
+        'fill': fill, 'fill2': ?fill2, 'corner': corner, 'start': t(st), 'duration': du, 'name': ?name,
       };
 
   Map<String, dynamic> kf(String id, String prop, num time, dynamic v, [String ease = 'easy_ease']) =>
@@ -288,7 +288,7 @@ class SceneTemplates {
 
   static const _refKeys = ['id', 'layer', 'target', 'parent', 'new_id', 'map', 'attach', 'cut_to', 'behind'];
 
-  /// Gives every id the template defines (and component parts "<id>_x") the
+  /// Gives every id the template defines (and component parts `<id>_x`) the
   /// [prefix], so a template can be inserted any number of times.
   static List<Map<String, dynamic>> prefixIds(List<Map<String, dynamic>> cmds, String prefix) {
     final defined = <String>{};
