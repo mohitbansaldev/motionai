@@ -4,6 +4,7 @@ import '../../core/model/layer.dart';
 import '../../core/presets/motion_presets.dart';
 import '../../state/editor_controller.dart';
 import '../ai_tools.dart';
+import '../bulk/bulk_panel.dart'; // BULK (Agent N)
 import '../common.dart';
 import '../fonts/font_picker.dart'; // FONTS (Agent I)
 import '../precomp_bar.dart'; // PRECOMP (Agent L)
@@ -19,6 +20,7 @@ class LayerPanel extends StatelessWidget {
     return AnimatedBuilder(
       animation: Listenable.merge([c, c.timeNotifier]),
       builder: (context, _) {
+        if (c.hasMultiSelection) return BulkPanel(c: c); // BULK (Agent N): several layers selected
         final l = c.selectedLayer;
         if (l == null) {
           return const Center(

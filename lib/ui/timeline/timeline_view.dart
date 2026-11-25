@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/model/layer.dart';
+import '../../core/model/project.dart' show Ids; // BULK (Agent N)
 import '../../state/editor_controller.dart';
 import '../common.dart';
 
@@ -13,7 +14,7 @@ const double _rulerH = 26;
 const double _rowH = 36;
 const double _handleW = 16;
 
-enum _Drag { none, scrub, scroll, move, trimIn, trimOut, zoom }
+enum _Drag { none, scrub, scroll, move, trimIn, trimOut, zoom, marquee } // BULK (Agent N): marquee
 
 /// Layer timeline: ruler + playhead, one row per layer (plus a camera row),
 /// drag clips to move, drag edges to trim, pinch to zoom, long-press a row
@@ -37,6 +38,7 @@ class _Viewport {
   double scrollY = 0;
   int hoverRow = -2; // -2 = none
   bool hoverClip = false;
+  Rect? marquee; // BULK (Agent N): rubber-band rectangle (local px)
 }
 
 /// Public so the desktop editor can zoom from buttons and shortcuts.
@@ -48,6 +50,34 @@ class TimelineViewState extends State<TimelineView> {
   double _origStart = 0, _origEnd = 0;
   double _zoomBase = 80;
   Size _size = Size.zero;
+
+  // BULK (Agent N) >>> multi-selection drag state
+  PointerDeviceKind _pointerKind = PointerDeviceKind.touch;
+  final Map<String, (double, double)> _origTimes = {}; // id → (start, end) at drag start
+  List<String> _marqueeBase = const [];
+  Offset _marqueeFrom = Offset.zero;
+  bool get _mouse => _pointerKind == PointerDeviceKind.mouse || _pointerKind == PointerDeviceKind.trackpad;
+  bool get _ctrl => HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed;
+  bool get _shift => HardwareKeyboard.instance.isShiftPressed;
+
+  /// Layers whose clip touches the rubber band [r].
+  List<String> _inMarquee(Rect r) {
+    final out = <String>[];
+    for (int i = 0; i < c.comp.layers.length; i++) {
+      final l = c.comp.layers[i];
+      final top = _rulerH + (i + 1) * _rowH - _vp.scrollY;
+      final clip = Rect.fromLTRB(_xAtTime(l.start), top + 4, _xAtTime(l.end), top + _rowH - 4);
+      if (clip.overlaps(r)) out.add(l.id);
+    }
+    return out;
+  }
+
+  /// The layers a drag on [l] moves / trims: the whole selection when [l] is part of it.
+  List<Layer> _dragSet(Layer l) {
+    if (!c.hasMultiSelection || !c.isSelected(l.id)) return [l];
+    return [for (final o in c.selectedLayers) if (!o.locked) o];
+  }
+  // <<< BULK (Agent N)
 
   EditorController get c => widget.controller;
 
@@ -141,7 +171,7 @@ class TimelineViewState extends State<TimelineView> {
     final l = _layerForRow(row);
     if (l == null || l.locked) return SystemMouseCursors.basic;
     final x0 = _xAtTime(l.start), x1 = _xAtTime(l.end);
-    if (l.id == c.selectedLayerId && ((p.dx - x0).abs() < _handleW * 0.6 || (p.dx - x1).abs() < _handleW * 0.6)) {
+    if (c.isSelected(l.id) && ((p.dx - x0).abs() < _handleW * 0.6 || (p.dx - x1).abs() < _handleW * 0.6)) {
       return SystemMouseCursors.resizeLeftRight;
     }
     if (p.dx >= x0 && p.dx <= x1) return SystemMouseCursors.grab;
@@ -156,7 +186,7 @@ class TimelineViewState extends State<TimelineView> {
     }
     final l = _layerForRow(row);
     if (l == null) return;
-    c.select(l.id);
+    if (!c.isSelected(l.id)) c.select(l.id); // BULK (Agent N): keep a multi-selection for its menu
     final cb = widget.onLayerContextMenu;
     if (cb != null) {
       cb(l, d.globalPosition);
@@ -202,6 +232,17 @@ class TimelineViewState extends State<TimelineView> {
       return;
     }
     final l = _layerForRow(row);
+    // BULK (Agent N) >>> Ctrl/Cmd+click toggles, Shift+click selects a range, multi-select mode toggles.
+    if (l != null && (_ctrl || c.multiSelectMode)) {
+      c.toggleSelect(l.id);
+      return;
+    }
+    if (l != null && _shift) {
+      c.selectRange(l.id);
+      return;
+    }
+    if (l == null && (_ctrl || _shift || c.multiSelectMode)) return;
+    // <<< BULK (Agent N)
     c.select(l?.id);
     if (l != null) _seekToNearbyKey(l.allKeyframeTimes(), p.dx);
   }
@@ -218,6 +259,17 @@ class TimelineViewState extends State<TimelineView> {
 
   void _onLongPress(LongPressStartDetails d) {
     final l = _layerForRow(_rowAt(d.localPosition.dy));
+    // BULK (Agent N): on a touch screen long-press starts multi-select mode (checkboxes).
+    if (l != null && !_mouse) {
+      HapticFeedback.mediumImpact();
+      if (!c.multiSelectMode) {
+        c.setMultiSelectMode(true);
+        c.selectMany([l.id], add: true);
+      } else {
+        c.toggleSelect(l.id);
+      }
+      return;
+    }
     if (l != null) {
       c.select(l.id);
       widget.onLayerMenu(l);
@@ -245,17 +297,42 @@ class TimelineViewState extends State<TimelineView> {
         _dragLayer = l;
         _origStart = l.start;
         _origEnd = l.end;
-        if (p.dx < x0 + _handleW && l.id == c.selectedLayerId) {
+        final selected = c.isSelected(l.id); // BULK (Agent N): any selected clip has trim handles
+        if (p.dx < x0 + _handleW && selected) {
           _drag = _Drag.trimIn;
-        } else if (p.dx > x1 - _handleW && l.id == c.selectedLayerId) {
+        } else if (p.dx > x1 - _handleW && selected) {
           _drag = _Drag.trimOut;
         } else {
           _drag = _Drag.move;
         }
-        c.select(l.id);
+        // BULK (Agent N) >>> keep a multi-selection; Alt+drag duplicates first and drags the copies.
+        if (!c.isSelected(l.id)) c.select(l.id);
         c.beginGesture();
+        if (_drag == _Drag.move && HardwareKeyboard.instance.isAltPressed) {
+          final copies = {for (final o in _dragSet(l)) o.id: Ids.next('L')};
+          final err = c.tryRun({
+            'op': 'batch',
+            'commands': [for (final e in copies.entries) {'op': 'duplicate_layer', 'layer': e.key, 'new_id': e.value}],
+          }, record: false);
+          if (err == null) {
+            c.selectMany(copies.values, primary: copies[l.id]);
+            _dragLayer = c.comp.layerById(copies[l.id]!) ?? l;
+          }
+        }
+        _origTimes
+          ..clear()
+          ..addAll({for (final o in _dragSet(_dragLayer!)) o.id: (o.start, o.end)});
+        // <<< BULK (Agent N)
         return;
       }
+    }
+    // BULK (Agent N): rubber band with a mouse (or in phone multi-select mode) on empty space.
+    if (row >= 0 && p.dx > _headerW && (_mouse || c.multiSelectMode)) {
+      _drag = _Drag.marquee;
+      _marqueeFrom = p;
+      _marqueeBase = _ctrl || _shift || c.multiSelectMode ? c.selectedLayerIds : const [];
+      _vp.marquee = Rect.fromPoints(p, p);
+      return;
     }
     _drag = _Drag.scroll;
   }
@@ -264,7 +341,7 @@ class TimelineViewState extends State<TimelineView> {
     final threshold = 8 / _vp.pxPerSec;
     final candidates = <double>[0, c.time];
     for (final o in c.comp.layers) {
-      if (o.id == self.id) continue;
+      if (o.id == self.id || _origTimes.containsKey(o.id)) continue; // BULK (Agent N): not to clips moving along
       candidates
         ..add(o.start)
         ..add(o.end);
@@ -293,6 +370,48 @@ class TimelineViewState extends State<TimelineView> {
         _vp.scrollY -= d.focalPointDelta.dy;
         _clampScroll();
         setState(() {});
+        break;
+      case _Drag.marquee: // BULK (Agent N)
+        final r = Rect.fromPoints(_marqueeFrom, p);
+        setState(() => _vp.marquee = r);
+        final hit = _inMarquee(r);
+        c.selectMany([..._marqueeBase, ...hit], primary: hit.isEmpty ? null : hit.first);
+        break;
+      case _Drag.move when _origTimes.length > 1: // BULK (Agent N): move every selected clip together
+        final l = _dragLayer!;
+        final dt = (p.dx - _dragStartX) / _vp.pxPerSec;
+        final minStart = _origTimes.values.map((v) => v.$1).reduce(math.min);
+        var ns = _origStart + math.max(dt, -minStart);
+        final snappedStart = _snap(ns, l);
+        final snappedEnd = _snap(ns + l.duration, l);
+        ns = (snappedStart - ns).abs() <= (snappedEnd - (ns + l.duration)).abs() ? snappedStart : snappedEnd - l.duration;
+        final shift = math.max(ns - _origStart, -minStart);
+        c.tryRun({
+          'op': 'batch',
+          'commands': [
+            for (final e in _origTimes.entries) {'op': 'update_layer', 'layer': e.key, 'start': math.max(0.0, e.value.$1 + shift)},
+          ],
+        }, record: false);
+        break;
+      case _Drag.trimIn when _origTimes.length > 1: // BULK (Agent N): trim every selected clip by the same amount
+        final dt = _snap(_origStart + (p.dx - _dragStartX) / _vp.pxPerSec, _dragLayer!) - _origStart;
+        c.tryRun({
+          'op': 'batch',
+          'commands': [
+            for (final e in _origTimes.entries)
+              {'op': 'trim_layer', 'layer': e.key, 'in': (e.value.$1 + dt).clamp(0.0, e.value.$2 - c.comp.frameDuration)},
+          ],
+        }, record: false);
+        break;
+      case _Drag.trimOut when _origTimes.length > 1: // BULK (Agent N)
+        final dt = _snap(_origEnd + (p.dx - _dragStartX) / _vp.pxPerSec, _dragLayer!) - _origEnd;
+        c.tryRun({
+          'op': 'batch',
+          'commands': [
+            for (final e in _origTimes.entries)
+              {'op': 'trim_layer', 'layer': e.key, 'out': math.max(e.value.$2 + dt, e.value.$1 + c.comp.frameDuration)},
+          ],
+        }, record: false);
         break;
       case _Drag.move:
         final l = _dragLayer!;
@@ -324,6 +443,8 @@ class TimelineViewState extends State<TimelineView> {
 
   void _onScaleEnd(ScaleEndDetails d) {
     if (_drag == _Drag.move || _drag == _Drag.trimIn || _drag == _Drag.trimOut) c.endGesture();
+    if (_drag == _Drag.marquee) setState(() => _vp.marquee = null); // BULK (Agent N)
+    _origTimes.clear(); // BULK (Agent N)
     _drag = _Drag.none;
     _dragLayer = null;
   }
@@ -334,6 +455,7 @@ class TimelineViewState extends State<TimelineView> {
       _size = Size(box.maxWidth, box.maxHeight);
       return Listener(
         onPointerSignal: _onPointerSignal,
+        onPointerDown: (e) => _pointerKind = e.kind, // BULK (Agent N)
         child: MouseRegion(
           cursor: _cursor,
           onHover: _onHover,
@@ -405,18 +527,58 @@ class _TimelinePainter extends CustomPainter {
     for (int r = 0; r < rows; r++) {
       final top = _rulerH + r * _rowH - vp.scrollY;
       if (top > size.height || top + _rowH < _rulerH) continue;
-      final selected = r == 0 ? c.cameraSelected : comp.layers[r - 1].id == c.selectedLayerId;
+      final selected = r == 0 ? c.cameraSelected : c.isSelected(comp.layers[r - 1].id); // BULK (Agent N)
       if (selected) {
         canvas.drawRect(Rect.fromLTWH(0, top, _headerW, _rowH), Paint()..color = const Color(0xFF2B3442));
       }
       final name = r == 0 ? 'Camera · ${comp.camera.mode.name}' : comp.layers[r - 1].name;
       final l = r == 0 ? null : comp.layers[r - 1];
-      _text(canvas, name, Offset(8, top + 10), _headerW - 14,
+      // BULK (Agent N): checkboxes in phone multi-select mode.
+      final box = c.multiSelectMode && l != null;
+      if (box) _checkbox(canvas, Offset(6, top + _rowH / 2 - 7), selected);
+      _text(canvas, name, Offset(box ? 26 : 8, top + 10), _headerW - (box ? 32 : 14),
           color: (l != null && !l.visible) ? Colors.white30 : Colors.white70, size: 11.5);
     }
     canvas.restore();
 
+    // BULK (Agent N): rubber band.
+    final m = vp.marquee;
+    if (m != null) {
+      canvas.drawRect(m, Paint()..color = const Color(0x334FC3F7));
+      canvas.drawRect(
+          m,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = const Color(0xFF4FC3F7));
+    }
+
     _rulerAndPlayhead(canvas, size);
+  }
+
+  // BULK (Agent N)
+  void _checkbox(Canvas canvas, Offset at, bool on) {
+    final r = RRect.fromRectAndRadius(at & const Size(14, 14), const Radius.circular(3));
+    if (on) {
+      canvas.drawRRect(r, Paint()..color = const Color(0xFF8B6CFF));
+      final tick = Path()
+        ..moveTo(at.dx + 3, at.dy + 7)
+        ..lineTo(at.dx + 6, at.dy + 10)
+        ..lineTo(at.dx + 11, at.dy + 4);
+      canvas.drawPath(
+          tick,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2
+            ..color = Colors.white);
+    } else {
+      canvas.drawRRect(
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4
+            ..color = Colors.white54);
+    }
   }
 
   void _cameraRow(Canvas canvas, Size size, double top) {
@@ -428,7 +590,8 @@ class _TimelinePainter extends CustomPainter {
   }
 
   void _layerRow(Canvas canvas, Size size, Layer l, double top) {
-    final selected = l.id == c.selectedLayerId;
+    final selected = c.isSelected(l.id); // BULK (Agent N)
+    final primary = l.id == c.selectedLayerId;
     final x0 = math.max(_headerW, x(l.start));
     final x1 = x(l.end);
     if (x1 <= _headerW || x(l.start) > size.width) return;
@@ -449,8 +612,8 @@ class _TimelinePainter extends CustomPainter {
           Paint()
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2
-            ..color = Colors.white);
-      final hp = Paint()..color = Colors.white;
+            ..color = primary ? Colors.white : const Color(0xFF4FC3F7)); // BULK (Agent N): primary white, others blue
+      final hp = Paint()..color = primary ? Colors.white : const Color(0xFF4FC3F7);
       canvas.drawRRect(
           RRect.fromRectAndRadius(Rect.fromLTWH(x(l.start), top + 4, 6, _rowH - 8), const Radius.circular(3)), hp);
       canvas.drawRRect(

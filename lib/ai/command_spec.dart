@@ -129,4 +129,20 @@ NESTED COMPS (PRECOMPS) — PRECOMP (Agent L)
 - in_comp: <comp id> on ANY command runs it inside that comp, e.g. {"op":"add_layer","in_comp":"C1","type":"text","text":"Inside"}.
 - open_comp {comp: id | "main"} — switch which comp later commands edit (CURRENT PROJECT shows editing_comp). A comp cannot contain itself.
 >>>>>>> 43398da3ba457291c13629cf29ec06affc459325
+
+// ---- BULK (Agent N): many layers at once ----
+MANY LAYERS AT ONCE (CURRENT PROJECT "selected_layers" = what the user selected; "these"/"them"/"the selected ones" mean those ids):
+- for_layers {layers: [ids] | "selection", filter?: {type?: "text"|["image","video"], name_contains?, is3d?, in_range?: [t0, t1], visible?, locked?, has_effect?, parent?}, command: {...any single-layer op with "$layer"...} | commands: [...], skip_errors?: true}
+  runs the command once per layer; "$layer" → the layer id (also inside strings: "new_id": "$layer_b"), "$index" → 0,1,2…, "$layer_start"/"$layer_end" → its times. Without "layers" the filter picks from every layer of the open comp.
+  e.g. make these 3D: {"op":"for_layers","layers":"selection","command":{"op":"update_layer","layer":"$layer","is3d":true}}  (or make_3d {layers:[ids]} to keep the look on depth bands)
+  e.g. fade in every text: {"op":"for_layers","filter":{"type":"text"},"command":{"op":"animate_in","layer":"$layer","preset":"fade"}}
+- select {layers | filter, mode?: replace|add|remove} — selects layers in the editor (so the user sees what you mean).
+- align {layers, mode: left|center|right|top|middle|bottom, to?: selection|comp|<layer id>} · distribute {layers, axis: horizontal|vertical, by?: center|gap}
+- align_time {layers, mode: start|end|stagger|sequence, time? (default playhead), step? (s) | frames?, gap?, order?: given|stack|time} — stagger: each next layer starts step later; sequence: one after another.
+- shift_time {layers, by} · transform_layers {layers, move?: [dx, dy], scale? (factor), rotate? (deg), center?: [x, y]} — around the selection centre by default.
+- offset_property {layer, prop ("position", "rotation", "scale", "opacity", "position.x"…), by? (added) | factor? (multiplied)} — changes the value AND every keyframe.
+- parent_layers {layers, parent: id | null} (keeps them where they are) · group_layers {layers, name?} — a null parent at their centre; look unchanged.
+- paste_layers {layers: [layer JSON], media?, comps?, time?, index?} (the editor's copy/paste format) · paste_effects {layer, effects: [effect JSON], replace?} · paste_animation {layer, props, from_start?}
+- precompose {layers: [ids]} groups the selection into one comp layer.
+// ---- end BULK ----
 ''';

@@ -30,6 +30,9 @@ import 'library/save_template_dialog.dart';
 import 'library/template_gallery.dart';
 import 'director_screen.dart';
 import 'audio/sound_sheet.dart';
+import 'bulk/bulk_actions.dart'; // BULK (Agent N)
+import 'bulk/bulk_bar.dart'; // BULK (Agent N)
+import 'bulk/bulk_menu.dart'; // BULK (Agent N)
 
 class EditorScreen extends StatefulWidget {
   final Project project;
@@ -152,6 +155,8 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
   /// Right-click menu for a layer (timeline clip or the selected layer in
   /// the preview). Same actions as the phone's long-press sheet.
   Future<void> _layerContextMenu(Layer l, Offset global) async {
+    // BULK (Agent N): several layers selected → the multi-layer menu.
+    if (c.hasMultiSelection && c.isSelected(l.id)) return BulkMenu.show(context, c, global);
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final pos = RelativeRect.fromRect(global & const Size(1, 1), Offset.zero & overlay.size);
     PopupMenuItem<String> item(String v, IconData icon, String label, [String? keys, Color? color]) => PopupMenuItem(
@@ -238,6 +243,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
 
     if (ctrl) {
       if (repeat && k != LogicalKeyboardKey.keyZ && k != LogicalKeyboardKey.keyY) return false;
+      if (_bulkCtrlKey(k, shift)) return true; // BULK (Agent N): Ctrl+A/C/X/V/G, Ctrl+Shift+C, Ctrl+D on a multi-selection
       if (k == LogicalKeyboardKey.keyZ) {
         if (shift) {
           c.redo();
@@ -269,7 +275,9 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
       final step = shift ? 10.0 : 1.0;
       final dx = k == LogicalKeyboardKey.arrowLeft ? -step : (k == LogicalKeyboardKey.arrowRight ? step : 0.0);
       final dy = k == LogicalKeyboardKey.arrowUp ? -step : (k == LogicalKeyboardKey.arrowDown ? step : 0.0);
-      if (sel != null && !sel.locked && !c.playing) {
+      if (c.hasMultiSelection && !c.playing) {
+        _bulkNudge(dx, dy); // BULK (Agent N): nudge every selected layer
+      } else if (sel != null && !sel.locked && !c.playing) {
         _nudge(sel, dx, dy);
       } else if (dx != 0) {
         c.seek(c.time + (shift ? dx.sign : dx.sign * c.comp.frameDuration));
@@ -283,6 +291,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
       if (k == LogicalKeyboardKey.period) c.stepFrames(1);
       return k == LogicalKeyboardKey.comma || k == LogicalKeyboardKey.period;
     }
+    if (_bulkKey(e, shift)) return true; // BULK (Agent N): Shift+3, S, Delete, Esc on a multi-selection
     if (k == LogicalKeyboardKey.space) {
       c.togglePlay();
     } else if (k == LogicalKeyboardKey.keyK) {
@@ -316,8 +325,8 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
     } else if (k == LogicalKeyboardKey.period) {
       c.stepFrames(1);
     } else if (k == LogicalKeyboardKey.escape) {
-      if (sel == null && !c.cameraSelected) return false;
-      c.select(null);
+      if (sel == null && !c.cameraSelected && !c.multiSelectMode) return false;
+      c.clearSelection(); // BULK (Agent N): clears the whole selection
     } else if (k == LogicalKeyboardKey.f1 || k == LogicalKeyboardKey.slash) {
       _showShortcuts();
     } else {
@@ -325,6 +334,78 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
     }
     return true;
   }
+
+  // BULK (Agent N) >>> multi-selection shortcuts
+  bool _bulkCtrlKey(LogicalKeyboardKey k, bool shift) {
+    if (k == LogicalKeyboardKey.keyA) {
+      c.selectAll();
+      return true;
+    }
+    if (k == LogicalKeyboardKey.keyC && shift) {
+      if (c.selectionCount == 0) return false;
+      BulkMenu.run(context, c, 'precomp');
+      return true;
+    }
+    if (k == LogicalKeyboardKey.keyC) {
+      if (c.selectionCount == 0) return false;
+      BulkMenu.run(context, c, 'copy');
+      return true;
+    }
+    if (k == LogicalKeyboardKey.keyX) {
+      if (c.selectionCount == 0) return false;
+      BulkMenu.run(context, c, 'cut');
+      return true;
+    }
+    if (k == LogicalKeyboardKey.keyV) {
+      BulkActions(c).pasteLayers(atOriginalTime: shift).then((err) {
+        if (mounted) bulkReport(context, err);
+      });
+      return true;
+    }
+    if (k == LogicalKeyboardKey.keyG) {
+      if (c.selectionCount == 0) return false;
+      BulkMenu.run(context, c, 'group');
+      return true;
+    }
+    if (k == LogicalKeyboardKey.keyD && c.hasMultiSelection) {
+      BulkMenu.run(context, c, 'dup');
+      return true;
+    }
+    return false;
+  }
+
+  bool _bulkKey(KeyEvent e, bool shift) {
+    final k = e.logicalKey;
+    final kb = HardwareKeyboard.instance;
+    if (kb.isAltPressed) return false;
+    if (shift && (e.physicalKey == PhysicalKeyboardKey.digit3 || k == LogicalKeyboardKey.digit3 || k == LogicalKeyboardKey.numberSign)) {
+      if (c.selectionCount == 0) return false;
+      bulkReport(context, BulkActions(c).toggle3D());
+      return true;
+    }
+    if (!c.hasMultiSelection) return false;
+    if (k == LogicalKeyboardKey.keyS) {
+      BulkMenu.run(context, c, 'split');
+      return true;
+    }
+    if (k == LogicalKeyboardKey.delete || k == LogicalKeyboardKey.backspace) {
+      BulkMenu.run(context, c, 'delete');
+      return true;
+    }
+    return false;
+  }
+
+  /// Nudges every selected layer; key-repeats merge into one undo step.
+  void _bulkNudge(double dx, double dy) {
+    if (_nudgeTimer == null) c.beginGesture();
+    _nudgeTimer?.cancel();
+    BulkActions(c).nudge(dx, dy, record: false);
+    _nudgeTimer = Timer(const Duration(milliseconds: 600), () {
+      _nudgeTimer = null;
+      c.endGesture();
+    });
+  }
+  // <<< BULK (Agent N)
 
   /// Moves the selected layer by (dx, dy) comp pixels; key-repeats merge
   /// into one undo step.
@@ -364,6 +445,20 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
       ('Ctrl+I', 'Import photos, videos or audio'),
       ('Ctrl+S / Ctrl+E', 'Save / export'),
       ('Esc', 'Deselect'),
+      // BULK (Agent N): multi-selection
+      ('Ctrl/Cmd + click', 'Add / remove a layer from the selection (timeline and preview)'),
+      ('Shift + click', 'Select a range of layers (timeline); add to the selection (preview)'),
+      ('Drag on empty area', 'Rubber-band select (timeline and preview; Ctrl/Shift adds)'),
+      ('Ctrl+A', 'Select all layers of the open comp'),
+      ('Ctrl+C / X / V', 'Copy / cut / paste layers (paste at the playhead; works across comps and projects)'),
+      ('Ctrl+Shift+V', 'Paste layers at their original time'),
+      ('Ctrl+G', 'Group the selection into a null parent'),
+      ('Ctrl+Shift+C', 'Precompose the selection'),
+      ('Shift+3', 'Make the selection 3D / 2D'),
+      ('Drag a selected clip', 'Moves every selected clip in time (Alt+drag duplicates)'),
+      ('Drag in the preview', 'Moves every selected layer (pinch: scale/rotate around the selection centre)'),
+      ('Alt + wheel', 'Scale the selection in the preview (Alt+Shift+wheel rotates)'),
+      ('Right-click', 'With several layers selected: the multi-layer menu'),
     ];
     showDialog<void>(
       context: context,
@@ -538,7 +633,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
                 child: GestureDetector(
                   onSecondaryTapUp: (d) {
                     final l = c.selectedLayer;
-                    if (l != null) _layerContextMenu(l, d.globalPosition);
+                    if (l != null) _layerContextMenu(l, d.globalPosition); // BULK (Agent N): multi menu inside
                   },
                   child: CompositionView(controller: c),
                 ),
@@ -652,6 +747,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
           ),
         ),
       ),
+      BulkBar(c: c), // BULK (Agent N): bulk action strip above the timeline
       _timeline(tl),
       const SizedBox(height: 8),
     ]);
@@ -711,6 +807,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
                 child: Column(children: [
                   Expanded(child: _preview()),
                   _TransportBar(c: c),
+                  BulkPhoneBar(c: c), // BULK (Agent N)
                   _timeline(math.min(190, box.maxHeight * 0.36)),
                   const SizedBox(height: 8),
                 ]),
@@ -727,6 +824,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
           return Column(children: [
             Expanded(flex: 5, child: _preview()),
             _TransportBar(c: c),
+            BulkPhoneBar(c: c), // BULK (Agent N)
             _timeline(170),
             _dock(),
             Expanded(flex: 5, child: _panels()),
