@@ -106,7 +106,10 @@ class FxCommands {
 
   /// `set_comp` keys: `motion_blur`: bool.
   static void applyComp(Composition comp, Map<String, dynamic> c) {
-    if (c['motion_blur'] != null) comp.motionBlur = c['motion_blur'] == true;
+    final v = c['motion_blur'];
+    if (v == null) return;
+    if (v is! bool) throw CommandError('motion_blur must be true or false, got ${jsonEncode(v)}');
+    comp.motionBlur = v;
   }
 
   /// Named effect values ("#FFC107" colours, "snow" particle kind, "top"
