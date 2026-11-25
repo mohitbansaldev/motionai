@@ -21,6 +21,7 @@ import '../state/editor_controller.dart';
 import '../ui/editor_screen.dart';
 import '../ui/export_screen.dart';
 import '../ui/library/library_common.dart';
+import 'contact_sheet.dart';
 import 'mcp_protocol.dart';
 import 'mcp_server.dart';
 import 'remote_export.dart';
@@ -34,7 +35,7 @@ class RemoteLogEntry {
   RemoteLogEntry(this.tool, this.summary, this.ok);
 }
 
-class RemoteControl extends ChangeNotifier implements RemoteHost {
+class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHost {
   RemoteControl._();
   static final RemoteControl instance = RemoteControl._();
 
@@ -142,24 +143,28 @@ class RemoteControl extends ChangeNotifier implements RemoteHost {
     notifyListeners();
   }
 
-  /// %APPDATA%\MotionAI\mcp.json: tells the bridge the port and token.
+  /// %APPDATA%\MotionAI\mcp.json (+ %USERPROFILE%\.motionai\mcp.json for
+  /// bridges inside the Store build of Claude): tells the bridge the port and token.
   Future<void> _writeControlFile() async {
-    try {
-      final f = File(mcpControlFilePath(Platform.environment, windows: Platform.isWindows));
-      await f.parent.create(recursive: true);
-      final info = McpControlInfo(
-        enabled: enabled && running,
-        port: port,
-        token: token,
-        pid: pid,
-        exe: Platform.resolvedExecutable,
-        written: DateTime.now().toIso8601String(),
-      );
-      final tmp = File('${f.path}.tmp');
-      await tmp.writeAsString(const JsonEncoder.withIndent('  ').convert({...info.toJson(), 'build': Updater.current}), flush: true);
-      await tmp.rename(f.path);
-    } catch (_) {
-      // Not fatal: HTTP clients can still connect with the URL + token.
+    final info = McpControlInfo(
+      enabled: enabled && running,
+      port: port,
+      token: token,
+      pid: pid,
+      exe: Platform.resolvedExecutable,
+      written: DateTime.now().toIso8601String(),
+    );
+    final text = const JsonEncoder.withIndent('  ').convert({...info.toJson(), 'build': Updater.current});
+    for (final path in mcpControlFilePaths(Platform.environment, windows: Platform.isWindows)) {
+      try {
+        final f = File(path);
+        await f.parent.create(recursive: true);
+        final tmp = File('${f.path}.tmp');
+        await tmp.writeAsString(text, flush: true);
+        await tmp.rename(f.path);
+      } catch (_) {
+        // Not fatal: HTTP clients can still connect with the URL + token.
+      }
     }
   }
 
@@ -170,45 +175,53 @@ class RemoteControl extends ChangeNotifier implements RemoteHost {
   String get claudeCodeCommand => claudeCodeStdioCommand(bridgeExe);
   String get claudeCodeHttp => claudeCodeHttpCommand(port, token);
 
-  /// Claude Desktop config files to update (classic installer and the
-  /// Microsoft Store package). Creates %APPDATA%\Claude if none exists.
-  static List<File> claudeDesktopConfigFiles() {
+  /// Every Claude Desktop config file on this PC (V2-A): each Microsoft
+  /// Store (MSIX) package `%LOCALAPPDATA%\Packages\Claude_*` (its virtualised
+  /// `LocalCache\Roaming\Claude`) and the classic `%APPDATA%\Claude`.
+  static List<String> claudeDesktopConfigPathsHere() {
     final env = Platform.environment;
-    final out = <File>[];
-    final appData = env['APPDATA'];
-    if (appData != null) out.add(File('$appData\\Claude\\claude_desktop_config.json'));
+    final names = <String>[];
     final local = env['LOCALAPPDATA'];
     if (local != null) {
       try {
-        for (final d in Directory('$local\\Packages').listSync()) {
-          final name = d.path.split('\\').last;
-          if (d is Directory && name.startsWith('Claude_')) {
-            final dir = Directory('${d.path}\\LocalCache\\Roaming\\Claude');
-            if (dir.existsSync()) out.add(File('${dir.path}\\claude_desktop_config.json'));
-          }
+        for (final d in Directory('$local\\Packages').listSync(followLinks: false)) {
+          if (d is Directory) names.add(d.path.split(RegExp(r'[\\/]')).last);
         }
       } catch (_) {}
     }
-    return out;
+    return claudeDesktopConfigPaths(env, names);
   }
 
-  /// Adds MotionAI to Claude Desktop's config (keeps everything else, keeps
-  /// a backup). Returns the files written.
-  Future<List<String>> addToClaudeDesktop() async {
-    final written = <String>[];
-    for (final f in claudeDesktopConfigFiles()) {
-      final exists = await f.exists();
-      if (!exists && !await f.parent.exists() && written.isNotEmpty) continue;
-      final old = exists ? await f.readAsString() : null;
-      final merged = mergeClaudeDesktopConfig(old, bridgeExe);
-      if (merged == null) throw FormatException('${f.path} is not valid JSON. Open it and paste the config by hand.');
-      await f.parent.create(recursive: true);
-      if (old != null) await File('${f.path}.motionai-backup').writeAsString(old);
-      await f.writeAsString(merged, flush: true);
-      written.add(f.path);
+  /// Adds MotionAI to every Claude Desktop config (merging: other servers and
+  /// settings stay; the old file is backed up once as .bak). Returns each
+  /// path with its status: added | updated | unchanged | error: ….
+  Future<List<(String, String)>> addToClaudeDesktop() async {
+    final out = <(String, String)>[];
+    for (final path in claudeDesktopConfigPathsHere()) {
+      final f = File(path);
+      try {
+        final old = await f.exists() ? await f.readAsString() : null;
+        final (text, status) = claudeDesktopConfigUpdate(old, bridgeExe);
+        if (status == 'invalid') {
+          out.add((path, 'error: not valid JSON, left alone (fix it or paste the config by hand)'));
+          continue;
+        }
+        if (text != null) {
+          await f.parent.create(recursive: true);
+          final bak = File('$path.bak');
+          if (old != null && !await bak.exists()) await bak.writeAsString(old, flush: true);
+          await f.writeAsString(text, flush: true);
+        }
+        out.add((path, status));
+      } catch (e) {
+        out.add((path, 'error: $e'));
+      }
     }
-    if (written.isEmpty) throw const FileSystemException('Could not find where Claude Desktop keeps its settings.');
-    return written;
+    if (out.isEmpty) throw const FileSystemException('Could not find where Claude Desktop keeps its settings (no APPDATA).');
+    if (out.every((r) => r.$2.startsWith('error'))) {
+      throw FileSystemException('Could not write the Claude Desktop config:\n${out.map((r) => '${r.$1}: ${r.$2}').join('\n')}');
+    }
+    return out;
   }
 
   // ------------------------------------------------------------ activity
@@ -285,6 +298,16 @@ class RemoteControl extends ChangeNotifier implements RemoteHost {
   Future<Uint8List> renderPng(EditorController c, double time, int width) async {
     try {
       return await _renderer.render(c.project, c.comp, time, width);
+    } finally {
+      final export = tools.jobs.latest('export');
+      if (export == null || !export.running) unawaited(MediaBridge.readerReleaseAll().catchError((_) {}));
+    }
+  }
+
+  @override
+  Future<List<RawFrame>> renderFrames(EditorController c, List<double> times, int width, {Composition? comp}) async {
+    try {
+      return await _renderer.renderMany(c.project, comp ?? c.comp, times, width);
     } finally {
       final export = tools.jobs.latest('export');
       if (export == null || !export.running) unawaited(MediaBridge.readerReleaseAll().catchError((_) {}));

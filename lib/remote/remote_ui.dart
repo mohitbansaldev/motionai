@@ -169,13 +169,25 @@ class _ClaudeControlSectionState extends State<ClaudeControlSection> {
     try {
       final files = await _rc.addToClaudeDesktop();
       if (!mounted) return;
+      String what(String status) => switch (status) {
+            'added' => 'added',
+            'updated' => 'updated',
+            'unchanged' => 'already set',
+            _ => status,
+          };
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Added to Claude Desktop'),
-          content: Text('MotionAI was added to:\n${files.join('\n')}\n\n'
-              'Now fully quit Claude Desktop (right-click its tray icon → Quit) and open it again. '
-              'Then ask Claude, for example: "Open my latest MotionAI project and add a title".'),
+          content: SingleChildScrollView(
+            child: SelectableText('MotionAI was written to every Claude Desktop config on this PC '
+                '(Microsoft Store and classic installs):\n\n'
+                '${files.map((f) => '• ${f.$1}\n   ${what(f.$2)}').join('\n')}\n\n'
+                'Other MCP servers in these files were kept; the old file was backed up once as .bak.\n\n'
+                'Now FULLY quit Claude Desktop (right-click its tray icon next to the clock → Quit; closing the window is not enough) '
+                'and open it again. In a new chat the tools menu should list "motionai". Then ask Claude, for example: '
+                '"Open my latest MotionAI project and add a title".'),
+          ),
           actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
         ),
       );
@@ -185,6 +197,9 @@ class _ClaudeControlSectionState extends State<ClaudeControlSection> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// Where Claude Desktop keeps its config on this PC (for the help text).
+  late final List<String> _configPaths = Platform.isWindows ? RemoteControl.claudeDesktopConfigPathsHere() : const [];
 
   Future<void> _editPort() async {
     final ctl = TextEditingController(text: '${_rc.port}');
@@ -267,8 +282,10 @@ class _ClaudeControlSectionState extends State<ClaudeControlSection> {
             Text(
               win
                   ? (_rc.bridgeExists
-                      ? '1. Tap "Add to Claude Desktop" (or copy the config and paste it in Claude → Settings → Developer → Edit Config).\n'
-                          '2. Quit Claude Desktop completely and open it again.\n3. Ask Claude to edit your video.'
+                      ? '1. Tap "Add to Claude Desktop" (writes every Claude Desktop install: Microsoft Store and classic). '
+                          'Or copy the config and paste it in Claude → Settings → Developer → Edit Config, keeping other servers.\n'
+                          '2. Fully quit Claude Desktop (tray icon → Quit) and open it again.\n3. Ask Claude to edit your video.\n'
+                          'Config files: ${_configPaths.isEmpty ? '%APPDATA%\\Claude\\claude_desktop_config.json' : _configPaths.join('  ·  ')}'
                       : 'motionai-mcp.exe was not found next to MotionAI. Install the latest MotionAI build (it includes it).')
                   : 'Use the URL and token below in your Claude client.',
               style: const TextStyle(fontSize: 12, color: MA.textDim),

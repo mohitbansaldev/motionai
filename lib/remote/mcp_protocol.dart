@@ -19,7 +19,7 @@ const int kMcpDefaultPort = 7820;
 const String kMcpServerName = 'motionai';
 
 /// Version answered by the server (bumped when the tools change).
-const String kMcpServerVersion = '1.0.0';
+const String kMcpServerVersion = '2.0.0';
 
 /// The version to answer for a client's requested one: the same if we
 /// support it, otherwise our newest (the client then decides).
@@ -61,11 +61,12 @@ Map<String, dynamic> initializeResult(Object? requestedVersion) => {
     };
 
 const String kMcpInstructions = '''
-MotionAI is a motion-graphics video editor (After Effects / Alight Motion style) running on the user's PC. These tools drive the running app live: every edit appears on the user's screen and can be undone with undo (or Ctrl+Z).
-Typical flow: get_state → (list_projects + open_project, or new_project) → get_command_spec once → run_commands → render_frame to look at the result → fix → save_project / export_video.
-- All edits are JSON edit commands (see get_command_spec / resource motionai://spec). One run_commands call = one atomic batch = one undo step; if any command fails nothing changes and you get the error.
-- Times are seconds, positions are composition pixels ((0,0) = top-left). Layer ids come from get_state.
-- import_media takes file paths on the user's PC. Long jobs (export_video, director_run, captions_generate) return a job id: poll export_status / job_status.
+MotionAI is a motion-graphics video editor (After Effects / Alight Motion style) running on the user's PC. These tools drive the running app live: every edit appears on the user's screen and is undoable (undo tool or Ctrl+Z).
+Flow: get_state → (list_projects + open_project, or new_project) → get_command_spec once → run_commands → look → fix → save_project / export_video.
+Workflow hint: use batch + preview_shot + check_scene. batch runs several tool calls in one request (e.g. run_commands then preview_shot then check_scene). preview_shot shows a whole time range as ONE labelled contact sheet (instead of many render_frame calls); check_scene lists problems (black gaps, layers ending early, empty edges in 3D moves, floating cut-outs, text overlap/off-frame, broken effects, missing media) with ready fix commands. Build shots with add_shot / sequence if get_command_spec lists them.
+- All edits are JSON edit commands (get_command_spec / resource motionai://spec). One run_commands call = one atomic batch = one undo step; if any command fails nothing changes.
+- Times are seconds, positions are composition pixels ((0,0) = top-left). Layer ids come from get_state. Give new layers an explicit "start" and "duration" (otherwise they start at the playhead).
+- Long jobs (export_video, director_run, captions_generate): pass wait:true to get the final result in one call (progress notifications are sent when you give a progressToken), or poll export_status / job_status.
 - Reply to the user in their language (often Hindi/Hinglish).''';
 
 // ---------------------------------------------------------------- tools
@@ -118,90 +119,127 @@ const Map<String, List<double>> kProjectFormats = {
 /// Every tool the server offers, as MCP tool definitions.
 final List<Map<String, dynamic>> kMcpTools = [
   _tool('get_state', 'Get editor state',
-      'Snapshot of MotionAI right now: the screen shown, the open project (id, name, composition size/fps/duration, playhead, '
-          'selection, undo/redo availability, precomps, media list with ids, and every layer top-to-bottom with id, type, '
-          'start/end, position/scale/opacity (static values or keyframes), effects and masks), and running jobs. '
-          'If no project is open it lists the saved projects instead. Call this first and after edits to get layer ids.',
+      'Snapshot of the app: screen, open project (id, name, comp size/fps/duration, playhead, selection, undo/redo), precomps, '
+          'media ids, every layer top-to-bottom (id, type, start/end, transform values or keyframes, effects, masks) and running jobs. '
+          'With no project open it lists saved projects. Call first, and after edits to get layer ids.',
       _obj({}),
       readOnly: true),
   _tool('get_command_spec', 'Get edit-command reference',
-      'Returns the full reference of MotionAI edit commands (layers, keyframes, effects, masks, camera moves, components, '
-          'text animators, captions, sound, precomps, 3D scenes and maps) that run_commands accepts. Read it once before editing. '
-          'Ignore its "answer with one JSON object" output-format section: with these tools you pass the commands array to run_commands.',
+      'Full reference of the JSON edit commands run_commands accepts (layers, keyframes, effects, masks, camera, components, text '
+          'animators, captions, sound, precomps, 3D scenes, maps, shots). Read once before editing; ignore its "answer with one JSON '
+          'object" section: pass the commands array to run_commands.',
       _obj({}),
       readOnly: true),
   _tool('run_commands', 'Run edit commands',
-      'Applies a list of edit commands to the open project as ONE atomic batch and ONE undo step, live in the editor. '
-          'Each command is an object with "op" (e.g. add_layer, update_layer, set_keyframe, add_effect, camera_move, add_component) '
-          'plus its fields, exactly as in get_command_spec. Give new layers an "id" so later commands in the same batch can refer '
-          'to them. If any command fails, nothing changes and the error says which one; fix it and send the whole batch again. '
-          'Returns the ids of created layers and a log.',
+      'Applies edit commands to the open composition as ONE atomic batch = ONE undo step, live in the editor. Each command is '
+          '{"op": ..., fields} as in get_command_spec. Give new layers an "id" (and "start"/"duration") so later commands can use them. '
+          'If any command fails nothing changes and the error names it. Returns created ids and a log.',
       _obj({
         'commands': {
           'type': 'array',
-          'description': 'Edit commands, e.g. [{"op":"add_layer","type":"text","id":"title","text":"Hello","font_size":120}]',
+          'description': 'Edit commands, e.g. [{"op":"add_layer","type":"text","id":"title","text":"Hello","start":0,"duration":4}]',
           'items': {'type': 'object'},
         },
       }, required: ['commands'])),
   _tool('get_layer', 'Get one layer in full',
-      'The complete JSON of one layer of the open composition (all properties with keyframes and eases, effects with params, '
-          'masks, text style, shape settings). Use when get_state\'s summary is not detailed enough.',
+      'Complete JSON of one layer of the open composition (keyframes with eases, effect params, masks, text style, shape).',
       _obj({'layer': _s('Layer id')}, required: ['layer']),
       readOnly: true),
-  _tool('undo', 'Undo', 'Undoes the last edit step(s) in the open project, like Ctrl+Z.',
+  _tool('undo', 'Undo', 'Undoes the last edit step(s) of the open project (Ctrl+Z).',
       _obj({'steps': {'type': 'integer', 'minimum': 1, 'maximum': 50, 'description': 'How many steps (default 1)'}})),
-  _tool('redo', 'Redo', 'Redoes undone edit step(s), like Ctrl+Y.',
+  _tool('redo', 'Redo', 'Redoes undone edit step(s) (Ctrl+Y).',
       _obj({'steps': {'type': 'integer', 'minimum': 1, 'maximum': 50, 'description': 'How many steps (default 1)'}})),
-  _tool('list_projects', 'List projects', 'All saved MotionAI projects, newest first: id, name, size, duration, layer count, last modified.',
-      _obj({}),
+  _tool('list_projects', 'List projects', 'Saved projects, newest first: id, name, size, duration, layer count, modified.', _obj({}),
       readOnly: true),
-  _tool('open_project', 'Open project',
-      'Opens a saved project in the editor (the current one is saved first). Not possible while an export or Director job runs.',
-      _obj({'id': _s('Project id from list_projects')}, required: ['id'])),
+  _tool('open_project', 'Open project', 'Opens a saved project in the editor (saves the current one first). Blocked during export/Director.',
+      _obj({'id': _s('Project id (or exact name) from list_projects')}, required: ['id'])),
   _tool('new_project', 'New project',
-      'Creates a new project, saves it and opens it in the editor. Pick a format (youtube 1920x1080, shorts 1080x1920, square, '
-          'portrait 4:5, 4k) or exact width/height. Optional starter template: ${kStarterTemplateIds.join(', ')}.',
+      'Creates, saves and opens a new project. Format youtube 1920x1080 (default), shorts 1080x1920, square, portrait 4:5, 4k, or '
+          'exact width/height. Optional starter template: ${kStarterTemplateIds.join(', ')}.',
       _obj({
         'name': _s('Project name (default "Project N")'),
         'format': _e(kProjectFormats.keys.toList(), 'Frame format (default youtube)'),
-        'width': _n('Composition width in pixels (overrides format)'),
-        'height': _n('Composition height in pixels (overrides format)'),
+        'width': _n('Width in pixels (overrides format)'),
+        'height': _n('Height in pixels (overrides format)'),
         'fps': _n('Frames per second (default 30)'),
-        'duration': _n('Length in seconds (default 10; grows when layers are added past the end only if you set_comp)'),
+        'duration': _n('Length in seconds (default 10; change later with set_comp)'),
         'template': _e(kStarterTemplateIds, 'Start from a ready-made animated template'),
       })),
-  _tool('save_project', 'Save project', 'Saves the open project to disk now (it also autosaves after every edit).', _obj({}), idempotent: true),
+  _tool('save_project', 'Save project', 'Saves the open project now (it also autosaves after edits).', _obj({}), idempotent: true),
   _tool('rename_project', 'Rename project', 'Renames the open project.', _obj({'name': _s('New name')}, required: ['name']), idempotent: true),
-  _tool('close_project', 'Close project', 'Saves and closes the open project, back to the home screen.', _obj({}), idempotent: true),
+  _tool('close_project', 'Close project', 'Saves and closes the open project (back to the home screen).', _obj({}), idempotent: true),
   _tool('import_media', 'Import media files',
-      'Imports photos, videos or audio from paths on the user\'s PC (e.g. "C:\\Users\\me\\Videos\\clip.mp4") into the open '
-          'project. Files are copied into MotionAI\'s storage. Returns the new media ids (use them in add_layer "media"). '
-          'With add_to_timeline the files are also placed one after another from "start" (default: playhead) as layers.',
+      'Copies photos/videos/audio from absolute paths on the user\'s PC into the open project and returns media ids (for add_layer '
+          '"media"). add_to_timeline also places them one after another from "start" (default playhead).',
       _obj({
         'paths': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Absolute file paths'},
         'add_to_timeline': _b('Also add each file as a layer (default false)'),
         'start': _n('Timeline start for add_to_timeline, seconds (default playhead)'),
       }, required: ['paths'])),
-  _tool('list_media', 'List media',
-      'Media in the open project: id, type (video/image/audio), name, pixel size, duration, file path, AI description.',
-      _obj({}),
+  _tool('list_media', 'List media', 'Media of the open project: id, type, name, pixel size, duration, file path, AI description.', _obj({}),
       readOnly: true),
   _tool('render_frame', 'Render a frame',
-      'Renders the open composition at a time exactly as export would (all effects, 3D camera, text animation) and returns a PNG '
-          'image, so you can see your edit. Use it to check layout, legibility and timing after run_commands.',
+      'One PNG of the open composition at a time, rendered like the export (effects, 3D camera, text animation). '
+          'To look at a move or a shot prefer preview_shot (many times in one image).',
       _obj({
         'time': _n('Seconds (default: playhead)'),
         'width': {'type': 'integer', 'minimum': 160, 'maximum': 1920, 'description': 'Image width in pixels (default 960)'},
       }),
       readOnly: true),
-  _tool('seek', 'Move playhead', 'Moves the editor playhead to a time (seconds). New layers and set_property use the playhead.',
+  _tool('preview_shot', 'Preview a shot (contact sheet)',
+      'Renders "count" frames evenly spread over from..to and returns ONE PNG contact sheet (grid, each tile labelled #n and its '
+          'time) plus the list of times. Use it to judge a camera move, an animation or a whole shot in one look. '
+          'format "gif" returns a small animated GIF instead (≤ 20 frames, ≤ 2 s, ≤ 480 px; some clients only show its first frame).',
+      _obj({
+        'from': _n('Start time, seconds (default 0)'),
+        'to': _n('End time, seconds (default: composition end)'),
+        'count': {'type': 'integer', 'minimum': 1, 'maximum': 12, 'description': 'Frames on the sheet (default 6; GIF: default 12, max 20)'},
+        'width': {'type': 'integer', 'minimum': 160, 'maximum': 960, 'description': 'Width of each tile in pixels (default 480; GIF max 480)'},
+        'comp': _s('Composition id (default: the open one; "main" = main)'),
+        'format': _e(['png', 'gif'], 'png contact sheet (default) or animated gif'),
+      }),
+      readOnly: true),
+  _tool('check_scene', 'Check the scene for problems',
+      'Lints the composition over from..to (pure analysis, no rendering) and returns JSON problems, each with layer id(s), time, '
+          'severity and a "fix" list of run_commands commands: black gaps, layers ending before their set / starting at the playhead, '
+          '3D moves uncovering empty canvas edges, cut-outs floating above the ground, text overlapping or off-frame/outside the safe '
+          'area, known-broken effects (blur on a 3D layer, scramble on Devanagari) and missing media files. "fix_all" collects '
+          'every fix. Run it after building a shot; review the fixes before applying.',
+      _obj({
+        'comp': _s('Composition id (default: the open one)'),
+        'from': _n('Start of the range, seconds (default 0)'),
+        'to': _n('End of the range, seconds (default: composition end)'),
+      }),
+      readOnly: true),
+  _tool('batch', 'Run several tools',
+      'Runs several tool calls in ONE request, in order, and returns every result (images included), each headed "[#n tool] ok|ERROR". '
+          'Stops at the first error unless continue_on_error. Use it to save round trips, e.g. run_commands → check_scene → '
+          'preview_shot. batch cannot contain batch.',
+      _obj({
+        'calls': {
+          'type': 'array',
+          'minItems': 1,
+          'maxItems': 50,
+          'description': 'Tool calls, e.g. [{"name":"run_commands","arguments":{"commands":[...]}},{"name":"preview_shot","arguments":{"from":0,"to":6}}]',
+          'items': {
+            'type': 'object',
+            'properties': {
+              'name': {'type': 'string', 'description': 'Tool name'},
+              'arguments': {'type': 'object', 'description': 'Its arguments'},
+            },
+            'required': ['name'],
+          },
+        },
+        'continue_on_error': _b('Run the remaining calls after an error (default false)'),
+      }, required: ['calls'])),
+  _tool('seek', 'Move playhead', 'Moves the editor playhead (seconds). Commands without "time"/"start" use the playhead.',
       _obj({'time': _n('Seconds')}, required: ['time']),
       idempotent: true),
-  _tool('play', 'Play', 'Starts playback in the editor preview (for the user to watch).', _obj({}), idempotent: true),
+  _tool('play', 'Play', 'Starts preview playback for the user to watch.', _obj({}), idempotent: true),
   _tool('pause', 'Pause', 'Pauses playback.', _obj({}), idempotent: true),
   _tool('select', 'Select layers',
-      'Selects layers in the editor so the user sees what you mean (runs the "select" edit command; selection is not an undo step). '
-          'Many edit commands accept "layers": "selection" to act on the selected layers. Or select the camera, or nothing (empty layers).',
+      'Selects layers in the editor so the user sees what you mean (not an undo step). Commands accept "layers": "selection". '
+          'Or select the camera, or nothing (empty list).',
       _obj({
         'layers': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Layer ids (empty list = deselect)'},
         'filter': {'type': 'object', 'description': 'Instead of ids: a layer filter as in get_command_spec, e.g. {"type":"text"}'},
@@ -210,34 +248,37 @@ final List<Map<String, dynamic>> kMcpTools = [
       }),
       idempotent: true),
   _tool('open_comp', 'Open composition',
-      'Opens a nested composition (precomp) for editing, or "main" to go back. run_commands, get_state and render_frame work on the open composition.',
+      'Opens a nested composition (precomp) for editing, or "main" to go back. Editing, get_state and rendering use the open composition.',
       _obj({'comp': _s('Composition id from get_state "comps", or "main"')}, required: ['comp']),
       idempotent: true),
   _tool('export_video', 'Export video',
-      'Saves the project and starts exporting the main composition to MP4 (shows the export screen to the user). Returns at once; '
-          'poll export_status. Windows: default folder is Videos\\MotionAI. Edits are blocked while exporting.',
+      'Saves and exports the main composition to MP4 (the user sees the export screen). With wait:true the call returns when the '
+          'file is ready (progress notifications if you sent a progressToken; without one it waits at most ~50 s, then returns the '
+          'status: call export_status). Otherwise returns a job id at once. Edits are blocked while exporting. '
+          'Windows default folder: Videos\\MotionAI.',
       _obj({
         'resolution': {'type': 'integer', 'enum': [720, 1080, 1440, 2160], 'description': 'Short side in pixels (default 1080)'},
         'fps': _n('Frame rate (default: project fps)'),
-        'folder': _s('Output folder (Windows; default the last used export folder)'),
+        'folder': _s('Absolute output folder (default: the last used export folder)'),
         'file_name': _s('File name, e.g. "final.mp4" (default "<project>_<time>.mp4")'),
         'high_quality': _b('Higher bitrate (default true)'),
+        'wait': _b('Block until the export ends and return the file (default false)'),
+        'timeout': _n('Most seconds to wait with wait:true (default 540 with a progressToken, else 50; max 540)'),
       })),
   _tool('export_status', 'Export status',
-      'Progress of the latest (or a given) export: phase setup/rendering/finishing/done/failed, frame N of M, output file path, error.',
+      'Latest (or given) export: phase setup/rendering/finishing/done/failed, frame N of M, output file, error.',
       _obj({'job': _s('Job id (default: latest export)')}),
       readOnly: true),
   _tool('director_run', 'Run the Director (AI auto-edit)',
-      'Runs MotionAI\'s Director headlessly: from a brief (and optional script) and the project\'s media it writes/plans a '
-          'documentary storyboard, builds the whole timeline (B-roll moves, components, captions, sound effects, music duck) as '
-          'one undo step, and optionally reviews rendered frames. Uses MotionAI\'s OWN AI connection (ChatGPT plan or API key '
-          'set in the app); if that is not set up it fails, and you can build the edit yourself with run_commands. '
-          'Returns a job id; poll job_status (takes minutes).',
+      'Runs MotionAI\'s own Director: from a brief (+ optional script) and the project media it plans a documentary storyboard and '
+          'builds the whole timeline (B-roll moves, components, captions, SFX, music duck) as one undo step, optionally reviewing '
+          'frames. Needs MotionAI\'s OWN AI connection (set in the app); without it, build the edit yourself with run_commands. '
+          'Returns a job id (poll job_status, takes minutes) or, with wait:true, the result.',
       _obj({
         'brief': _s('Topic / instructions in the user\'s words'),
         'script': _s('Narration script (empty = the AI writes it from the brief)'),
         'narration': _e(['aroll', 'voiceover', 'phone_voice', 'silent'],
-            'Voice source: aroll = talking-head video, voiceover = audio file, phone_voice = text-to-speech of the script, silent = text only'),
+            'Voice: aroll = talking-head video, voiceover = audio file, phone_voice = text-to-speech of the script, silent = text only'),
         'aroll_media': _s('Video media id of the presenter (narration aroll)'),
         'voice_media': _s('Audio media id of the voice-over (narration voiceover)'),
         'music_media': _s('Audio media id of background music'),
@@ -249,16 +290,17 @@ final List<Map<String, dynamic>> kMcpTools = [
         'depth': _b('AI cut-outs for depth shots (default true)'),
         'review': _b('Render frames and fix problems (default true)'),
         'look': _s('Look: auto, cinematic_doc, shorts_punch, retro_film, noir, warm_travel, clean_minimal'),
+        'wait': _b('Block until done (default false)'),
+        'timeout': _n('Most seconds to wait with wait:true (default 540 with a progressToken, else 50; max 540)'),
       }, required: ['brief'])),
   _tool('job_status', 'Job status',
-      'Status of a background job (director_run, captions_generate, export_video): running/done/failed/cancelled, progress message, result. '
-          'Without "job" lists all recent jobs.',
+      'A background job (director, captions, export): running/done/failed/cancelled, message, result. Without "job": all recent jobs.',
       _obj({'job': _s('Job id')}),
       readOnly: true),
-  _tool('cancel_job', 'Cancel job', 'Asks a running job (export or Director) to stop.', _obj({'job': _s('Job id')}, required: ['job'])),
+  _tool('cancel_job', 'Cancel job', 'Asks a running export or Director job to stop.', _obj({'job': _s('Job id')}, required: ['job'])),
   _tool('captions_generate', 'Auto captions',
-      'Transcribes speech of a video/audio layer (Whisper, on the PC) and adds animated caption layers with per-word timing '
-          '(one undo step). Returns a job id; poll job_status. Styles: ${kCaptionStyleIds.join(', ')}.',
+      'Transcribes a video/audio layer on the PC (Whisper) and adds animated caption layers with per-word timing (one undo step). '
+          'Returns a job id (poll job_status) or, with wait:true, the result. Styles: ${kCaptionStyleIds.join(', ')}.',
       _obj({
         'layer': _s('Video or audio layer id (default: the selected one, else the first video/audio layer)'),
         'style': _e(kCaptionStyleIds, 'Caption style (default karaoke)'),
@@ -267,23 +309,25 @@ final List<Map<String, dynamic>> kMcpTools = [
         'max_words': {'type': 'integer', 'minimum': 0, 'maximum': 12, 'description': 'Most words per caption (0 = style default)'},
         'emphasis': _b('Highlight numbers, money, years, names (default true)'),
         'ai_emphasis': _b('Ask MotionAI\'s AI for more key words (needs the app AI set up)'),
+        'wait': _b('Block until done (default false)'),
+        'timeout': _n('Most seconds to wait with wait:true (default 540 with a progressToken, else 50; max 540)'),
       })),
   _tool('list_templates', 'List scene templates',
-      'Insertable scene templates (intros, showcases, transitions, captions, lower thirds, endings, maps, 3D, and the user\'s saved '
-          'templates): id, name, category, duration and fillable slots (key, kind text/media/medias/color, default).',
+      'Insertable scene templates (intros, showcases, transitions, captions, lower thirds, endings, maps, 3D, user templates): '
+          'id, name, category, duration, slots (key, kind text/media/medias/color, default).',
       _obj({'category': _s('Only this category')}),
       readOnly: true),
   _tool('apply_template', 'Insert scene template',
-      'Inserts a scene template into the open composition at "start" (default playhead) as one undo step. "slots" fills its '
-          'slots by key: text, "#RRGGBB" colours, media ids (project ids or "lib:<id>" library ids) or lists of media ids.',
+      'Inserts a scene template at "start" (default playhead) as one undo step. "slots" fills slots by key: text, "#RRGGBB", '
+          'media ids (project ids or "lib:<id>") or lists of media ids.',
       _obj({
         'id': _s('Template id from list_templates'),
         'slots': {'type': 'object', 'description': 'Slot key → value'},
         'start': _n('Seconds (default playhead)'),
       }, required: ['id'])),
   _tool('library_search', 'Search asset library',
-      'Searches the user\'s asset library (photos, cut-outs, videos, music shared by all projects) by words in name, tags, '
-          'description, kind, era, region, mood. Returns ids like "lib:<id>".',
+      'Searches the user\'s shared asset library (photos, cut-outs, videos, music) by name, tags, description, kind, era, region, '
+          'mood. Returns ids "lib:<id>".',
       _obj({
         'query': _s('Search words (empty = newest)'),
         'type': _e(['image', 'video', 'audio'], 'Only this media type'),
@@ -292,19 +336,19 @@ final List<Map<String, dynamic>> kMcpTools = [
       }),
       readOnly: true),
   _tool('library_insert', 'Insert library asset',
-      'Imports a library asset into the open project (returns its project media id) and, by default, adds it as a layer at "start".',
+      'Imports a library asset into the open project (returns its media id) and by default adds it as a layer at "start".',
       _obj({
         'id': _s('Library id ("lib:<id>") from library_search'),
         'add_to_timeline': _b('Also add a layer (default true)'),
         'start': _n('Seconds (default playhead)'),
-        'duration': _n('Layer duration (default 5 s for photos, the clip length for video/audio)'),
+        'duration': _n('Layer duration (default: photo default, or the clip length)'),
       }, required: ['id'])),
-  _tool('list_effects', 'List effects', 'Every effect for add_effect: id, label, category and params (key, default, min, max, options).',
+  _tool('list_effects', 'List effects', 'Every effect for add_effect: id, label, category, params (key, default, min, max, options).',
       _obj({}),
       readOnly: true),
   _tool('list_components', 'List components',
-      'Every motion-graphics component for add_component (source cards, lower thirds, maps, pins, counters, 3D scenes, …): type and label. '
-          'Their fields are described in get_command_spec.',
+      'Every component for add_component (source cards, lower thirds, maps, pins, counters, 3D scenes, …): type and label; '
+          'fields are in get_command_spec.',
       _obj({}),
       readOnly: true),
 ];
@@ -361,8 +405,8 @@ class McpToolResult {
 
   factory McpToolResult.error(String message) => McpToolResult.text(message, isError: true);
 
-  factory McpToolResult.image(List<int> png, {String? caption}) => McpToolResult([
-        {'type': 'image', 'data': base64Encode(png), 'mimeType': 'image/png'},
+  factory McpToolResult.image(List<int> png, {String? caption, String mimeType = 'image/png'}) => McpToolResult([
+        {'type': 'image', 'data': base64Encode(png), 'mimeType': mimeType},
         if (caption != null) {'type': 'text', 'text': caption},
       ]);
 
@@ -400,6 +444,36 @@ String mcpControlFilePath(Map<String, String> env, {required bool windows}) {
   }
   final base = env['XDG_CONFIG_HOME'] ?? '${env['HOME'] ?? '.'}/.config';
   return '$base/MotionAI/mcp.json';
+}
+
+/// Every control file the app writes and the bridge reads, newest wins.
+/// On Windows also `%USERPROFILE%\.motionai\mcp.json`: a bridge started by
+/// the Microsoft Store build of Claude Desktop runs inside Claude's MSIX
+/// package, where `%APPDATA%` is virtualised (it may see a stale private
+/// copy); the user profile root is not virtualised.
+List<String> mcpControlFilePaths(Map<String, String> env, {required bool windows}) {
+  final out = [mcpControlFilePath(env, windows: windows)];
+  if (windows) {
+    final home = env['USERPROFILE'];
+    if (home != null && home.isNotEmpty) out.add('$home\\.motionai\\mcp.json');
+  }
+  return out;
+}
+
+/// The control info to use among several files: the most recently written
+/// one (unparseable dates count as oldest). Null if [infos] is empty.
+McpControlInfo? newestControl(Iterable<McpControlInfo?> infos) {
+  McpControlInfo? best;
+  DateTime? bestAt;
+  for (final i in infos) {
+    if (i == null) continue;
+    final at = DateTime.tryParse(i.written);
+    if (best == null || (at != null && (bestAt == null || at.isAfter(bestAt)))) {
+      best = i;
+      bestAt = at;
+    }
+  }
+  return best;
 }
 
 /// Contents of the control file.
@@ -463,6 +537,7 @@ String claudeDesktopConfigSnippet(String bridgeExe) => const JsonEncoder.withInd
 /// every other setting and server. Returns null if [existing] is not a
 /// JSON object (then the user should paste the snippet by hand).
 String? mergeClaudeDesktopConfig(String? existing, String bridgeExe) {
+  existing = existing?.replaceFirst('\uFEFF', '');
   Map<String, dynamic> root = {};
   if (existing != null && existing.trim().isNotEmpty) {
     try {
@@ -478,6 +553,41 @@ String? mergeClaudeDesktopConfig(String? existing, String bridgeExe) {
   map[kMcpServerName] = {'command': bridgeExe, 'args': <String>[]};
   root['mcpServers'] = map;
   return const JsonEncoder.withIndent('  ').convert(root);
+}
+
+/// Every Claude Desktop config file to write on Windows, given the folder
+/// names inside `%LOCALAPPDATA%\Packages`:
+/// - each Microsoft Store (MSIX) install `Claude_<publisherId>`: its config is
+///   virtualised at `%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\Claude\claude_desktop_config.json`;
+/// - the classic installer: `%APPDATA%\Claude\claude_desktop_config.json`.
+/// Store packages first (sorted), then the classic path.
+List<String> claudeDesktopConfigPaths(Map<String, String> env, Iterable<String> packageNames) {
+  final out = <String>[];
+  final local = env['LOCALAPPDATA'] ?? (env['USERPROFILE'] == null ? null : '${env['USERPROFILE']}\\AppData\\Local');
+  if (local != null) {
+    final re = RegExp(r'^Claude_[A-Za-z0-9]+$');
+    final names = {for (final n in packageNames) if (re.hasMatch(n)) n}.toList()..sort();
+    for (final n in names) {
+      out.add('$local\\Packages\\$n\\LocalCache\\Roaming\\Claude\\claude_desktop_config.json');
+    }
+  }
+  final appData = env['APPDATA'] ?? (env['USERPROFILE'] == null ? null : '${env['USERPROFILE']}\\AppData\\Roaming');
+  if (appData != null) out.add('$appData\\Claude\\claude_desktop_config.json');
+  return out;
+}
+
+/// What writing MotionAI into one Claude Desktop config does: the new text
+/// (null = leave the file alone) and a status: added | updated | unchanged | invalid.
+(String?, String) claudeDesktopConfigUpdate(String? existing, String bridgeExe) {
+  final text = existing?.replaceFirst('﻿', '');
+  final merged = mergeClaudeDesktopConfig(text, bridgeExe);
+  if (merged == null) return (null, 'invalid');
+  if (text == null || text.trim().isEmpty) return (merged, 'added');
+  final old = jsonDecode(text) as Map;
+  final servers = old['mcpServers'];
+  final had = servers is Map ? servers[kMcpServerName] : null;
+  if (had is Map && had['command'] == bridgeExe && (had['args'] is! List || (had['args'] as List).isEmpty)) return (null, 'unchanged');
+  return (merged, had == null ? 'added' : 'updated');
 }
 
 /// Claude Code command for the stdio bridge.
@@ -552,4 +662,85 @@ class BridgeFraming {
     if (m['method'] == 'tools/call') return JsonRpc.result(m['id'], McpToolResult.error(reason).toJson());
     return JsonRpc.error(m['id'], JsonRpc.internalError, reason);
   }
+}
+
+// ---------------------------------------------------------------- progress
+
+/// Sends MCP `notifications/progress` for one request that carried
+/// `_meta.progressToken`. Progress only ever increases (the spec requires it):
+/// reports that do not increase it are dropped.
+class McpProgress {
+  final Object token;
+  final void Function(Map<String, dynamic> notification) _send;
+  double _last = double.negativeInfinity;
+  int sent = 0;
+
+  McpProgress(this.token, this._send);
+
+  /// The token of a tools/call's params, or null.
+  static Object? tokenOf(Map<String, dynamic> params) {
+    final meta = params['_meta'];
+    final t = meta is Map ? meta['progressToken'] : null;
+    return t is String || t is num ? t : null;
+  }
+
+  bool report(num progress, {num? total, String? message}) {
+    if (!(progress > _last)) return false;
+    _last = progress.toDouble();
+    sent++;
+    _send({
+      'jsonrpc': '2.0',
+      'method': 'notifications/progress',
+      'params': {
+        'progressToken': token,
+        'progress': progress,
+        if (total != null) 'total': total,
+        if (message != null && message.isNotEmpty) 'message': message,
+      },
+    });
+    return true;
+  }
+}
+
+/// Incremental parser for a `text/event-stream` body: feed chunks, get the
+/// `data` payload of every complete event.
+class SseParser {
+  String _pending = '';
+  final List<String> _data = [];
+
+  List<String> add(String chunk) {
+    _pending += chunk;
+    final out = <String>[];
+    while (true) {
+      final i = _pending.indexOf('\n');
+      if (i < 0) break;
+      var line = _pending.substring(0, i);
+      _pending = _pending.substring(i + 1);
+      if (line.endsWith('\r')) line = line.substring(0, line.length - 1);
+      if (line.isEmpty) {
+        if (_data.isNotEmpty) {
+          out.add(_data.join('\n'));
+          _data.clear();
+        }
+        continue;
+      }
+      if (line.startsWith(':')) continue; // comment / keep-alive
+      final c = line.indexOf(':');
+      final field = c < 0 ? line : line.substring(0, c);
+      var value = c < 0 ? '' : line.substring(c + 1);
+      if (value.startsWith(' ')) value = value.substring(1);
+      if (field == 'data') _data.add(value);
+    }
+    return out;
+  }
+
+  /// End of stream: the last event even without its blank line.
+  List<String> close() {
+    final out = add('\n\n');
+    _pending = '';
+    return out;
+  }
+
+  /// One SSE event carrying [message] as JSON.
+  static String event(Object? message) => 'event: message\ndata: ${jsonEncode(message)}\n\n';
 }

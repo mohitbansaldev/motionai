@@ -12,8 +12,9 @@ import 'mcp_protocol.dart';
 /// What the dispatcher needs from the app.
 abstract class McpBackend {
   /// Runs tool [name]. Throw [McpUnknownTool] for unknown names; return
-  /// [McpToolResult.error] for failures the model should read.
-  Future<McpToolResult> callTool(String name, Map<String, dynamic> args);
+  /// [McpToolResult.error] for failures the model should read. [progress]
+  /// is set when the client asked for progress and the transport can send it.
+  Future<McpToolResult> callTool(String name, Map<String, dynamic> args, {McpProgress? progress});
 
   /// Contents of resource [uri]: (mimeType, text). Throw [McpUnknownResource].
   Future<(String, String)> readResource(String uri);
@@ -32,21 +33,22 @@ class McpDispatcher {
   McpDispatcher(this.backend, {this.onRequest});
 
   /// Answers one message (or a JSON-RPC batch list). Null = nothing to send
-  /// (notifications and responses).
-  Future<Object?> handle(Object? message) async {
+  /// (notifications and responses). [notify] sends server → client
+  /// notifications (progress) before the answer, when the transport can.
+  Future<Object?> handle(Object? message, {void Function(Map<String, dynamic> notification)? notify}) async {
     if (message is List) {
       if (message.isEmpty) return JsonRpc.error(null, JsonRpc.invalidRequest, 'Empty batch');
       final out = <Object?>[];
       for (final m in message) {
-        final r = await _one(m);
+        final r = await _one(m, notify);
         if (r != null) out.add(r);
       }
       return out.isEmpty ? null : out;
     }
-    return _one(message);
+    return _one(message, notify);
   }
 
-  Future<Map<String, dynamic>?> _one(Object? m) async {
+  Future<Map<String, dynamic>?> _one(Object? m, void Function(Map<String, dynamic>)? notify) async {
     if (m is! Map) return JsonRpc.error(null, JsonRpc.invalidRequest, 'Invalid request: expected a JSON-RPC object');
     if (JsonRpc.isResponse(m)) return null; // we never send requests; ignore
     if (m['jsonrpc'] != '2.0' || m['method'] is! String) {
@@ -78,9 +80,12 @@ class McpDispatcher {
           final args = params['arguments'];
           if (args != null && args is! Map) return JsonRpc.error(id, JsonRpc.invalidParams, '"arguments" must be an object');
           if (!kMcpToolNames.contains(name)) return JsonRpc.error(id, JsonRpc.invalidParams, 'Unknown tool: $name');
+          final token = McpProgress.tokenOf(params);
+          final progress = token != null && notify != null ? McpProgress(token, notify) : null;
           McpToolResult r;
           try {
-            r = await backend.callTool(name, args == null ? <String, dynamic>{} : Map<String, dynamic>.from(args as Map));
+            r = await backend.callTool(name, args == null ? <String, dynamic>{} : Map<String, dynamic>.from(args as Map),
+                progress: progress);
           } on McpUnknownTool catch (e) {
             return JsonRpc.error(id, JsonRpc.invalidParams, '$e');
           } catch (e) {
@@ -252,6 +257,10 @@ class McpHttpServer {
             await _send(req, HttpStatus.badRequest, json: JsonRpc.error(null, JsonRpc.parseError, 'Parse error: not valid JSON'));
             return;
           }
+          if (_wantsStream(req, msg)) {
+            await _stream(req, msg);
+            return;
+          }
           final out = await dispatcher.handle(msg);
           if (out == null) {
             await _send(req, HttpStatus.accepted);
@@ -302,6 +311,37 @@ class McpHttpServer {
       return;
     }
     await _send(req, HttpStatus.notFound, json: {'error': 'Not found. MCP endpoint: POST /mcp'});
+  }
+
+  /// A tools/call with a progressToken from a client that accepts SSE gets a
+  /// `text/event-stream` answer: progress notifications, then the response.
+  static bool _wantsStream(HttpRequest req, Object? msg) {
+    final accept = req.headers.value(HttpHeaders.acceptHeader) ?? '';
+    if (!accept.contains('text/event-stream')) return false;
+    if (msg is! Map || msg['method'] != 'tools/call' || !msg.containsKey('id')) return false;
+    final params = msg['params'];
+    return params is Map && McpProgress.tokenOf(Map<String, dynamic>.from(params)) != null;
+  }
+
+  Future<void> _stream(HttpRequest req, Object? msg) async {
+    final res = req.response;
+    res.statusCode = 200;
+    res.headers.set('Cache-Control', 'no-store');
+    res.headers.contentType = ContentType('text', 'event-stream', charset: 'utf-8');
+    var chain = Future<void>.value();
+    void send(Object? m) {
+      chain = chain.then((_) async {
+        res.write(SseParser.event(m));
+        await res.flush();
+      }).catchError((Object _) {}); // client went away: keep running the tool
+    }
+
+    final out = await dispatcher.handle(msg, notify: send);
+    if (out != null) send(out);
+    await chain;
+    try {
+      await res.close();
+    } catch (_) {}
   }
 
   Future<void> _restCall(HttpRequest req, String name, Map<String, dynamic> args) async {
