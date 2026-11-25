@@ -4,17 +4,23 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
+import '../platform/ffmpeg_args.dart';
+import '../platform/win_media.dart';
+import '../platform/win_tools.dart';
 import '../services/media_bridge.dart';
 import 'common.dart';
 import 'preview/composition_canvas.dart';
 
-/// Renders the composition frame by frame and encodes an MP4 on the phone.
+/// Renders the composition frame by frame and encodes an MP4 (phone:
+/// MediaCodec; Windows: FFmpeg with the GPU encoder when available).
 class ExportScreen extends StatefulWidget {
   final Project project;
   const ExportScreen({super.key, required this.project});
@@ -39,8 +45,59 @@ class _ExportScreenState extends State<ExportScreen> {
   String? _error;
   final _sw = Stopwatch();
 
+  // Windows options.
+  static bool get _win => Platform.isWindows;
+  static String? _savedDir;
+  String _outDir = '';
+  String _encoder = 'auto';
+  List<String> _encoders = const [];
+  double? _fpsChoice; // null = composition fps
+
   Project get p => widget.project;
   Composition get comp => p.main;
+  double get _fps => _fpsChoice ?? comp.fps;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_win) {
+      _shortSide = 1080;
+      _encoder = WinMedia.preferredEncoder;
+      _outDir = _savedDir ?? WinTools.defaultExportDir();
+      _loadDir();
+      WinMedia.workingEncoders().then((e) {
+        if (mounted) setState(() => _encoders = e);
+      }).catchError((Object e) {
+        if (mounted) setState(() => _error = 'FFmpeg was not found: $e');
+      });
+    }
+  }
+
+  Future<File> _settingsFile() async => File('${(await WinTools.dataDir('settings')).path}${Platform.pathSeparator}export_dir.txt');
+
+  Future<void> _loadDir() async {
+    try {
+      final f = await _settingsFile();
+      if (await f.exists()) {
+        final d = (await f.readAsString()).trim();
+        if (d.isNotEmpty && mounted) setState(() => _outDir = _savedDir = d);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pickDir() async {
+    final d = await FilePicker.getDirectoryPath(dialogTitle: 'Export folder', initialDirectory: _outDir);
+    if (d == null || !mounted) return;
+    setState(() => _outDir = _savedDir = d);
+    try {
+      await (await _settingsFile()).writeAsString(d);
+    } catch (_) {}
+  }
+
+  String _fileName() {
+    final base = p.name.replaceAll(RegExp(r'[^\w\- ]'), '').trim();
+    return '${base.isEmpty ? 'MotionAI' : base}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+  }
 
   /// Output size: multiple of 8, aspect of the composition.
   (int, int) _outSize() {
@@ -68,12 +125,17 @@ class _ExportScreenState extends State<ExportScreen> {
 
   Future<void> _run() async {
     final (w, h) = _outSize();
-    final fps = comp.fps;
+    final fps = _fps;
     final duration = comp.duration;
     _frames = math.max(1, (duration * fps).floor());
     final dir = await getTemporaryDirectory();
-    final tmp = '${dir.path}/export_video.mp4';
-    final finalPath = '${dir.path}/MotionAI_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final tmp = '${dir.path}${Platform.pathSeparator}export_video.mp4';
+    var finalPath = '${dir.path}${Platform.pathSeparator}MotionAI_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    if (_win) {
+      WinMedia.preferredEncoder = _encoder;
+      await Directory(_outDir).create(recursive: true);
+      finalPath = '$_outDir${Platform.pathSeparator}${_fileName()}';
+    }
     final bitrate = (w * h * fps * (_high ? 0.2 : 0.1)).round();
 
     setState(() {
@@ -135,9 +197,13 @@ class _ExportScreenState extends State<ExportScreen> {
       ];
       await MediaBridge.encoderFinish(finalPath: finalPath, duration: duration, audio: audio);
       await MediaBridge.readerReleaseAll();
-      final name = '${p.name.replaceAll(RegExp(r'[^\w\- ]'), '')}_${DateTime.now().millisecondsSinceEpoch}.mp4';
-      _result = await MediaBridge.saveToGallery(finalPath, name);
-      File(finalPath).delete().ignore();
+      if (_win) {
+        _result = finalPath; // written straight into the export folder
+      } else {
+        final name = '${p.name.replaceAll(RegExp(r'[^\w\- ]'), '')}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        _result = await MediaBridge.saveToGallery(finalPath, name);
+        File(finalPath).delete().ignore();
+      }
       setState(() => _phase = _Phase.done);
     } on _Cancelled {
       await MediaBridge.encoderCancel();
@@ -218,7 +284,76 @@ class _ExportScreenState extends State<ExportScreen> {
     );
   }
 
-  List<Widget> _setup(int w, int h) => [
+  List<Widget> _setupWindows(int w, int h) => [
+        Wrap(spacing: 28, runSpacing: 12, children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            const Text('Resolution', style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, children: [
+              for (final r in [720, 1080, 1440, 2160])
+                ChoiceChip(
+                  label: Text(r == 2160 ? '4K' : r == 1440 ? '1440p (2K)' : '${r}p'),
+                  selected: _shortSide == r,
+                  onSelected: (_) => setState(() => _shortSide = r),
+                ),
+            ]),
+          ]),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            const Text('Frame rate', style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, children: [
+              ChoiceChip(
+                label: Text('Project (${ffNum(comp.fps)})'),
+                selected: _fpsChoice == null,
+                onSelected: (_) => setState(() => _fpsChoice = null),
+              ),
+              for (final f in const [24.0, 25.0, 30.0, 50.0, 60.0])
+                if ((f - comp.fps).abs() > 0.01)
+                  ChoiceChip(
+                    label: Text('${f.round()}'),
+                    selected: _fpsChoice == f,
+                    onSelected: (_) => setState(() => _fpsChoice = f),
+                  ),
+            ]),
+          ]),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            const Text('Encoder', style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 6),
+            DropdownButton<String>(
+              value: _encoder == 'auto' || _encoders.contains(_encoder) ? _encoder : 'auto',
+              onChanged: (v) => setState(() => _encoder = v ?? 'auto'),
+              items: [
+                DropdownMenuItem(
+                  value: 'auto',
+                  child: Text(_encoders.isEmpty ? 'Auto (checking GPU…)' : 'Auto · ${encoderLabel(_encoders.first)}'),
+                ),
+                for (final e in _encoders) DropdownMenuItem(value: e, child: Text(encoderLabel(e))),
+              ],
+            ),
+          ]),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          const Icon(Icons.folder_outlined, size: 18, color: Colors.white54),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_outDir, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70))),
+          TextButton(onPressed: _pickDir, child: const Text('Change folder…')),
+        ]),
+        Row(children: [
+          const Expanded(child: Text('High quality (bigger file)', style: TextStyle(color: Colors.white70))),
+          Switch(value: _high, onChanged: (v) => setState(() => _high = v)),
+        ]),
+        Text('$w × $h · ${ffNum(_fps)} fps · ${formatTime(comp.duration, comp.fps)}',
+            style: const TextStyle(color: Colors.white54, fontSize: 12.5)),
+        if (_error != null && _phase == _Phase.setup) Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(onPressed: _run, icon: const Icon(Icons.movie_creation), label: const Text('Export MP4')),
+        ),
+      ];
+
+  List<Widget> _setup(int w, int h) => _win ? _setupWindows(w, h) : [
         const Text('Resolution', style: TextStyle(color: Colors.white70)),
         const SizedBox(height: 6),
         Wrap(spacing: 8, children: [
@@ -260,7 +395,32 @@ class _ExportScreenState extends State<ExportScreen> {
     ];
   }
 
-  List<Widget> _done() => [
+  List<Widget> _doneWindows() => [
+        Row(children: [
+          const Icon(Icons.check_circle, color: Colors.greenAccent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('Saved ${_result ?? ''}${WinMedia.lastEncoder == null ? '' : '  ·  ${encoderLabel(WinMedia.lastEncoder!)}'}'
+                '  ·  ${(_sw.elapsedMilliseconds / 1000).round()} s'),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(
+            onPressed: _result == null ? null : () => launchUrl(Uri.file(_result!)),
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('Play'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _result == null ? null : () => WinTools.showInFolder(_result!),
+            icon: const Icon(Icons.folder_open),
+            label: const Text('Show in folder'),
+          ),
+          OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Back to editor')),
+        ]),
+      ];
+
+  List<Widget> _done() => _win ? _doneWindows() : [
         const Row(children: [
           Icon(Icons.check_circle, color: Colors.greenAccent),
           SizedBox(width: 8),

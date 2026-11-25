@@ -19,6 +19,11 @@ dependencies:
   url_launcher: ^6.3.0
   whisper_ggml: ^2.10.0
   flutter_secure_storage: '>=9.2.0 <12.0.0'
+  # Windows desktop (agent A): video preview, drag & drop, FFI, pure-Dart images.
+  video_player_win: ^3.3.0
+  desktop_drop: '>=0.6.0 <0.9.0' # 0.9 needs cross_file 0.4 (conflicts with file_picker 13)
+  ffi: ^2.1.0
+  image: ^4.2.0
 
 dev_dependencies:
   flutter_test:
