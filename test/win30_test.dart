@@ -7,6 +7,7 @@ import 'package:motionai/core/engine/evaluator.dart';
 import 'package:motionai/core/model/camera.dart';
 import 'package:motionai/core/model/layer.dart';
 import 'package:motionai/core/model/project.dart';
+import 'package:motionai/core/presets/realism.dart';
 import 'package:motionai/remote/mcp_server.dart';
 import 'package:motionai/remote/scene_check.dart';
 
@@ -63,7 +64,7 @@ void main() {
     });
   });
 
-  test('camera-facing 3D layers get a sub-pixel perspective term (Windows preview fix)', () {
+  test('camera-facing 3D layers: exact matrix for the engine, sub-pixel perspective for the preview', () {
     final p = _project();
     p.main.layers.add(_card('a', 0));
     final z = defaultZoomFor(1920);
@@ -72,12 +73,13 @@ void main() {
     p.main.camera.prop(CamProps.position).staticValue = [960, 540, -z];
     p.main.camera.prop(CamProps.poi).staticValue = [960, 540, 0];
     final it = Evaluator.evaluate(p.main, 1).single;
-    final s = it.matrix.storage;
-    expect(s[3] != 0 || s[7] != 0, isTrue);
-    // Still the same picture: corners within a hundredth of a pixel of the exact projection.
+    expect(it.matrix.storage[3], 0, reason: 'engine/export matrix stays exact');
+    final safe = Realism.previewSafe(it.matrix);
+    expect(safe.storage[3], isNot(0));
+    expect(identical(Realism.previewSafe(safe), safe), isTrue, reason: 'already has perspective: unchanged');
     final q = it.corners();
-    expect(q[0].x, closeTo(760, 0.01));
-    expect(q[0].y, closeTo(340, 0.01));
+    expect(q[0].x, closeTo(760, 1e-6));
+    expect(q[0].y, closeTo(340, 1e-6));
   });
 
   group('Flow upload route', () {

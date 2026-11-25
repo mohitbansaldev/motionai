@@ -111,7 +111,9 @@ class LayerView extends StatefulWidget {
       child = ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal), child: child);
     }
     if (item.opacity < 0.999) child = Opacity(opacity: item.opacity, child: child);
-    Widget out = Transform(transform: item.matrix, child: child);
+    // win-30: camera-facing 3D layers vanish from the Windows preview unless
+    // the matrix has a (sub-pixel) perspective term.
+    Widget out = Transform(transform: draft && l.is3D ? Realism.previewSafe(item.matrix) : item.matrix, child: child);
     // V3-C >>> no semantics under perspective: a steep 3D plane (tilted calendar
     // text) makes the inverse-mapped semantics clip non-finite (debug assert)
     if (l.is3D) out = ExcludeSemantics(child: out);
