@@ -174,7 +174,7 @@ final List<Map<String, dynamic>> kMcpTools = [
   _tool('rename_project', 'Rename project', 'Renames the open project.', _obj({'name': _s('New name')}, required: ['name']), idempotent: true),
   _tool('close_project', 'Close project', 'Saves and closes the open project, back to the home screen.', _obj({}), idempotent: true),
   _tool('import_media', 'Import media files',
-      'Imports photos, videos or audio from paths on the user\'s PC (e.g. "C:\\\\Users\\\\me\\\\Videos\\\\clip.mp4") into the open '
+      'Imports photos, videos or audio from paths on the user\'s PC (e.g. "C:\\Users\\me\\Videos\\clip.mp4") into the open '
           'project. Files are copied into MotionAI\'s storage. Returns the new media ids (use them in add_layer "media"). '
           'With add_to_timeline the files are also placed one after another from "start" (default: playhead) as layers.',
       _obj({
@@ -215,7 +215,7 @@ final List<Map<String, dynamic>> kMcpTools = [
       idempotent: true),
   _tool('export_video', 'Export video',
       'Saves the project and starts exporting the main composition to MP4 (shows the export screen to the user). Returns at once; '
-          'poll export_status. Windows: default folder is Videos\\\\MotionAI. Edits are blocked while exporting.',
+          'poll export_status. Windows: default folder is Videos\\MotionAI. Edits are blocked while exporting.',
       _obj({
         'resolution': {'type': 'integer', 'enum': [720, 1080, 1440, 2160], 'description': 'Short side in pixels (default 1080)'},
         'fps': _n('Frame rate (default: project fps)'),

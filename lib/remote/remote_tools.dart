@@ -19,7 +19,6 @@ import '../core/presets/templates.dart';
 import '../director/capabilities.dart';
 import '../director/director.dart';
 import '../director/planner.dart';
-import '../director/storyboard.dart';
 import '../library/asset_library.dart';
 import '../services/captions.dart';
 import '../services/project_storage.dart';
@@ -131,12 +130,17 @@ class RemoteTools implements McpBackend {
       final r = await _call(name, args);
       onAction?.call(name, r.isError ? _firstText(r) : _summary(name, args), !r.isError);
       return r;
+    } on McpUnknownTool {
+      rethrow;
     } on _Fail catch (e) {
       onAction?.call(name, e.message, false);
       return McpToolResult.error(e.message);
     } on CommandError catch (e) {
       onAction?.call(name, e.message, false);
       return McpToolResult.error('Rejected, nothing was changed: ${e.message}');
+    } catch (e) {
+      onAction?.call(name, '$e', false);
+      rethrow;
     }
   }
 

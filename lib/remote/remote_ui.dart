@@ -205,7 +205,6 @@ class _ClaudeControlSectionState extends State<ClaudeControlSection> {
         ],
       ),
     );
-    ctl.dispose();
     final p = int.tryParse(v?.trim() ?? '');
     if (p != null) await _rc.setPort(p);
   }

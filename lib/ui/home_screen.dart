@@ -60,9 +60,9 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  void _reloadIfMounted() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _reload();
-      }); // MCP (Agent P)
+  void _reloadIfMounted() {
+    if (mounted) _reload(); // MCP (Agent P): never called during build (see RemoteControl.detach)
+  }
 
   Future<void> _checkUpdate({required bool manual}) async {
     try {
