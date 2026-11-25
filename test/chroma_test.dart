@@ -415,7 +415,7 @@ void main() {
       ]);
       expect(px, [0xFFFF0000, 0xFFFF0000]);
       expect(tester.takeException(), isNull);
-    });
+    }, skip: Platform.isWindows); // on Windows the real ffmpeg decoder runs inside the fake-async test zone
 
     testWidgets('image layer with chroma_key (CPU fallback)', (tester) async {
       ChromaKeyer.forceCpu = true;
