@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart' hide Layer;
+import 'package:flutter/rendering.dart' as rendering show Layer;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -190,7 +191,14 @@ class RenderLayerRaster extends RenderProxyBox {
   int _lastSnapEpoch = -10;
   int _streak = 0;
   int _cooldownUntilMs = -1; // real time (ms of [_clock])
-  bool _never = false; // live texture / inner repaint boundary: always direct
+  bool _never = false; // live texture: always direct
+
+  // Inner repaint boundaries (RenderOpacity, ImageFiltered…) repaint without
+  // telling us: after each frame, compare the layers of the snapshot with
+  // what they hold now, and take a new snapshot if one was repainted.
+  final List<ContainerLayer> _watchLayers = [];
+  final List<rendering.Layer?> _watchFirst = [];
+  bool _watchArmed = false;
 
   ui.Image? _image;
   double _imageRatio = 0;
@@ -249,7 +257,49 @@ class RenderLayerRaster extends RenderProxyBox {
     _image?.dispose();
     _image = null;
     _imageRatio = 0;
+    _watchLayers.clear();
+    _watchFirst.clear();
   }
+
+  void _recordWatch(bool innerBoundaries) {
+    _watchLayers.clear();
+    _watchFirst.clear();
+    if (!innerBoundaries) return;
+    void visit(rendering.Layer l) {
+      if (l is! ContainerLayer) return;
+      _watchLayers.add(l);
+      _watchFirst.add(l.firstChild);
+      for (var c = l.firstChild; c != null; c = c.nextSibling) {
+        visit(c);
+      }
+    }
+
+    for (var c = _holder.layer!.firstChild; c != null; c = c.nextSibling) {
+      visit(c);
+    }
+    _armWatch();
+  }
+
+  void _armWatch() {
+    if (_watchArmed) return;
+    _watchArmed = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _watchArmed = false;
+      if (!attached || _image == null || _watchLayers.isEmpty) return;
+      for (int i = 0; i < _watchLayers.length; i++) {
+        if (!identical(_watchLayers[i].firstChild, _watchFirst[i])) {
+          _watchLayers.clear();
+          _watchFirst.clear();
+          markNeedsPaint();
+          return;
+        }
+      }
+      _armWatch();
+    });
+  }
+
+  @override
+  String toStringShort() => 'RenderLayerRaster($debugStatus)';
 
   @override
   void dispose() {
@@ -325,9 +375,8 @@ class RenderLayerRaster extends RenderProxyBox {
         _retryNextFrame();
         return;
       }
-      // Live textures cannot be snapshotted; inner repaint boundaries would
-      // repaint without telling us (stale image) — draw those directly.
-      if (texturesIn(child).isNotEmpty || _hasInnerBoundary(child)) {
+      // Live textures cannot be snapshotted: draw those directly.
+      if (texturesIn(child).isNotEmpty) {
         _never = true;
         _paintDirect(context, offset, child);
         return;
@@ -352,6 +401,7 @@ class RenderLayerRaster extends RenderProxyBox {
       _image = img;
       _imageRatio = ratio;
       snapshots++;
+      _recordWatch(_hasInnerBoundary(child));
     }
     _contentDirty = false;
     final img = _image!;
