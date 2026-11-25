@@ -12,6 +12,9 @@ import '../presets/components.dart';
 import '../presets/motion_presets.dart';
 import 'fx_commands.dart'; // FX (Agent B)
 import '../../audio/sound_commands.dart'; // Sound (Agent K)
+import '../../fonts/font_commands.dart'; // FONTS (Agent I)
+import '../engine/precomp.dart'; // PRECOMP (Agent L)
+import 'precomp_commands.dart'; // PRECOMP (Agent L)
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -41,6 +44,12 @@ class ProjectSnapshot {
       ..clear()
       ..addAll(r.media);
     p.main = r.main;
+    // PRECOMP (Agent L): nested comps are part of every snapshot.
+    p.comps
+      ..clear()
+      ..addAll(r.comps);
+    if (p.editCompId != null && p.comps[p.editCompId] == null) p.editCompId = null;
+    Precomp.touch();
   }
 }
 
@@ -60,6 +69,7 @@ class EditCommands {
     'animate_in', 'animate_out', 'apply_style', 'add_mask', 'update_mask', 'remove_mask',
     'add_component', 'replace_media',
     ...SoundCommands.ops, // Sound (Agent K): add_sfx, beat_sync, auto_mix
+    ...PrecompCommands.ops, // PRECOMP (Agent L)
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -69,6 +79,7 @@ class EditCommands {
     try {
       final r = CommandResult();
       _run(project, cmd, now, r);
+      Precomp.touch(); // PRECOMP (Agent L)
       return r;
     } catch (e) {
       ProjectSnapshot.restore(project, snap);
@@ -93,7 +104,8 @@ class EditCommands {
   static void _run(Project project, Map<String, dynamic> c, double now, CommandResult r) {
     final op = c['op'];
     if (op is! String) throw CommandError('Missing "op". Valid ops: ${ops.join(', ')}');
-    final comp = project.main;
+    if (PrecompCommands.scoped(project, c, (c2) => _run(project, c2, now, r))) return; // PRECOMP (Agent L): in_comp
+    final comp = project.editComp; // PRECOMP (Agent L): the comp being edited (main unless a precomp is open)
     switch (op) {
       case 'batch':
         final list = c['commands'];
@@ -102,6 +114,8 @@ class EditCommands {
           try {
             _run(project, Map<String, dynamic>.from(list[i] as Map), now, r);
           } on CommandError catch (e) {
+            throw CommandError('commands[$i] (${(list[i] as Map)['op']}): ${e.message}');
+          } on ArgumentError catch (e) {
             throw CommandError('commands[$i] (${(list[i] as Map)['op']}): ${e.message}');
           }
         }
@@ -116,6 +130,7 @@ class EditCommands {
         comp.layers.remove(l);
         for (final o in comp.layers) {
           if (o.parentId == l.id) o.parentId = null;
+          if (o.matte?.layerId == l.id) o.matte = null; // no dangling track matte
         }
         r.log.add('Removed ${l.name}');
         break;
@@ -210,19 +225,20 @@ class EditCommands {
         final l = _layer(comp, c['layer']);
         final type = c['effect'] as String? ?? '';
         final id = (c['id'] as String?) ?? Ids.next('fx');
-        final lenient = contractEffects.contains(type);
-        final e = lenient && EffectsCatalog.byType(type) == null ? Effect(id: id, type: type) : EffectsCatalog.create(type, id);
+        final Effect e;
+        try {
+          e = EffectsCatalog.create(type, id);
+        } on ArgumentError catch (ex) {
+          throw CommandError('${ex.message}');
+        }
         final params = c['params'];
         if (params is Map) {
           params.forEach((k, v) {
             final ap = e.params[k];
-            final values = FxCommands.effectValue(type, '$k', v) ?? _paramValues(type, '$k', v); // FX (Agent B): "#hex" / option names
-            if (ap == null) {
-              if (!lenient) throw CommandError('Effect "$type" has no param "$k". Params: ${e.params.keys.join(', ')}');
-              e.params['$k'] = AnimProp(values);
-            } else {
-              ap.staticValue = _fitList(ap, values);
-            }
+            if (ap == null) throw CommandError('Effect "$type" has no param "$k". Params: ${e.params.keys.join(', ')}');
+            // "#RRGGBB" colours and option names ("snow", "top") become numbers.
+            final values = FxCommands.effectValue(type, '$k', v) ?? _values(v is bool ? (v ? 1 : 0) : v);
+            ap.staticValue = _fitList(ap, values);
           });
         }
         l.effects.add(e);
@@ -288,10 +304,7 @@ class EditCommands {
       case 'animate_in':
       case 'animate_out':
         final l = _layer(comp, c['layer']);
-        var preset = c['preset'] as String? ?? 'fade';
-        if (!MotionPresets.transitions.contains(preset) && contractTransitions.containsKey(preset)) {
-          preset = contractTransitions[preset]!; // renderer transition not on this build yet
-        }
+        final preset = c['preset'] as String? ?? 'fade';
         MotionPresets.animate(comp, l, preset, isIn: op == 'animate_in', duration: _optNum(c, 'duration') ?? 0.6);
         break;
 
@@ -352,15 +365,33 @@ class EditCommands {
         break;
 
       case 'add_component':
-        final cmds = Components.build(project, c, now);
+        final List<Map<String, dynamic>> cmds;
+        try {
+          cmds = Components.build(project, c, now);
+        } on ArgumentError catch (e) {
+          throw CommandError('component ${c['type']}: ${e.message}');
+        }
         for (int i = 0; i < cmds.length; i++) {
           try {
             _run(project, cmds[i], now, r);
           } on CommandError catch (e) {
             throw CommandError('component ${c['type']}: ${e.message}');
+          } on ArgumentError catch (e) {
+            throw CommandError('component ${c['type']}: ${e.message}');
           }
         }
         break;
+
+      // PRECOMP (Agent L) >>>
+      case 'add_comp':
+      case 'precompose':
+      case 'unprecompose':
+      case 'open_comp':
+      case 'set_active_comp':
+      case 'remove_comp':
+        PrecompCommands.run(project, c, now, r);
+        break;
+      // <<< PRECOMP (Agent L)
 
       case 'set_comp':
         if (c['name'] != null) comp.name = '${c['name']}';
@@ -370,6 +401,7 @@ class EditCommands {
         if (c['duration'] != null) comp.duration = math.max(comp.frameDuration, _num(c, 'duration'));
         if (c['background'] != null) comp.background = _color(c['background']);
         FxCommands.applyComp(comp, c); // FX (Agent B): motion_blur
+        PrecompCommands.afterSetComp(project, comp); // PRECOMP (Agent L): comp layers follow the size
         break;
 
       // ---- Sound (Agent K): add_sfx / beat_sync / auto_mix → lib/audio/sound_commands.dart
@@ -395,12 +427,12 @@ class EditCommands {
   // ---------------------------------------------------------------- layers
 
   static void _addLayer(Project project, Map<String, dynamic> c, double now, CommandResult r) {
-    final comp = project.main;
+    final comp = project.editComp; // PRECOMP (Agent L)
     final LayerType type;
     try {
       type = layerTypeFromName('${c['type']}');
     } on FormatException catch (e) {
-      throw CommandError('${e.message}. Use video, image, text, solid or null');
+      throw CommandError('${e.message}. Use video, image, text, solid, shape, null, audio or comp');
     }
     final id = (c['id'] as String?) ?? Ids.next('L');
     _checkNewId(comp, id);
@@ -424,10 +456,15 @@ class EditCommands {
       }
     }
 
+    final child = type == LayerType.comp ? PrecompCommands.childFor(project, comp, c) : null; // PRECOMP (Agent L)
     double w, h;
     if (type == LayerType.audio) {
       w = 100;
       h = 100;
+    } else if (child != null) {
+      // PRECOMP (Agent L): a comp layer is the size of its comp.
+      w = child.width;
+      h = child.height;
     } else if (media != null) {
       w = media.width;
       h = media.height;
@@ -451,6 +488,8 @@ class EditCommands {
       duration = _num(c, 'duration');
     } else if (type == LayerType.video || type == LayerType.audio) {
       duration = math.max(comp.frameDuration, media!.duration - sourceIn);
+    } else if (child != null) {
+      duration = math.max(comp.frameDuration, child.duration - sourceIn); // PRECOMP (Agent L)
     } else {
       duration = 5;
     }
@@ -489,6 +528,7 @@ class EditCommands {
       layer.parentId = pid;
     }
     FxCommands.applyLayer(comp, layer, c); // FX (Agent B): matte, path
+    if (child != null) PrecompCommands.applyLayer(project, comp, layer, c, child: child); // PRECOMP (Agent L)
     if (c['position'] != null) {
       final p = layer.prop(Props.position);
       p.staticValue = _fitList(p, _values(c['position']));
@@ -506,7 +546,7 @@ class EditCommands {
   }
 
   static void _updateLayer(Project project, Layer l, Map<String, dynamic> c) {
-    final comp = project.main;
+    final comp = project.editComp; // PRECOMP (Agent L)
     if (c['name'] != null) l.name = '${c['name']}';
     if (c['start'] != null) l.moveTo(_num(c, 'start'));
     if (c['duration'] != null) l.duration = math.max(comp.frameDuration, _num(c, 'duration'));
@@ -547,6 +587,7 @@ class EditCommands {
     if (l.type == LayerType.text) _applyText(l, c);
     if (l.type == LayerType.shape) _applyShape(l, c, placeFromPoints: false);
     FxCommands.applyLayer(comp, l, c); // FX (Agent B): matte, path
+    PrecompCommands.applyLayer(project, comp, l, c); // PRECOMP (Agent L): loop, comp
     _extendComp(comp, l.end);
   }
 
@@ -614,6 +655,7 @@ class EditCommands {
   }
 
   static void _applyText(Layer l, Map<String, dynamic> c) {
+    c = FontCommands.expand(l, c); // FONTS (Agent I): `font` (validated) + `text_style` presets
     final t = l.text ??= TextData();
     final v = c['text'];
     if (v is String) t.text = v;
@@ -630,7 +672,7 @@ class EditCommands {
     if (c['text_color'] != null) t.color = _color(c['text_color']);
     if (c['animator'] != null) {
       final a = '${c['animator']}';
-      if (!TextAnimators.all.contains(a) && !contractAnimators.contains(a)) {
+      if (!TextAnimators.all.contains(a)) {
         throw CommandError('Unknown animator "$a". Available: ${TextAnimators.all.join(', ')}');
       }
       t.animator = a;
@@ -688,49 +730,11 @@ class EditCommands {
         LayerType.nullObject => 'Null',
         LayerType.audio => 'Audio',
         LayerType.shape => 'Shape',
+        LayerType.comp => 'Comp', // PRECOMP (Agent L)
       };
 
   static void _extendComp(Composition comp, double end) {
     if (end > comp.duration) comp.duration = end;
-  }
-
-  // ------------------------------------------- V1 renderer contract (B/C)
-  // Names from docs/V1_PLAN.md that the renderer branch (feat/fx) implements.
-  // Until both branches are merged they are accepted and stored as plain data
-  // so components and the AI can already use them; afterwards these lists are
-  // harmless (known names take the normal path).
-  static const contractEffects = [
-    'silhouette', 'mono', 'duotone', 'edge_blur', 'curve', 'glass_frame', 'torn_edge',
-    'particles', 'light_rays', 'sway', 'reveal', 'motion_blur',
-  ];
-  static const contractAnimators = ['random_pop', 'scramble'];
-
-  /// Contract transitions → closest existing one when the renderer lacks it.
-  static const contractTransitions = {
-    'iris': 'zoom_in', 'ink': 'fade', 'smoke': 'blur', 'spin': 'spin', 'flash': 'fade', 'glitch_flash': 'whip',
-  };
-  static const contractProps = <String, List<double>>{'path_progress': [0]};
-
-  /// String options of effect params, stored as their index.
-  static const contractEnums = <String, Map<String, List<String>>>{
-    'particles': {'kind': ['confetti', 'leaves', 'stars', 'rain', 'snow', 'smoke', 'dust', 'bokeh', 'streaks', 'birds', 'clouds']},
-    'reveal': {'kind': ['iris', 'ink', 'smoke', 'wipe']},
-    'torn_edge': {'side': ['top', 'bottom', 'left', 'right']},
-  };
-
-  /// Effect param value: numbers, "#RRGGBB" colours (→ [r, g, b]) or enum names (→ index).
-  static List<double> _paramValues(String effect, String key, dynamic v) {
-    if (v is bool) return [v ? 1 : 0];
-    if (v is String) {
-      final options = contractEnums[effect]?[key];
-      if (options != null) {
-        if (options.contains(v)) return [options.indexOf(v).toDouble()];
-        throw CommandError('Effect "$effect": unknown $key "$v". Use ${options.join(', ')}');
-      }
-      final argb = _color(v);
-      return [((argb >> 16) & 0xFF).toDouble(), ((argb >> 8) & 0xFF).toDouble(), (argb & 0xFF).toDouble()];
-    }
-    return _values(v);
   }
 
   // --------------------------------------------------------------- helpers
@@ -787,11 +791,11 @@ class EditCommands {
     } else {
       props = _layer(comp, target).props;
     }
-    var p = props[key];
-    if (p == null && target != 'camera' && c['effect'] == null && c['mask'] == null && contractProps.containsKey(key)) {
-      p = props[key] = AnimProp(List.of(contractProps[key]!)); // e.g. path_progress before the renderer merge
+    final p = props[key];
+    if (p == null) {
+      final hint = key == Props.pathProgress ? ' (give the layer a "path" with update_layer first)' : '';
+      throw CommandError('No property "$key" on $target$hint. Properties: ${props.keys.join(', ')}');
     }
-    if (p == null) throw CommandError('No property "$key" on $target. Properties: ${props.keys.join(', ')}');
     if (component != null && component >= p.dims) throw CommandError('"$key" has only ${p.dims} dimension(s)');
     return (prop: p, component: component);
   }

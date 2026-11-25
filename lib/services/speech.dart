@@ -6,6 +6,7 @@ import 'package:whisper_ggml/whisper_ggml.dart';
 import '../ai/ai_client.dart';
 import '../ai/ai_settings.dart';
 import '../core/model/layer.dart';
+import '../platform/windows_ai/win_ai.dart';
 import 'media_bridge.dart';
 
 /// Speech-to-text. Runs Whisper on the phone by default (free, offline after
@@ -42,6 +43,7 @@ class Speech {
     final dir = await getTemporaryDirectory();
     final wav = '${dir.path}/stt_${DateTime.now().millisecondsSinceEpoch}.wav';
     await MediaBridge.wav16k(path, wav, sourceIn: sourceIn, duration: duration);
+    if (Platform.isWindows) return _windows(wav, language: language, roman: roman, sourceIn: sourceIn, onStatus: onStatus);
     try {
       final model = _model(s.whisperModel);
       final modelFile = File(await _controller.getPath(model));
@@ -75,6 +77,23 @@ class Speech {
           out.add(WordTiming(parts[i], sourceIn + s0, sourceIn + s1));
         }
       }
+      if (out.isEmpty) throw AiException('No speech was found. Check that the clip has a voice track.');
+      return out;
+    } finally {
+      File(wav).delete().ignore();
+    }
+  }
+
+  static String? _prompt(String? language, bool roman) => roman
+      ? 'Hinglish, written in Roman script: aaj hum baat karenge ki ye kaise hua.'
+      : (language == 'hi' ? 'नमस्ते दोस्तों, आज हम बात करेंगे।' : null);
+
+  /// Windows: on-device whisper.cpp via the Windows AI layer.
+  static Future<List<WordTiming>> _windows(String wav,
+      {String? language, bool roman = false, double sourceIn = 0, void Function(String)? onStatus}) async {
+    try {
+      final words = await WinAi.words(wav, language: language, prompt: _prompt(language, roman), onStatus: onStatus);
+      final out = [for (final w in words) WordTiming(w.word, sourceIn + w.start, sourceIn + w.end)];
       if (out.isEmpty) throw AiException('No speech was found. Check that the clip has a voice track.');
       return out;
     } finally {

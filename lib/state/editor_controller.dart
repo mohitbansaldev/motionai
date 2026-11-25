@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../core/commands/edit_commands.dart';
+import '../core/engine/precomp.dart'; // PRECOMP (Agent L)
 import '../core/model/anim_prop.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
@@ -34,9 +36,13 @@ class EditorController extends ChangeNotifier {
   bool _playing = false;
   double _playStartTime = 0;
 
+  /// Playback speed: 1 = normal; J/K/L shuttle uses -4..4.
+  double rate = 1;
+
   EditorController(this.project, this.storage);
 
-  Composition get comp => project.main;
+  /// The composition open in the editor: main, or a precomp opened from it.
+  Composition get comp => project.editComp; // PRECOMP (Agent L)
   double get time => timeNotifier.value;
   bool get playing => _playing;
   bool get canUndo => _undo.isNotEmpty;
@@ -44,6 +50,64 @@ class EditorController extends ChangeNotifier {
   int get undoDepth => _undo.length;
 
   Layer? get selectedLayer => selectedLayerId == null ? null : comp.layerById(selectedLayerId!);
+
+  // PRECOMP (Agent L) >>>
+  // --------------------------------------------------------- nested comps
+
+  final List<double> _compReturnTimes = [];
+
+  /// Breadcrumbs: main first, the open comp last.
+  List<Composition> get compTrail {
+    final ids = Precomp.pathTo(project, comp.id) ?? [project.main.id];
+    return [for (final id in ids) project.compById(id)].whereType<Composition>().toList();
+  }
+
+  bool get inPrecomp => comp.id != project.main.id;
+
+  /// Opens comp [id] ("main" or null = back to main) for editing.
+  void openComp(String? id, {double? atTime}) {
+    final target = id == null ? project.main : project.compById(id);
+    if (target == null || target.id == comp.id) return;
+    if (_playing) pause();
+    final trail = Precomp.pathTo(project, target.id) ?? [project.main.id, target.id];
+    final goingUp = compTrail.any((c) => c.id == target.id);
+    double t;
+    if (goingUp) {
+      // Back up the breadcrumbs: restore the time we left that comp at.
+      final levels = compTrail.length - trail.length;
+      double? back;
+      for (int i = 0; i < levels && _compReturnTimes.isNotEmpty; i++) {
+        back = _compReturnTimes.removeLast();
+      }
+      t = back ?? 0;
+    } else {
+      _compReturnTimes.add(time);
+      t = atTime ?? 0;
+    }
+    project.editCompId = target.id == project.main.id ? null : target.id;
+    if (project.editCompId == null) _compReturnTimes.clear();
+    selectedLayerId = null;
+    cameraSelected = false;
+    timeNotifier.value = t.clamp(0.0, comp.duration).toDouble();
+    videos.sync(project, time, playing: false);
+    notifyListeners();
+  }
+
+  /// Opens the comp shown by comp layer [layerId] at the matching inner time.
+  void openCompLayer(String layerId) {
+    final l = comp.layerById(layerId);
+    if (l == null) return;
+    final child = Precomp.childOf(project, l);
+    if (child == null) return;
+    openComp(child.id, atTime: Precomp.childTime(l, child, time) ?? 0);
+  }
+
+  /// One level up the breadcrumbs.
+  void closeComp() {
+    final trail = compTrail;
+    if (trail.length >= 2) openComp(trail[trail.length - 2].id);
+  }
+  // <<< PRECOMP (Agent L)
 
   // ------------------------------------------------------------- selection
 
@@ -70,7 +134,7 @@ class EditorController extends ChangeNotifier {
       _ticker?.start();
     }
     timeNotifier.value = v;
-    videos.sync(project, v, playing: _playing);
+    videos.sync(project, v, playing: _playing, rate: rate);
   }
 
   void stepFrames(int n) => seek(time + n * comp.frameDuration);
@@ -81,7 +145,12 @@ class EditorController extends ChangeNotifier {
   }
 
   void _onTick(Duration elapsed) {
-    var t = _playStartTime + elapsed.inMicroseconds / 1e6;
+    var t = _playStartTime + elapsed.inMicroseconds / 1e6 * rate;
+    if (rate < 0 && t <= 0) {
+      timeNotifier.value = 0;
+      pause();
+      return;
+    }
     if (t >= comp.duration) {
       if (loop) {
         _playStartTime = 0;
@@ -95,29 +164,55 @@ class EditorController extends ChangeNotifier {
       }
     }
     timeNotifier.value = t;
-    videos.sync(project, t, playing: _playing);
+    videos.sync(project, t, playing: _playing, rate: rate);
+  }
+
+  /// J/K/L shuttle: [direction] 1 = forward (L), -1 = backward (J). Pressing
+  /// again in the same direction doubles the speed (up to 4x); K = [pause].
+  void shuttle(int direction) {
+    final same = _playing && rate.sign == direction.sign;
+    final double next = same ? math.min(4.0, rate.abs() * 2) * direction : direction.toDouble();
+    if (_playing) {
+      _playStartTime = time;
+      _ticker?.stop();
+      rate = next;
+      _ticker?.start();
+      videos.sync(project, time, playing: true, rate: rate);
+      notifyListeners();
+    } else {
+      rate = next;
+      play();
+    }
   }
 
   void play() {
     if (_playing || _ticker == null) return;
-    if (time >= comp.duration - comp.frameDuration) timeNotifier.value = 0;
+    if (rate > 0 && time >= comp.duration - comp.frameDuration) timeNotifier.value = 0;
     _playing = true;
     _playStartTime = time;
     _ticker!.start();
-    videos.sync(project, time, playing: true);
+    videos.sync(project, time, playing: true, rate: rate);
     notifyListeners();
   }
 
   void pause() {
     if (!_playing) return;
     _playing = false;
+    rate = 1;
     _ticker?.stop();
     videos.pauseAll();
     seek(time);
     notifyListeners();
   }
 
-  void togglePlay() => _playing ? pause() : play();
+  void togglePlay() {
+    if (_playing) {
+      pause();
+    } else {
+      rate = 1;
+      play();
+    }
+  }
 
   void setLoop(bool v) {
     loop = v;
@@ -178,6 +273,8 @@ class EditorController extends ChangeNotifier {
   }
 
   void _afterEdit() {
+    Precomp.touch(); // PRECOMP (Agent L): drop cached precomp renders
+    if (project.editCompId != null && project.comps[project.editCompId] == null) project.editCompId = null; // PRECOMP (Agent L)
     if (selectedLayerId != null && comp.layerById(selectedLayerId!) == null) selectedLayerId = null;
     if (time > comp.duration) timeNotifier.value = comp.duration;
     videos.sync(project, time, playing: _playing);

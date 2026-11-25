@@ -82,7 +82,7 @@ List<Map<String, dynamic>> _characterLabel(_B b, Project p) {
   var x = b.n('x', b.w * 0.5), y = b.n('y', b.h * 0.3);
   final attach = b.c['attach'];
   if (attach is String) {
-    final pt = _screenPointOf(p.main, attach, b.start, b.vec('at', [0.5, 0.12]));
+    final pt = _screenPointOf(p.editComp /* PRECOMP (Agent L) */, attach, b.start, b.vec('at', [0.5, 0.12]));
     if (pt != null) {
       x = pt[0];
       y = pt[1];
@@ -560,6 +560,7 @@ List<Map<String, dynamic>> _scanner(_B b, Project p) {
   final cmds = b.group('Scanner', x: 0, y: 0);
   final matte = b.id('beam_matte');
   final pts = <List<double>>[];
+  final targetIds = <String>[];
   for (int i = 0; i < n; i++) {
     final s = targets[i];
     final x = (s['x'] as num?)?.toDouble() ?? b.w * (n == 1 ? 0.5 : 0.18 + 0.64 * i / (n - 1));
@@ -574,7 +575,7 @@ List<Map<String, dynamic>> _scanner(_B b, Project p) {
     } else {
       cmds.add(b.shape('t$i', 'ellipse', th * 0.62, th * 0.8, x, y, fill: '#9A9A9A', fill2: '#5A5A5A'));
     }
-    cmds.add({'op': 'update_layer', 'layer': tid, 'matte': {'layer': matte, 'mode': 'alpha'}});
+    targetIds.add(tid);
   }
   double angle(List<double> t) => math.atan2(t[1] - origin[1], t[0] - origin[0]) * 180 / math.pi;
   var far = 0.0;
@@ -589,6 +590,10 @@ List<Map<String, dynamic>> _scanner(_B b, Project p) {
   cmds.add(b.path('beam', cone, parent: rig, fill: _alpha(color, 0x55), stroke: 'none', width: 0, closed: true));
   cmds.add(b.fx(b.id('beam'), 'glow', {'amount': 60, 'radius': 24}));
   cmds.add({...b.path('beam_matte', cone, parent: rig, fill: '#FFFFFF', stroke: 'none', width: 0, closed: true), 'name': 'Beam matte'});
+  // The matte layer must exist before the targets can use it.
+  for (final tid in targetIds) {
+    cmds.add({'op': 'update_layer', 'layer': tid, 'matte': {'layer': matte, 'mode': 'alpha'}});
+  }
   // Swing from target to target.
   var t = b.start + 0.2;
   cmds.add(b.kf(rig, 'rotation', t, [0, 0, angle(pts.first) - 30], 'easy_ease'));

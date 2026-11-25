@@ -3,11 +3,12 @@ import 'motion_path.dart';
 
 export 'motion_path.dart';
 
-enum LayerType { video, image, text, solid, nullObject, audio, shape }
+enum LayerType { video, image, text, solid, nullObject, audio, shape, comp /* PRECOMP (Agent L): nested composition */ }
 
 LayerType layerTypeFromName(String name) {
   final n = name.replaceAll('_', '').toLowerCase();
   if (n == 'null') return LayerType.nullObject;
+  if (n == 'precomp' || n == 'composition') return LayerType.comp; // PRECOMP (Agent L)
   for (final t in LayerType.values) {
     if (t.name.toLowerCase() == n) return t;
   }
@@ -380,6 +381,15 @@ class Layer {
   /// Track matte (see [LayerMatte]); null = none.
   LayerMatte? matte;
 
+  // PRECOMP (Agent L) >>>
+  /// For [LayerType.comp]: id of the nested composition in `Project.comps`.
+  /// Child time = sourceIn + (t - start) * speed (see `Precomp.childTime`).
+  String? compId;
+
+  /// For [LayerType.comp]: repeat the nested comp when its time runs past its duration.
+  bool loop;
+  // <<< PRECOMP (Agent L)
+
   MotionPath? _path;
 
   /// Motion path (see [MotionPath]); setting one adds the `path_progress` prop.
@@ -413,6 +423,8 @@ class Layer {
     List<Mask>? masks,
     this.matte,
     MotionPath? path,
+    this.compId, // PRECOMP (Agent L)
+    this.loop = false, // PRECOMP (Agent L)
   })  : props = props ?? {},
         effects = effects ?? [],
         masks = masks ?? [] {
@@ -528,6 +540,8 @@ class Layer {
         masks: masks.map((m) => m.copy()).toList(),
         matte: matte,
         path: _path?.copy(),
+        compId: compId, // PRECOMP (Agent L)
+        loop: loop, // PRECOMP (Agent L)
       );
 
   Map<String, dynamic> toJson() => {
@@ -554,6 +568,8 @@ class Layer {
         if (masks.isNotEmpty) 'masks': masks.map((m) => m.toJson()).toList(),
         if (matte != null) 'matte': matte!.toJson(),
         if (_path != null) 'path': _path!.toJson(),
+        if (compId != null) 'compId': compId, // PRECOMP (Agent L)
+        if (loop) 'loop': true, // PRECOMP (Agent L)
       };
 
   static Layer fromJson(Map<String, dynamic> j) => Layer(
@@ -581,5 +597,7 @@ class Layer {
         masks: (j['masks'] as List? ?? []).map((e) => Mask.fromJson(e as Map<String, dynamic>)).toList(),
         matte: j['matte'] is Map ? LayerMatte.fromJson(Map<String, dynamic>.from(j['matte'] as Map)) : null,
         path: j['path'] is Map ? MotionPath.fromJson(Map<String, dynamic>.from(j['path'] as Map)) : null,
+        compId: j['compId'] as String?, // PRECOMP (Agent L)
+        loop: j['loop'] as bool? ?? false, // PRECOMP (Agent L)
       );
 }

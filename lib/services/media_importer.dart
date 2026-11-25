@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:video_player/video_player.dart';
 
 import '../core/model/project.dart';
+import '../platform/win_media.dart';
 import 'media_bridge.dart';
 import 'project_storage.dart';
 
@@ -14,7 +15,7 @@ class MediaImporter {
   final ProjectStorage storage;
   MediaImporter(this.storage);
 
-  static const _videoExt = ['mp4', 'mov', 'm4v', 'webm', 'mkv', '3gp'];
+  static const _videoExt = ['mp4', 'mov', 'm4v', 'webm', 'mkv', '3gp', 'avi', 'wmv'];
   static const _imageExt = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic'];
   static const _audioExt = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac', 'opus'];
 
@@ -47,6 +48,31 @@ class MediaImporter {
     }
     return out;
   }
+
+  /// Imports files dropped from Explorer (or any list of paths). Unknown
+  /// file types are reported in [errors].
+  Future<List<MediaAsset>> importPaths(List<String> paths) async {
+    errors.clear();
+    final out = <MediaAsset>[];
+    for (final p in paths) {
+      final name = p.split(RegExp(r'[\\/]')).last;
+      final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+      if (!isSupportedExtension(ext)) {
+        errors.add('$name: not a photo, video or audio file');
+        continue;
+      }
+      try {
+        final a = await importPath(p, name: name);
+        if (a != null) out.add(a);
+      } catch (e) {
+        errors.add('$name: $e');
+      }
+    }
+    return out;
+  }
+
+  static bool isSupportedExtension(String ext) =>
+      _videoExt.contains(ext) || _imageExt.contains(ext) || _audioExt.contains(ext) || ext == 'heif' || ext == 'avif';
 
   Future<MediaAsset?> importPath(String path, {String? name, MediaType? hint}) async {
     final ext = path.contains('.') ? path.split('.').last.toLowerCase() : '';
@@ -82,6 +108,21 @@ class MediaImporter {
     }
 
     final stored = await storage.importFile(path, id);
+    if (Platform.isWindows) {
+      // FFprobe reads every container/codec FFmpeg can export from.
+      final info = await WinMedia.probe(stored);
+      if (!info.hasVideo && !info.hasAudio) throw Exception('no audio or video found');
+      final audioOnly = isAudio || !info.hasVideo;
+      return MediaAsset(
+        id: id,
+        type: audioOnly ? MediaType.audio : MediaType.video,
+        path: stored,
+        name: display,
+        width: info.displayWidth > 0 ? info.displayWidth.toDouble() : 1920,
+        height: info.displayHeight > 0 ? info.displayHeight.toDouble() : 1080,
+        duration: info.duration,
+      );
+    }
     final c = VideoPlayerController.file(File(stored));
     try {
       await c.initialize();
