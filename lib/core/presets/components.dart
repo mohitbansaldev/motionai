@@ -6,12 +6,14 @@ import '../model/easing.dart'; // SCENE (Agent D)
 import '../model/layer.dart';
 import '../model/project.dart';
 import 'world_map.dart';
+import 'motion_presets.dart'; // V3-B
 import 'vector_icons.dart'; // V3-C
 import 'flags.dart'; // V3-C
 
 part 'components_doc.dart';
 part 'components_article.dart';
 part 'map_kit.dart'; // SCENE (Agent D): maps + 3D room/board
+part 'components_evidence.dart'; // V3-B: evidence kit (articles, books, cards, notes)
 part 'map_geo.dart'; // V3-A: maps & geo patterns
 part 'components_fx.dart'; // V3-D: speech_bubble upgrade (messages, typing, tail_to/attach, styles, puff exit)
 part 'components_datahud.dart'; // V3-C: data, HUD & overlays
@@ -29,6 +31,7 @@ class Components {
     'title_slam', 'foreground_wipe', 'icon_stream', 'icon_badge', 'scanner', 'silhouette_crowd',
     'number_tiles', 'date_title', 'article',
     ..._sceneTypes, // SCENE (Agent D)
+    ..._evTypes, // V3-B
     ..._geoTypes, // V3-A
     ..._dataHudTypes, // V3-C
   ];
@@ -67,6 +70,7 @@ class Components {
         'article': 'Article Highlight',
       }[t] ??
       _sceneLabels[t] ?? // SCENE (Agent D)
+      _evLabels[t] ?? // V3-B
       _geoLabels[t] ?? // V3-A
       _dataHudLabels[t] ?? // V3-C
       t;
@@ -82,6 +86,8 @@ class Components {
     if (geo != null) return geo; // V3-A
     final scene = _sceneBuild(p, c, b); // SCENE (Agent D)
     if (scene != null) return scene;
+    final ev = _evBuild(p, c, b); // V3-B
+    if (ev != null) return ev;
     final dataHud = _dataHudBuild(p, c, b); // V3-C
     if (dataHud != null) return dataHud;
     switch (type) {

@@ -318,6 +318,7 @@ class LayerView extends StatefulWidget {
       case 'word_pop':
       case 'fade_up':
       case 'karaoke':
+      case 'write_on': // V3-B
         content = _words(l, t, style, wrapAlign, local);
         break;
       default:
@@ -385,10 +386,45 @@ class LayerView extends StatefulWidget {
           );
           break;
       }
+      // V3-B >>> write_on: each word is wiped on left→right (soft edge), words in
+      // order over anim_duration in proportion to their length (or at their
+      // caption word timings).
+      if (t.animator == 'write_on') w = _writeOn(t, words, i, local, w, timed ? t.words[i].start - l.start : null);
+      // <<< V3-B
       children.add(w);
     }
     return Wrap(alignment: wrapAlign, crossAxisAlignment: WrapCrossAlignment.center, children: children);
   }
+
+  // V3-B >>>
+  /// One word of the `write_on` animator: a left→right reveal with a soft edge.
+  Widget _writeOn(TextData t, List<String> words, int i, double local, Widget w, double? startAt) {
+    final total = math.max(0.05, t.animDuration);
+    var before = 0, all = 0;
+    for (int k = 0; k < words.length; k++) {
+      final n = words[k].length + 1;
+      if (k < i) before += n;
+      all += n;
+    }
+    final t0 = startAt ?? total * before / math.max(1, all);
+    final dur = startAt != null ? 0.25 : math.max(0.05, total * (words[i].length + 1) / math.max(1, all));
+    final q = ((local - t0) / dur).clamp(0.0, 1.0);
+    if (q >= 1) return w;
+    if (q <= 0) return Opacity(opacity: 0, child: w);
+    const soft = 0.18;
+    final edge = q * (1 + soft);
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (r) => ui.Gradient.linear(
+        r.topLeft,
+        r.topRight,
+        const [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF), Color(0x00FFFFFF)],
+        [0, (edge - soft).clamp(0.0, 1.0), edge.clamp(0.0, 1.0), 1],
+      ),
+      child: w,
+    );
+  }
+  // <<< V3-B
 
   // --------------------------------------------------------------- effects
 

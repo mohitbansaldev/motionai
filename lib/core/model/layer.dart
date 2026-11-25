@@ -78,6 +78,7 @@ class WordTiming {
 class TextAnimators {
   static const all = [
     'none', 'typewriter', 'word_pop', 'fade_up', 'slide_up', 'karaoke', 'random_pop', 'scramble',
+    'write_on', // V3-B: soft left→right wipe per word, like handwriting
     'typewriter_soft', 'letter_drop', 'word_fade_grey', // V3-C
   ];
   static String label(String a) => const {
@@ -89,6 +90,7 @@ class TextAnimators {
         'karaoke': 'Word Highlight',
         'random_pop': 'Random Pop',
         'scramble': 'Scramble',
+        'write_on': 'Write On', // V3-B
         'typewriter_soft': 'Soft Typewriter', // V3-C
         'letter_drop': 'Letter Drop', // V3-C
         'word_fade_grey': 'Grey → Word Fade', // V3-C
