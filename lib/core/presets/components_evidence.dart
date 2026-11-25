@@ -277,8 +277,9 @@ List<double>? _evScreenBox(Composition comp, String id, double t) {
 // ---------------------------------------------------------------- backdrops
 
 /// Full-frame backdrops: grunge_red, grunge_navy, paper_grey, clean, newsprint_wall,
-/// newspaper_collage, or a "#RRGGBB" colour. Returns [] for none/unknown.
-List<Map<String, dynamic>> _evBackdrop(_B b, String kind, {String part = 'bg'}) {
+/// newspaper_collage, or a "#RRGGBB" colour. Returns [] for none/unknown. Part "bd"
+/// (the Director adds its own "<id>_bg" under some components).
+List<Map<String, dynamic>> _evBackdrop(_B b, String kind, {String part = 'bd'}) {
   if (kind == 'newsprint_wall') return _evNewsprintWall(b, part);
   if (kind == 'newspaper_collage') return _evCollage(b, part);
   final spec = switch (kind) {

@@ -122,7 +122,7 @@ void main() {
       expect(inner.layerById('ar_a0_img'), isNotNull);
       expect(inner.layerById('ar_a0_m0_0'), isNotNull, reason: 'marks travel with the page');
       expect(p.main.layerById('ar_a0_img'), isNull);
-      expect(p.main.layerById('ar_bg'), isNotNull, reason: 'backdrop stays flat in main');
+      expect(p.main.layerById('ar_bd'), isNotNull, reason: 'backdrop stays flat in main');
       for (double t = 0; t < 5; t += 0.4) {
         Evaluator.evaluate(p.main, t);
         Evaluator.evaluate(inner, t);
@@ -190,8 +190,8 @@ void main() {
       expect(tc.effects.single.params['dark']!.staticValue, [0xE8, 0xF5, 0x3A]);
       // Underline per line, drawn with trim.
       expect(layer(p, 'ar_a0_m3_1').prop(Props.trim).isAnimated, isTrue);
-      expect(p.main.layerById('ar_bg_wall'), isNotNull);
-      expect(layer(p, 'ar_bg_wall').parentId, 'ar_bgn');
+      expect(p.main.layerById('ar_bd_wall'), isNotNull);
+      expect(layer(p, 'ar_bd_wall').parentId, 'ar_bgn');
     });
 
     test('marks at caption word timings; done marks are drawn already', () {
@@ -241,7 +241,7 @@ void main() {
     test('newspaper_collage backdrop is blurred clippings', () {
       final p = project();
       run(p, {'op': 'add_component', 'type': 'article', 'id': 'ar', 'start': 0, 'duration': 4, 'backdrop': 'newspaper_collage'});
-      final clips = [for (int g = 0; g < 3; g++) layer(p, 'ar_bg_clip$g')];
+      final clips = [for (int g = 0; g < 3; g++) layer(p, 'ar_bd_clip$g')];
       expect(clips.fold<int>(0, (a, l) => a + l.shape!.rings.length), 12);
       for (final l in clips) {
         expect(l.effects.map((e) => e.type), containsAll(['shadow', 'blur']));
@@ -332,7 +332,7 @@ void main() {
         'marks': [{'phrase': 'no food left', 'style': 'highlight'}, {'phrase': 'search was over', 'style': 'underline'}],
       });
       expect(layer(p, 'bk_cvtitle').text!.text, 'ALIVE');
-      expect(layer(p, 'bk_bg').effects.any((e) => e.type == 'grunge'), isTrue);
+      expect(layer(p, 'bk_bd').effects.any((e) => e.type == 'grunge'), isTrue);
       final cover = layer(p, 'bk_cover').prop(Props.scale);
       expect(cover.valueAt(1.6)[0], closeTo(100, 1e-6));
       expect(cover.valueAt(1.8)[0], closeTo(1, 1e-6));
@@ -359,7 +359,7 @@ void main() {
     test('book side_popin has no backdrop and pops in beside the presenter', () {
       final p = project();
       run(p, {'op': 'add_component', 'type': 'book', 'id': 'bk', 'start': 0, 'duration': 4, 'enter': 'side_popin', 'zoom_to': 'none'});
-      expect(p.main.layerById('bk_bg'), isNull);
+      expect(p.main.layerById('bk_bd'), isNull);
       final g = layer(p, 'bk_g');
       expect(g.prop(Props.position).valueAt(1)[0], closeTo(kW * 0.86, 1e-6));
       expect(g.prop(Props.scale).valueAt(0)[0], lessThan(g.prop(Props.scale).valueAt(1)[0]));
@@ -442,7 +442,7 @@ void main() {
         'op': 'add_component', 'type': 'photo_card', 'id': 'pc', 'start': 0, 'duration': 5, 'media': 'img', 'frame': 'torn_white',
         'backdrop': 'grunge_navy', 'title': 'The old christians', 'key_phrase': 'rugby club', 'reveal_prop': 'cut',
       });
-      expect(layer(p, 'pc_bg').shape!.fill, 0xFF1B2A4A);
+      expect(layer(p, 'pc_bd').shape!.fill, 0xFF1B2A4A);
       expect(layer(p, 'pc_frame').shape!.rings.single.length, greaterThan(40), reason: 'torn edge');
       expect(layer(p, 'pc_photo').effects.map((e) => e.type), contains('mono'));
       expect(layer(p, 'pc_title').text!.animator, 'typewriter');
@@ -452,7 +452,7 @@ void main() {
       // Plain photo_card commands keep the V1 look.
       final q = project();
       run(q, {'op': 'add_component', 'type': 'photo_card', 'id': 'pc', 'start': 0, 'media': 'img'});
-      expect(q.main.layerById('pc_bg'), isNull);
+      expect(q.main.layerById('pc_bd'), isNull);
     });
 
     test('photo_wall: B&W photos (colour last) with splatters; the wall moves photo to photo', () {
