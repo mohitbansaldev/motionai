@@ -55,9 +55,6 @@ class ModelStore {
     return d;
   };
 
-  /// Optional trace of download steps (diagnostics).
-  static void Function(String message)? trace;
-
   /// HTTP client factory (tests swap in a mock).
   static http.Client Function() httpClient = http.Client.new;
 
@@ -79,22 +76,26 @@ class ModelStore {
   static Future<String> ensure(ModelSpec spec, {void Function(double progress)? onProgress}) {
     final running = _pending[spec.fileName];
     if (running != null) return running;
-    final f = _ensure(spec, onProgress).whenComplete(() => _pending.remove(spec.fileName));
+    // Block body: returning the removed future from whenComplete would make
+    // the future wait for itself.
+    final f = _ensure(spec, onProgress).whenComplete(() {
+      _pending.remove(spec.fileName);
+    });
     _pending[spec.fileName] = f;
     return f;
   }
 
   static Future<String> _ensure(ModelSpec spec, void Function(double)? onProgress) async {
-    trace?.call('ensure ${spec.fileName}');
     final dir = await modelsDir();
-    trace?.call('dir ${dir.path}');
     final file = File('${dir.path}${Platform.pathSeparator}${spec.fileName}');
     final ok = File('${file.path}.ok');
-    if (await file.exists() && await file.length() == spec.bytes) {
-      if (await ok.exists()) return file.path;
+    if (await file.exists()) {
+      final len = await file.length();
+      // "<hash> <length>" is written once a copy has been verified.
+      if (await ok.exists() && (await ok.readAsString()).trim() == '${spec.hash} $len') return file.path;
       // A copy from an earlier version of the app: check it once.
-      if (await hashFile(file.path, spec.hashKind) == spec.hash) {
-        await ok.writeAsString(spec.hash);
+      if (len > 0 && await hashFile(file.path, spec.hashKind) == spec.hash) {
+        await ok.writeAsString('${spec.hash} $len');
         return file.path;
       }
     }
@@ -102,11 +103,9 @@ class ModelStore {
     for (final url in spec.urls) {
       try {
         await _download(url, spec, file, onProgress);
-        trace?.call('downloaded');
-        await ok.writeAsString(spec.hash);
+        await ok.writeAsString('${spec.hash} ${await file.length()}');
         return file.path;
       } catch (e) {
-        trace?.call('failed $e');
         lastError = e;
       }
     }
@@ -117,9 +116,7 @@ class ModelStore {
     final part = File('${dest.path}.part');
     final client = httpClient();
     try {
-      trace?.call('send $url');
       final res = await client.send(http.Request('GET', Uri.parse(url))).timeout(const Duration(seconds: 30));
-      trace?.call('status ${res.statusCode}');
       if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
       final total = (res.contentLength ?? 0) > 0 ? res.contentLength! : spec.bytes;
       final sink = part.openWrite();
@@ -137,22 +134,21 @@ class ModelStore {
             onProgress?.call((got / total).clamp(0.0, 1.0).toDouble());
           }
         }
-        trace?.call('stream done $got');
       } finally {
         await sink.close();
         hasher.close();
       }
-      trace?.call('closed');
-      if (got != spec.bytes) throw HttpException('incomplete download ($got of ${spec.bytes} bytes)');
-      if (digest.value.toString() != spec.hash) throw const HttpException('downloaded file is damaged (hash mismatch)');
+      if (res.contentLength != null && res.contentLength! > 0 && got != res.contentLength) {
+        throw HttpException('incomplete download ($got of ${res.contentLength} bytes)');
+      }
+      // The hash is the real check (the size is only for progress).
+      if (digest.value.toString() != spec.hash) throw HttpException('downloaded file is damaged (hash mismatch, $got bytes)');
       if (await dest.exists()) await dest.delete();
       await part.rename(dest.path);
       onProgress?.call(1);
     } finally {
       client.close();
-      trace?.call('cleanup');
       if (await part.exists()) await part.delete().catchError((_) => part);
-      trace?.call('cleanup done');
     }
   }
 }

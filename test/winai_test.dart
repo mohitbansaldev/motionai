@@ -519,8 +519,6 @@ void main() {
     late Directory dir;
     const base = 'https://models.example';
     setUp(() {
-      // ignore: avoid_print
-      ModelStore.trace = (m) => print('[model store] $m');
       hits = 0;
       dir = Directory.systemTemp.createTempSync('winai_models');
       ModelStore.modelsDir = () async => dir;
