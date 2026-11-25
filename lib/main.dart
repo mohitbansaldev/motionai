@@ -9,6 +9,8 @@ import 'remote/remote_ui.dart'; // MCP (Agent P)
 import 'ui/depth_tools.dart'; // V2-E
 import 'ui/home_screen.dart';
 import 'ui/theme.dart';
+import 'core/presets/doc_transitions.dart'; // V2-lead
+import 'core/presets/transition_registry.dart'; // V2-lead
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +22,7 @@ void main() {
   rootBundle.loadString('assets/world_countries.json').then(WorldMap.load).catchError((_) {});
   RemoteControl.instance.init().catchError((_) {}); // MCP (Agent P): Claude control server (if enabled)
   DepthTools.install(); // V2-E: photo_to_3d / depth_map background jobs
+  TransitionRegistry.addRegistrar(DocTransitions.registerAll); // V2-lead: documentary transitions for sequence
   runApp(const MotionAIApp());
 }
 
