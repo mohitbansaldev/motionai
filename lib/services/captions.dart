@@ -3,17 +3,14 @@ import 'dart:math' as math;
 
 import '../ai/ai_client.dart';
 import '../ai/ai_settings.dart';
+import '../captions/builder.dart';
+import '../captions/emphasis.dart';
+import '../captions/options.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import 'speech.dart';
 
-class CaptionOptions {
-  String? language; // 'hi', 'en' or null (auto)
-  bool roman; // Hinglish in Latin script
-  int maxWords;
-  String style; // karaoke | word_pop | plain
-  CaptionOptions({this.language = 'hi', this.roman = false, this.maxWords = 4, this.style = 'karaoke'});
-}
+export '../captions/options.dart' show CaptionOptions;
 
 /// Speech-to-text captions: audio → Whisper (on the phone, or OpenAI) →
 /// caption text layers with per-word highlight.
@@ -73,58 +70,34 @@ class CaptionMaker {
     ];
     if (words.isEmpty) throw AiException('No speech falls inside the trimmed part of this clip.');
 
+    // 5. Optional AI pass for words to emphasise (one request).
+    if (o.aiEmphasis) {
+      onStatus?.call('Finding key words…');
+      o.emphasisWords.addAll(await aiEmphasis(words));
+    }
+
     return fromWords(project, words, o);
   }
 
   /// Caption text layers (with per-word timing) from composition-time words.
-  static List<Map<String, dynamic>> fromWords(Project project, List<WordTiming> words, CaptionOptions o) {
-    // Group into captions.
-    final groups = <List<WordTiming>>[];
-    var cur = <WordTiming>[];
-    for (final w in words) {
-      final gap = cur.isEmpty ? 0.0 : w.start - cur.last.end;
-      final endsSentence = cur.isNotEmpty && RegExp(r'[.!?।,]$').hasMatch(cur.last.word);
-      if (cur.isNotEmpty && (cur.length >= o.maxWords || gap > 0.6 || endsSentence)) {
-        groups.add(cur);
-        cur = [];
-      }
-      cur.add(w);
-    }
-    if (cur.isNotEmpty) groups.add(cur);
+  /// Grouping, styles, emphasis and safe areas live in `lib/captions/`.
+  static List<Map<String, dynamic>> fromWords(Project project, List<WordTiming> words, CaptionOptions o) =>
+      CaptionBuilder.fromWords(project, words, o);
 
-    // Commands
-    final comp = project.main;
-    final short = math.min(comp.width, comp.height);
-    final fontSize = (short * 0.065).roundToDouble();
-    final y = comp.height > comp.width ? comp.height * 0.72 : comp.height * 0.84;
-    final stamp = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
-    final cmds = <Map<String, dynamic>>[];
-    for (int i = 0; i < groups.length; i++) {
-      final g = groups[i];
-      final start = g.first.start;
-      var end = g.last.end;
-      if (i + 1 < groups.length && groups[i + 1].first.start - end < 0.35) end = groups[i + 1].first.start;
-      end = math.max(end, start + 0.3);
-      cmds.add({
-        'op': 'add_layer',
-        'type': 'text',
-        'id': 'cap_${stamp}_$i',
-        'name': 'Caption ${i + 1}',
-        'text': g.map((w) => w.word).join(' '),
-        'start': start,
-        'duration': end - start,
-        'width': comp.width * 0.9,
-        'height': fontSize * 3.2,
-        'position': [comp.width / 2, y, 0],
-        'font_size': fontSize,
-        'font_weight': 800,
-        'shadow': true,
-        'box_color': o.style == 'plain' ? '#99000000' : 'none',
-        'animator': o.style == 'plain' ? 'none' : o.style,
-        'anim_duration': 0.3,
-        'words': [for (final w in g) {'w': w.word, 's': w.start, 'e': w.end}],
-      });
+  /// One AI request for the whole transcript: normalised words to emphasise.
+  /// Returns an empty set when AI is not set up or the request fails.
+  static Future<Set<String>> aiEmphasis(List<WordTiming> words) async {
+    try {
+      final s = await AiSettings.load();
+      if (!s.isConfigured || words.isEmpty) return {};
+      final raw = await AiClient.complete(
+        s: s,
+        system: EmphasisAi.system,
+        messages: [AiMessage('user', EmphasisAi.userMessage([for (final w in words) w.word]))],
+      );
+      return EmphasisAi.parse(raw);
+    } catch (_) {
+      return {};
     }
-    return cmds;
   }
 }
