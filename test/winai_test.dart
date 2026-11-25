@@ -18,6 +18,7 @@ import 'package:motionai/platform/windows_ai/segment.dart';
 import 'package:motionai/platform/windows_ai/tts.dart';
 import 'package:motionai/platform/windows_ai/wav.dart';
 import 'package:motionai/platform/windows_ai/whisper.dart';
+import 'package:motionai/platform/windows_ai/win_ai.dart';
 
 // A realistic `whisper-cli -ml 1 -sow -ojf` result (Hindi + Hinglish).
 const _whisperJson = r'''
@@ -584,25 +585,63 @@ void main() {
       expect(File('${dir.path}/bg.jpg').existsSync(), isTrue);
     });
 
-    test('Windows voice → whisper.cpp words', () async {
-      final dir = Directory.systemTemp.createTempSync('winai_it_tts');
+    test('Windows voice → whisper.cpp words (non-ASCII folders)', () async {
+      final dir = Directory.systemTemp.createTempSync('winai_it_आवाज़');
       final vs = await WinTtsEngine.voices();
       // ignore: avoid_print
       print('voices: $vs');
       final clips = await WinTtsEngine.speak(['Hello world, this is a test of the speech engine.'], dir.path, lang: 'en-US', rate: 0.9);
       expect(clips.single.$2, greaterThan(1.0));
+      // Model in a Hindi-named folder: whisper-cli gets only relative ASCII names.
+      final models = Directory('${dir.path}${Platform.pathSeparator}मॉडल')..createSync();
+      final model = File(env['WINAI_WHISPER_MODEL']!).copySync('${models.path}${Platform.pathSeparator}ggml-tiny.bin');
+      final statuses = <int>[];
       final words = await Whisper.transcribe(
         cli: env['WINAI_WHISPER']!,
-        modelPath: env['WINAI_WHISPER_MODEL']!,
+        modelPath: model.path,
         wavPath: clips.single.$1,
         language: 'en',
         prompt: 'नमस्ते. Hello.',
+        onProgress: statuses.add,
       );
       // ignore: avoid_print
-      print('words: $words');
+      print('words: $words progress: $statuses');
       expect(words.map((w) => w.$1.toLowerCase()).join(' '), contains('test'));
       expect(words.first.$2, lessThan(words.last.$3));
+      expect(models.listSync().length, 1, reason: 'job files are cleaned up');
     }, timeout: const Timeout(Duration(minutes: 5)));
+
+    test('OneCore (WinRT) voice and SSML pitch', () async {
+      final dir = Directory.systemTemp.createTempSync('winai_it_rt');
+      final vs = await WinTtsEngine.voices();
+      final rt = vs.where((v) => v.engine == 'winrt').toList();
+      if (rt.isEmpty) {
+        // ignore: avoid_print
+        print('no OneCore voices on this runner');
+        return;
+      }
+      final a = await WinTtsEngine.speakWith(VoiceChoice(rt.first), ['One two three.', 'Four.'], dir.path, rate: 1.2, pitch: 1.1);
+      // ignore: avoid_print
+      print('winrt ${rt.first}: $a');
+      expect(a.length, 2);
+      expect(a.first.$2, greaterThan(0.3));
+      final sapi = vs.firstWhere((v) => v.engine == 'sapi');
+      final b = await WinTtsEngine.speakWith(VoiceChoice(sapi), ['Pitch & <test>'], dir.path, pitch: 1.2);
+      // ignore: avoid_print
+      print('sapi ssml ${sapi.name}: $b');
+      expect(b.single.$2, greaterThan(0.3));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('WinAi isolates: normalise and inpaint', () async {
+      final dir = Directory.systemTemp.createTempSync('winai_it_img');
+      File('${dir.path}/a.png').writeAsBytesSync(img.encodePng(_gradient(64, 40)));
+      expect(await WinAi.normalizeImage('${dir.path}/a.png', '${dir.path}/b.jpg'), (64, 40));
+      final m = img.Image(width: 64, height: 40);
+      img.fillRect(m, x1: 20, y1: 10, x2: 40, y2: 30, color: img.ColorRgb8(255, 255, 255));
+      File('${dir.path}/m.png').writeAsBytesSync(img.encodePng(m));
+      await WinAi.inpaint('${dir.path}/b.jpg', '${dir.path}/m.png', '${dir.path}/c.jpg');
+      expect(img.decodeJpg(File('${dir.path}/c.jpg').readAsBytesSync())!.width, 64);
+    });
   }, skip: it ? false : 'needs WINAI_IT=1 on Windows');
 
 }

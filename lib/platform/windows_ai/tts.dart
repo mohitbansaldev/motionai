@@ -200,6 +200,12 @@ class WinTtsEngine {
     choice ??= pickVoice(await voices(refresh: true), lang, texts); // a voice may have just been added
     if (choice == null) throw StateError(noVoiceMessage(lang));
     lastNotice = choice.note;
+    return speakWith(choice, texts, dir, rate: rate, pitch: pitch);
+  }
+
+  /// Speaks [texts] with the chosen voice: one WAV per line in [dir].
+  static Future<List<(String, double)>> speakWith(VoiceChoice choice, List<String> texts, String dir,
+      {double rate = 1.0, double pitch = 1.0}) async {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final sep = Platform.pathSeparator;
     final outs = [for (var i = 0; i < texts.length; i++) '$dir${sep}voice_${stamp}_$i.wav'];

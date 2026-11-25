@@ -237,7 +237,9 @@ class Whisper {
       return parseJson(utf8.decode(await jsonOut.readAsBytes(), allowMalformed: true));
     } finally {
       for (final f in [wavCopy, rsp, jsonOut]) {
-        if (f.existsSync()) f.delete().ignore();
+        try {
+          if (f.existsSync()) f.deleteSync();
+        } catch (_) {}
       }
     }
   }
