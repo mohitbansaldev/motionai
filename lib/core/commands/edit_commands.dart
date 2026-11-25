@@ -15,6 +15,7 @@ import '../../audio/sound_commands.dart'; // Sound (Agent K)
 import '../../fonts/font_commands.dart'; // FONTS (Agent I)
 import '../engine/precomp.dart'; // PRECOMP (Agent L)
 import 'precomp_commands.dart'; // PRECOMP (Agent L)
+import 'bulk_commands.dart'; // BULK (Agent N)
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -28,6 +29,10 @@ class CommandError implements Exception {
 class CommandResult {
   final List<String> createdIds = [];
   final List<String> log = [];
+
+  /// BULK (Agent N): layers the editor should select (`select`, `paste_layers`, `group_layers`).
+  List<String>? selection;
+  String selectionMode = 'replace'; // BULK (Agent N): replace | add | remove
 
   Map<String, dynamic> toJson() => {'ok': true, 'created': createdIds, 'log': log};
 }
@@ -70,6 +75,7 @@ class EditCommands {
     'add_component', 'replace_media',
     ...SoundCommands.ops, // Sound (Agent K): add_sfx, beat_sync, auto_mix
     ...PrecompCommands.ops, // PRECOMP (Agent L)
+    ...BulkCommands.ops, // BULK (Agent N): for_layers, select, align, group_layers, paste_layers…
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -120,6 +126,24 @@ class EditCommands {
           }
         }
         break;
+
+      // BULK (Agent N) >>> multi-layer ops → bulk_commands.dart
+      case 'for_layers':
+      case 'select':
+      case 'align':
+      case 'distribute':
+      case 'align_time':
+      case 'shift_time':
+      case 'transform_layers':
+      case 'offset_property':
+      case 'parent_layers':
+      case 'group_layers':
+      case 'paste_layers':
+      case 'paste_effects':
+      case 'paste_animation':
+        BulkCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
+        break;
+      // <<< BULK (Agent N)
 
       case 'add_layer':
         _addLayer(project, c, now, r);
