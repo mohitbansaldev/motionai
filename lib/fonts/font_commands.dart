@@ -28,6 +28,7 @@ class FontCommands {
       }
       // A preset is a whole look: clear the edge/box/outline of a previous one.
       out.addAll({'outline': 0, 'extrude': 'none', 'box_color': 'none'});
+      out.addAll({'stroke': 'none', 'italic': false, 'letter_spacing': 0, 'lead_color': 'none'}); // V3-C
       p.keys.forEach((k, v) => out[k == 'font' ? 'font_family' : k] = v);
       // Preset font is a catalog family; explicit font_family / font override it below.
       _addEffects(l, p);

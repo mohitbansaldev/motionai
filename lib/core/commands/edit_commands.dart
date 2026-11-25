@@ -24,6 +24,7 @@ import 'shot_commands.dart'; // V2-B
 import 'map_commands.dart'; // V3-A
 import 'v3_fx_commands.dart'; // V3-D
 import '../presets/fx_animators.dart'; // V3-D
+import 'datahud_commands.dart'; // V3-C
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -763,7 +764,7 @@ class EditCommands {
       }
       l.parentId = pid;
     }
-    if (c['blend'] != null) l.blendMode = '${c['blend']}';
+    if (c['blend'] != null) l.blendMode = DataHudBlend.parse(c['blend']); // V3-C: validated (rendered by BlendComposite)
     if (c['color'] != null) {
       if (l.type == LayerType.text) {
         l.text!.color = _color(c['color']);
@@ -873,6 +874,7 @@ class EditCommands {
     if (c['shadow'] != null) t.shadow = c['shadow'] == true;
     if (c['outline'] != null) t.outline = math.max(0.0, _num(c, 'outline'));
     FxCommands.applyText(t, c, _color); // FX (Agent B): extrude
+    DataHudText.apply(t, c, _color); // V3-C: stroke, italic, letter_spacing, lead_color, word_times
     if (c['marks'] is List) {
       t.marks = [
         for (final m in c['marks'] as List)
