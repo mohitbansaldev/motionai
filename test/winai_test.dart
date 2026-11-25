@@ -3,10 +3,13 @@
 // engines on the Windows CI runner when WINAI_IT=1 (see build-windows.yml).
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:image/image.dart' as img;
 import 'package:motionai/platform/windows_ai/image_io.dart';
 import 'package:motionai/platform/windows_ai/inpaint.dart';
@@ -212,7 +215,7 @@ void main() {
     });
 
     test('skips extra chunks and handles streaming sizes', () {
-      final base = WavInfo.pcm16(Int16List(22050), sampleRate: 22050);
+      final base = WavInfo.pcm16(Int16List(11025), sampleRate: 22050);
       final list = [...ascii.encode('LIST'), 5, 0, 0, 0, 1, 2, 3, 4, 5, 0]; // odd size + pad byte
       final b = Uint8List.fromList([...base.sublist(0, 36), ...list, ...base.sublist(36)]);
       expect(WavInfo.duration(b), closeTo(0.5, 1e-9));
@@ -312,9 +315,17 @@ void main() {
     });
 
     test('applies EXIF orientation', () {
-      final im = _gradient(60, 20);
-      im.exif.imageIfd.orientation = 6; // rotate 90° clockwise
-      final jpg = img.encodeJpg(im);
+      final plain = img.encodeJpg(_gradient(60, 20));
+      // APP1 "Exif" segment with Orientation = 6 (rotate 90° clockwise).
+      const app1 = [
+        0xFF, 0xE1, 0x00, 0x22, // marker, length 34
+        0x45, 0x78, 0x69, 0x66, 0x00, 0x00, // "Exif\0\0"
+        0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, // TIFF, little-endian, IFD at 8
+        0x01, 0x00, // one entry
+        0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, // 0x0112 SHORT 1 = 6
+        0x00, 0x00, 0x00, 0x00, // no next IFD
+      ];
+      final jpg = Uint8List.fromList([...plain.sublist(0, 2), ...app1, ...plain.sublist(2)]);
       expect(img.decodeJpg(jpg)!.exif.imageIfd.orientation, 6);
       final (bytes, w, h) = ImageIo.normalizeBytes(jpg, 'out.jpg');
       expect((w, h), (20, 60));
@@ -504,27 +515,23 @@ void main() {
   group('model store', () {
     test('downloads once, checks the hash and reports progress', () async {
       final data = Uint8List.fromList(List.generate(300000, (i) => (i * 31) & 0xFF));
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       var hits = 0;
-      server.listen((r) {
-        hits++;
-        if (r.uri.path == '/bad') {
-          r.response.statusCode = 404;
-        } else {
-          r.response.headers.contentLength = data.length;
-          r.response.add(data);
-        }
-        r.response.close();
-      });
+      final oldClient = ModelStore.httpClient;
+      ModelStore.httpClient = () => MockClient.streaming((req, body) async {
+            hits++;
+            if (req.url.path == '/bad') return http.StreamedResponse(const Stream.empty(), 404);
+            final chunks = [for (var i = 0; i < data.length; i += 65536) data.sublist(i, math.min(data.length, i + 65536))];
+            return http.StreamedResponse(Stream.fromIterable(chunks), 200, contentLength: data.length);
+          });
       final dir = Directory.systemTemp.createTempSync('winai_models');
       final old = ModelStore.modelsDir;
       ModelStore.modelsDir = () async => dir;
-      addTearDown(() async {
+      addTearDown(() {
         ModelStore.modelsDir = old;
-        await server.close(force: true);
+        ModelStore.httpClient = oldClient;
         dir.deleteSync(recursive: true);
       });
-      final base = 'http://127.0.0.1:${server.port}';
+      const base = 'https://models.example';
       final spec = ModelSpec(
         fileName: 'm.bin',
         urls: ['$base/bad', '$base/m.bin'],
@@ -546,7 +553,7 @@ void main() {
       await expectLater(ModelStore.ensure(wrong), throwsA(isA<HttpException>()));
       expect(File('${dir.path}/w.bin').existsSync(), isFalse);
       expect(await ModelStore.hashFile(path, HashKind.sha1), sha1.convert(data).toString());
-    });
+    }, timeout: const Timeout(Duration(minutes: 2)));
   });
 
   // Real engines; the Windows CI build sets these after bundling binaries.

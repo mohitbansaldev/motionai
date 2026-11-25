@@ -55,6 +55,9 @@ class ModelStore {
     return d;
   };
 
+  /// HTTP client factory (tests swap in a mock).
+  static http.Client Function() httpClient = http.Client.new;
+
   static Hash _algo(HashKind k) => k == HashKind.sha1 ? sha1 : sha256;
 
   /// Hex digest of [path] (runs in a background isolate).
@@ -105,7 +108,7 @@ class ModelStore {
 
   static Future<void> _download(String url, ModelSpec spec, File dest, void Function(double)? onProgress) async {
     final part = File('${dest.path}.part');
-    final client = http.Client();
+    final client = httpClient();
     try {
       final res = await client.send(http.Request('GET', Uri.parse(url))).timeout(const Duration(seconds: 30));
       if (res.statusCode != 200) throw HttpException('HTTP ${res.statusCode}');
