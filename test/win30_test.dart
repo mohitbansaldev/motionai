@@ -9,6 +9,7 @@ import 'package:motionai/core/model/camera.dart';
 import 'package:motionai/core/model/layer.dart';
 import 'package:motionai/core/model/project.dart';
 import 'package:motionai/core/presets/realism.dart';
+import 'package:motionai/core/presets/scene3d.dart';
 import 'package:motionai/remote/mcp_server.dart';
 import 'package:motionai/remote/remote_tools.dart' show resolveFilesPath;
 import 'package:motionai/remote/scene_check.dart';
@@ -234,6 +235,23 @@ void main() {
       expect(resolveFilesPath('D', 'Pictures/x.png'), isNull);
       expect(resolveFilesPath('D', 'C:/Windows/x'), isNull);
       expect(resolveFilesPath('D', ''), isNull);
+    });
+  });
+
+  group('camera moves', () {
+    test('truck slides camera and aim together; arc and crane move the camera', () {
+      for (final move in ['truck', 'arc', 'crane']) {
+        final p = _project();
+        p.main.layers.addAll([_card('near', -800), _card('far', 2000)]);
+        final z = defaultZoomFor(1920);
+        p.main.camera.mode = CameraMode.threeD;
+        p.main.camera.prop(CamProps.zoom).staticValue = [z];
+        p.main.camera.prop(CamProps.position).staticValue = [960, 540, -z];
+        p.main.camera.prop(CamProps.poi).staticValue = [960, 540, 0];
+        Scene3D.cameraShot(p.main, move: move, target: 'far', start: 0, duration: 3, intensity: 0.6);
+        final a = Evaluator.camera3D(p.main, 0.05).position, b = Evaluator.camera3D(p.main, 2.95).position;
+        expect((a - b).length, greaterThan(150), reason: '$move barely moves');
+      }
     });
   });
 }

@@ -21,7 +21,7 @@ import '../model/project.dart';
 /// offset from the frame centre) by `d / zoom` keeps it pixel-identical.
 class Scene3D {
   static const bands = ['sky', 'far', 'mid', 'near', 'front'];
-  static const moves = ['drift', 'fly_to', 'push_through', 'pass_by', 'reveal', 'pull_back', 'orbit'];
+  static const moves = ['drift', 'fly_to', 'push_through', 'pass_by', 'reveal', 'pull_back', 'orbit', 'truck', 'arc', 'crane'];
 
   /// The camera never gets closer than this (px) to any layer it can see.
   static const double minClearance = 30;
@@ -52,6 +52,9 @@ class Scene3D {
         'reveal': 'Reveal',
         'pull_back': 'Pull back',
         'orbit': 'Orbit',
+        'truck': 'Truck (sideways)',
+        'arc': 'Arc around',
+        'crane': 'Crane up',
       }[move] ??
       move;
 
@@ -634,6 +637,36 @@ class Scene3D {
         final dC = math.max(minClearance * 2.5, zoom * sizeMax / (1.5 + 1.5 * f));
         keys.add(_Key(0, front(tc, dC), tc));
         keys.add(_Key(1, p0, q0));
+        break;
+      case 'truck':
+        // win-30: a real sideways dolly — camera and aim slide together, so
+        // every depth moves at its own speed (the strongest parallax).
+        final a = 0.22 * w * math.max(f, 0.3) * (direction == 'left' ? -1 : 1);
+        keys.add(_Key(0, p0 - right * (a * 0.5), q0 - right * (a * 0.5)));
+        keys.add(_Key(1, p0 + right * (a * 0.5) + fwd * (0.04 * d0 * f), q0 + right * (a * 0.5) + fwd * (0.04 * d0 * f)));
+        break;
+      case 'arc':
+        // win-30: a wider orbit (up to 40°) that also pushes in a little.
+        final theta = math.min(40.0, 12 + 28 * intensity.clamp(0.0, 1.0)) * (direction == 'left' ? -1 : 1) * math.pi / 180;
+        const n = 10;
+        final rel = p0 - tc;
+        for (int i = 0; i <= n; i++) {
+          final u = i / n;
+          final ev = e.transform(u);
+          final a = theta * (ev - 0.5);
+          final c = math.cos(a), s = math.sin(a);
+          final k = 1 - 0.15 * f * ev / 2;
+          final pos = Vector3(tc.x + (rel.x * c - rel.z * s) * k, p0.y, tc.z + (rel.x * s + rel.z * c) * k);
+          keys.add(_Key(u, pos, q0 + (tc - q0) * ev));
+        }
+        sampled = true;
+        break;
+      case 'crane':
+        // win-30: rises (or sinks with direction "down") while tilting toward the target.
+        final up = (direction == 'down' ? -1.0 : 1.0) * 0.22 * h * math.max(f, 0.3);
+        final down = cam.down;
+        keys.add(_Key(0, p0 + down * (up * 0.5), q0));
+        keys.add(_Key(1, p0 - down * (up * 0.5) + fwd * (0.05 * d0 * f), tc - down * (up * 0.15)));
         break;
       case 'orbit':
         final theta = math.min(25.0, 8 + 24 * intensity.clamp(0.0, 1.0)) * (direction == 'left' ? -1 : 1) * math.pi / 180;
