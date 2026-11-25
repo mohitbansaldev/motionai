@@ -39,7 +39,7 @@ class RemoteLogEntry {
   RemoteLogEntry(this.tool, this.summary, this.ok);
 }
 
-class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHost, RemoteEditorView {
+class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHost, RemoteEditorView, RemoteFiles {
   RemoteControl._();
   static final RemoteControl instance = RemoteControl._();
 
@@ -64,6 +64,14 @@ class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHos
     await f.writeAsBytes(bytes, flush: true);
     return f.path;
   }
+  // win-30: list_files / read_file / write_file work under Documents\MotionAI*.
+  @override
+  Future<String> documentsPath() async {
+    final docs = await getApplicationDocumentsDirectory();
+    await Directory('${docs.path}${Platform.pathSeparator}MotionAI_Files').create(recursive: true);
+    return docs.path;
+  }
+
   late final RemoteRenderer _renderer = RemoteRenderer(navigatorKey);
 
   bool loaded = false;

@@ -82,6 +82,23 @@ abstract class RemoteEditorView {
   Future<Uint8List?> editorScreenshot({int width = 960});
 }
 
+/// win-30: hosts that give Claude a files area: the user's Documents
+/// folder, limited to folders whose name starts with "MotionAI"
+/// (MotionAI_Files, MotionAI_Flow, …).
+abstract class RemoteFiles {
+  Future<String> documentsPath();
+}
+
+/// Resolves a files-tool [path] ("MotionAI_Files/scripts/a.txt") under
+/// [docs]; null when it leaves the allowed folders.
+String? resolveFilesPath(String docs, String path) {
+  final parts = path.replaceAll('\\', '/').split('/').where((p) => p.isNotEmpty && p != '.').toList();
+  if (parts.isEmpty) return null;
+  if (parts.any((p) => p == '..' || p.contains(':'))) return null;
+  if (!parts.first.toLowerCase().startsWith('motionai')) return null;
+  return [docs, ...parts].join(Platform.pathSeparator);
+}
+
 class _Fail implements Exception {
   final String message;
   _Fail(this.message);
@@ -269,6 +286,10 @@ class RemoteTools implements McpBackend {
         final entries = AppLog.recent(limit: limit, level: level);
         if (_bool(a, 'clear') == true) AppLog.clear();
         return McpToolResult.json({'count': entries.length, 'entries': [for (final e in entries) e.toJson()]});
+      case 'list_files': // win-30: Documents/MotionAI* folders
+      case 'read_file':
+      case 'write_file':
+        return _files(name, a);
       case 'editor_screenshot': // win-30: the real editor preview, exactly what the user sees
         final Object h = host;
         if (h is! RemoteEditorView) throw _Fail('This app version cannot capture the editor preview.');
@@ -320,15 +341,20 @@ class RemoteTools implements McpBackend {
         final w = (_num(a, 'width') ?? 960).round().clamp(160, 1920);
         final Object fh = host;
         final Uint8List png;
-        if (comp != c.comp && fh is RemoteFrameHost) {
+        final fmt = (_str(a, 'format') ?? 'png').toLowerCase();
+        final jpeg = fmt == 'jpeg' || fmt == 'jpg';
+        if ((comp != c.comp || jpeg) && fh is RemoteFrameHost) {
           final f = (await fh.renderFrames(c, [t], w, comp: comp)).first;
-          png = ContactSheet.encodeFrame(f);
+          png = ContactSheet.encodeFrame(f, jpeg: jpeg);
         } else {
           if (comp != c.comp) throw _Fail('open_comp "${comp.id}" first, then render_frame.');
           png = await host.renderPng(c, t, w);
         }
         final h = (w * comp.height / comp.width).round();
-        return McpToolResult.image(png, caption: 'Frame at ${_r(t)} s of "${comp.name}" (${w}x$h; composition ${comp.width.round()}x${comp.height.round()}).');
+        final isJpeg = png.length > 2 && png[0] == 0xFF && png[1] == 0xD8;
+        return McpToolResult.image(png,
+            mimeType: isJpeg ? 'image/jpeg' : 'image/png',
+            caption: 'Frame at ${_r(t)} s of "${comp.name}" (${w}x$h; composition ${comp.width.round()}x${comp.height.round()}).');
       case 'seek':
         final c = _editor();
         final t = _num(a, 'time') ?? (throw _Fail('Missing "time" (seconds).'));
@@ -360,6 +386,14 @@ class RemoteTools implements McpBackend {
         final id = _str(a, 'job');
         final j = id == null ? jobs.latest('export') : jobs.byId(id);
         if (j == null) throw _Fail(id == null ? 'No export has been started.' : 'No job "$id".');
+        // win-30: long-poll — one call waits for the end instead of many polls.
+        final waitS = (_num(a, 'wait_s') ?? 0).clamp(0.0, 120.0).toDouble();
+        if (waitS > 0) {
+          final until = DateTime.now().add(Duration(milliseconds: (waitS * 1000).round()));
+          while (j.running && DateTime.now().isBefore(until)) {
+            await Future<void>.delayed(const Duration(milliseconds: 250));
+          }
+        }
         return McpToolResult.json(j.toJson());
       case 'job_status':
         final id = _str(a, 'job');
@@ -719,7 +753,8 @@ class RemoteTools implements McpBackend {
   Future<McpToolResult> _previewShot(Map<String, dynamic> a) async {
     final c = _editor();
     final comp = _compArg(c, a);
-    final gif = (_str(a, 'format') ?? 'png').toLowerCase() == 'gif';
+    final fmt = (_str(a, 'format') ?? 'png').toLowerCase();
+    final gif = fmt == 'gif', jpeg = fmt == 'jpeg' || fmt == 'jpg';
     final from = (_num(a, 'from') ?? 0).clamp(0.0, comp.duration).toDouble();
     final to = (_num(a, 'to') ?? comp.duration).clamp(from, comp.duration).toDouble();
     final count = (_num(a, 'count') ?? (gif ? 12 : 6)).round().clamp(1, gif ? 20 : 12);
@@ -752,17 +787,72 @@ class RemoteTools implements McpBackend {
               '(${(delay * tiles.length / 100).toStringAsFixed(1)} s loop). Times: $list. If you only see one frame, use the PNG contact sheet.');
     }
     final cols = ContactSheet.columnsFor(tiles.length);
-    final bytes = await _pngInIsolate(tiles, width, cols);
+    final bytes = await _pngInIsolate(tiles, width, cols, jpeg);
     return McpToolResult.image(bytes,
+        mimeType: jpeg ? 'image/jpeg' : 'image/png',
         caption: 'Contact sheet of "${comp.name}" ${_r(from)}–${_r(to)} s: ${tiles.length} frames in $cols columns '
             '(left→right, top→bottom), tiles ${width}px wide. Times: $list.');
   }
 
   // Static: the isolate closure must capture only the frames, never the editor.
-  static Future<Uint8List> _pngInIsolate(List<SheetTile> tiles, int width, int cols) =>
-      Isolate.run(() => ContactSheet.png(tiles, tileWidth: width, columns: cols));
+  static Future<Uint8List> _pngInIsolate(List<SheetTile> tiles, int width, int cols, [bool jpeg = false]) =>
+      Isolate.run(() => ContactSheet.png(tiles, tileWidth: width, columns: cols, jpeg: jpeg));
   static Future<Uint8List> _gifInIsolate(List<SheetTile> tiles, int width, int delay) =>
       Isolate.run(() => ContactSheet.gif(tiles, width: width, delay: delay));
+
+  Future<McpToolResult> _files(String name, Map<String, dynamic> a) async {
+    final Object h = host;
+    if (h is! RemoteFiles) throw _Fail('This app version has no files area.');
+    final docs = await h.documentsPath();
+    final sep = Platform.pathSeparator;
+    final rel = _str(a, 'path') ?? '';
+    if (name == 'list_files' && rel.isEmpty) {
+      final out = <Map<String, dynamic>>[];
+      final d = Directory(docs);
+      if (await d.exists()) {
+        await for (final e in d.list()) {
+          final n = e.path.split(sep).last;
+          if (e is Directory && n.toLowerCase().startsWith('motionai')) out.add({'name': n, 'type': 'dir'});
+        }
+      }
+      return McpToolResult.json({'root': docs, 'entries': out, 'note': 'Paths start with a MotionAI* folder, e.g. "MotionAI_Files/notes.txt".'});
+    }
+    final full = resolveFilesPath(docs, rel);
+    if (full == null) throw _Fail('path must be inside a Documents folder named MotionAI… (e.g. "MotionAI_Files/x.txt"), without "..".');
+    switch (name) {
+      case 'list_files':
+        final d = Directory(full);
+        if (!await d.exists()) throw _Fail('No folder "$rel".');
+        final out = <Map<String, dynamic>>[];
+        await for (final e in d.list()) {
+          final st = await e.stat();
+          out.add({'name': e.path.split(sep).last, 'type': e is Directory ? 'dir' : 'file', if (e is File) 'size': st.size});
+          if (out.length >= 2000) break;
+        }
+        return McpToolResult.json({'path': full, 'entries': out});
+      case 'read_file':
+        final f = File(full);
+        if (!await f.exists()) throw _Fail('No file "$rel".');
+        final max = (_num(a, 'max_bytes') ?? 2000000).round().clamp(1, 20000000);
+        final len = await f.length();
+        final bytes = await f.openRead(0, math.min(len, max)).fold<List<int>>(<int>[], (acc, b) => acc..addAll(b));
+        final asB64 = (_str(a, 'encoding') ?? 'text') == 'base64';
+        return McpToolResult.json({
+          'path': full,
+          'size': len,
+          'truncated': len > max,
+          if (asB64) 'base64': base64Encode(bytes) else 'text': utf8.decode(bytes, allowMalformed: true),
+        });
+      default: // write_file
+        final text = a['text'], b64 = a['base64'];
+        if (text is! String && b64 is! String) throw _Fail('Give "text" or "base64".');
+        final f = File(full);
+        await f.parent.create(recursive: true);
+        final bytes = text is String ? utf8.encode(text) : base64Decode(b64 as String);
+        await f.writeAsBytes(bytes, mode: a['append'] == true ? FileMode.append : FileMode.write, flush: true);
+        return McpToolResult.json({'ok': true, 'path': full, 'bytes': bytes.length, 'note': 'Use this absolute path with import_media.'});
+    }
+  }
 
   McpToolResult _checkScene(Map<String, dynamic> a) {
     final c = _editor();

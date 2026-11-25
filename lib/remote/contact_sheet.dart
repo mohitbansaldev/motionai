@@ -66,7 +66,7 @@ class ContactSheet {
 
   /// Grid PNG of [tiles], each [tileWidth] wide (height from the first
   /// frame's aspect), labelled "#n  t s" in its top-left corner.
-  static Uint8List png(List<SheetTile> tiles, {int tileWidth = 480, int? columns}) {
+  static Uint8List png(List<SheetTile> tiles, {int tileWidth = 480, int? columns, bool jpeg = false}) {
     if (tiles.isEmpty) throw ArgumentError('No frames');
     final first = tiles.first.frame;
     final tw = tileWidth.clamp(16, 4096);
@@ -85,11 +85,12 @@ class ContactSheet {
       img.fillRect(sheet, x1: x, y1: y, x2: x + math.min(lw, tw - 1), y2: y + lh, color: img.ColorRgba8(0, 0, 0, 175));
       img.drawString(sheet, text, font: font, x: x + 6, y: y + 3, color: img.ColorRgb8(255, 255, 255));
     }
-    return img.encodePng(sheet, level: 4);
+    return jpeg ? img.encodeJpg(sheet, quality: 82) : img.encodePng(sheet, level: 4);
   }
 
   /// win-30: one frame as a PNG (render_frame on another comp).
-  static Uint8List encodeFrame(RawFrame f) => img.encodePng(f.toImage(), level: 4);
+  static Uint8List encodeFrame(RawFrame f, {bool jpeg = false}) =>
+      jpeg ? img.encodeJpg(f.toImage(), quality: 85) : img.encodePng(f.toImage(), level: 4);
 
   /// GIF frame delay in 1/100 s: real time between samples, but the whole
   /// loop at most 2 s and at least 4 cs per frame.

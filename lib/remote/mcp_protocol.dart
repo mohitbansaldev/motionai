@@ -159,6 +159,28 @@ final List<Map<String, dynamic>> kMcpTools = [
         'level': _e(['error', 'warning', 'info'], 'Only this level and worse (default info = all)'),
         'clear': _b('Clear the log after reading'),
       })),
+  _tool('list_files', 'List files (MotionAI folders)',
+      'Lists the user\'s Documents/MotionAI* folders (no path) or one folder inside them (path "MotionAI_Flow/nk_ep01"). '
+          'Flow uploads land in MotionAI_Flow; your own files go in MotionAI_Files.',
+      _obj({'path': _s('Folder, starting with a MotionAI… folder (default: list those folders)')}),
+      readOnly: true),
+  _tool('read_file', 'Read a file (MotionAI folders)',
+      'Reads a file under Documents/MotionAI*: text (default) or base64.',
+      _obj({
+        'path': _s('File path starting with a MotionAI… folder'),
+        'encoding': _e(['text', 'base64'], 'text (default) or base64'),
+        'max_bytes': _n('Most bytes to read (default 2 000 000)'),
+      }, required: ['path']),
+      readOnly: true),
+  _tool('write_file', 'Write a file (MotionAI folders)',
+      'Writes text or base64 bytes to a file under Documents/MotionAI* (folders are created). Returns the absolute path '
+          '(e.g. for import_media). Never outside those folders.',
+      _obj({
+        'path': _s('File path starting with a MotionAI… folder, e.g. "MotionAI_Files/plan.json"'),
+        'text': _s('Text content'),
+        'base64': _s('Binary content, base64'),
+        'append': _b('Append instead of replacing'),
+      }, required: ['path'])),
   _tool('editor_screenshot', 'Screenshot of the editor preview',
       'PNG of the live editor preview exactly as the user sees it (same draw path as the editor, unlike render_frame / '
           'preview_shot which use the export renderer). Use it to confirm that what you built shows correctly for the user.',
@@ -204,6 +226,7 @@ final List<Map<String, dynamic>> kMcpTools = [
         'time': _n('Seconds (default: playhead)'),
         'width': {'type': 'integer', 'minimum': 160, 'maximum': 1920, 'description': 'Image width in pixels (default 960)'},
         'comp': _s('Composition id (default: the open one; "main" = main). The user\'s view does not change.'),
+        'format': _e(['png', 'jpeg'], 'png (default) or jpeg — about 5× smaller and faster to send'),
       }),
       readOnly: true),
   _tool('preview_shot', 'Preview a shot (contact sheet)',
@@ -216,7 +239,7 @@ final List<Map<String, dynamic>> kMcpTools = [
         'count': {'type': 'integer', 'minimum': 1, 'maximum': 12, 'description': 'Frames on the sheet (default 6; GIF: default 12, max 20)'},
         'width': {'type': 'integer', 'minimum': 160, 'maximum': 960, 'description': 'Width of each tile in pixels (default 480; GIF max 480)'},
         'comp': _s('Composition id (default: the open one; "main" = main)'),
-        'format': _e(['png', 'gif'], 'png contact sheet (default) or animated gif'),
+        'format': _e(['png', 'jpeg', 'gif'], 'png contact sheet (default), jpeg sheet (much smaller, faster) or animated gif'),
       }),
       readOnly: true),
   _tool('check_scene', 'Check the scene for problems',
@@ -286,8 +309,9 @@ final List<Map<String, dynamic>> kMcpTools = [
         'timeout': _n('Most seconds to wait with wait:true (default 540 with a progressToken, else 50; max 540)'),
       })),
   _tool('export_status', 'Export status',
-      'Latest (or given) export: phase setup/rendering/finishing/done/failed, frame N of M, output file, error.',
-      _obj({'job': _s('Job id (default: latest export)')}),
+      'Latest (or given) export: phase setup/rendering/finishing/done/failed, frame N of M, output file, error. '
+          'wait_s: hold the call up to that many seconds until the export finishes (returns earlier when it does) — one call instead of polling.',
+      _obj({'job': _s('Job id (default: latest export)'), 'wait_s': _n('Seconds to wait for the export to finish (0–120, default 0)')}),
       readOnly: true),
   _tool('director_run', 'Run the Director (AI auto-edit)',
       'Runs MotionAI\'s own Director: from a brief (+ optional script) and the project media it plans a documentary storyboard and '

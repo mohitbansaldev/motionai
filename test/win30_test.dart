@@ -10,6 +10,7 @@ import 'package:motionai/core/model/layer.dart';
 import 'package:motionai/core/model/project.dart';
 import 'package:motionai/core/presets/realism.dart';
 import 'package:motionai/remote/mcp_server.dart';
+import 'package:motionai/remote/remote_tools.dart' show resolveFilesPath;
 import 'package:motionai/remote/scene_check.dart';
 
 Project _project() => Project(
@@ -221,6 +222,18 @@ void main() {
       p.main.camera.prop(CamProps.position).staticValue = [960, 540, -z];
       p.main.camera.prop(CamProps.poi).staticValue = [960, 540, 0];
       expect([for (final i in Evaluator.evaluate(p.main, 1)) i.layer.id], ['far', 'near']);
+    });
+  });
+
+  group('files area', () {
+    test('paths stay inside Documents/MotionAI* folders', () {
+      final sep = Platform.pathSeparator;
+      expect(resolveFilesPath('D', 'MotionAI_Files/a/b.txt'), ['D', 'MotionAI_Files', 'a', 'b.txt'].join(sep));
+      expect(resolveFilesPath('D', 'motionai_flow\\x.png'), ['D', 'motionai_flow', 'x.png'].join(sep));
+      expect(resolveFilesPath('D', 'MotionAI_Files/../secret.txt'), isNull);
+      expect(resolveFilesPath('D', 'Pictures/x.png'), isNull);
+      expect(resolveFilesPath('D', 'C:/Windows/x'), isNull);
+      expect(resolveFilesPath('D', ''), isNull);
     });
   });
 }
