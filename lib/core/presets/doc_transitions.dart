@@ -442,8 +442,10 @@ class _Ctx {
     final upper = top ? b : a, lower = top ? a : b;
     final iu = comp.indexOf(upper.id), il = comp.indexOf(lower.id);
     if (iu < il) return;
-    comp.layers.remove(upper);
-    comp.layers.insert(comp.indexOf(lower.id), upper);
+    // V2-lead: move the LOWER layer down to just below the upper one (not the upper one up),
+    // so chained transitions in a sequence keep earlier shots above later ones.
+    comp.layers.remove(lower);
+    comp.layers.insert(comp.indexOf(upper.id) + 1, lower);
   }
 
   /// A full-frame helper layer above both shots.
@@ -619,7 +621,11 @@ class _Ctx {
     final qx = r.cx, qy = r.cy;
     final ma = _matrixAt(comp, a, t0);
     // The opening becomes a hole in the outgoing shot (and in a separate door layer).
-    boxMask(a, ma, r, tag: 'hole', invert: true, shape: shape, feather: shape == 'ellipse' ? math.min(r.w, r.h) * 0.08 : 0);
+    final hole = boxMask(a, ma, r, tag: 'hole', invert: true, shape: shape, feather: shape == 'ellipse' ? math.min(r.w, r.h) * 0.08 : 0);
+    // V2-lead: the hole only exists during the transition (before t0 it is closed: a 0-size inverted mask hides nothing).
+    final holeSize = List<double>.of(hole.props['size']!.staticValue);
+    hole.props['size']!.setKeyframe(t0 - fr, [0, 0], easing: Easing.hold);
+    hole.props['size']!.setKeyframe(t0, holeSize, easing: Easing.hold);
     zoomKey(a, t0, 1, qx, qy, aPos, aScale, _expoIn);
     zoomKey(a, cut, k, qx, qy, aPos, aScale, _expoIn);
     keys(fx(a, 'blur').params['amount']!..staticValue = [0], [(t0, 0, _expoIn), (cut, 30, _expoIn)]);

@@ -472,7 +472,7 @@ class ShotCommands {
       final st = math.min(at + 0.5, math.max(0.0, dur - 0.5));
       x({
         'op': 'add_layer', 'type': 'text', 'id': sid, 'text': '${m['subtitle']}', 'start': st, 'duration': math.max(0.4, dur - st - 0.1),
-        'width': w * 0.8, 'height': h * 0.09, 'position': [cx, y + h * 0.12, 0], 'font_size': h * 0.042, 'font_weight': 500,
+        'width': w * 0.8, 'height': h * 0.09, 'position': [cx, y + h * 0.12, 0], 'font_size': h * 0.05, 'font_weight': 600,
         if (m['font'] != null) 'font': m['font'],
         'text_color': '#E9E1D2', 'animator': 'fade_up', 'anim_duration': 0.8, 'shadow': true,
       });
@@ -489,15 +489,17 @@ class ShotCommands {
     final pos = '${m['position'] ?? 'bottom_left'}';
     final bw = w * 0.6;
     final (double px, double py, String align) = switch (pos) {
-      'bottom' => (w / 2, h * 0.88, 'center'),
-      'top_left' => (w * 0.06 + bw / 2, h * 0.1, 'left'),
-      'top' => (w / 2, h * 0.1, 'center'),
-      _ => (w * 0.06 + bw / 2, h * 0.88, 'left'),
+      // V2-lead: keep captions inside the letterbox-safe area (looks add 11% bars top and bottom).
+      'bottom' => (w / 2, h * 0.8, 'center'),
+      'top_left' => (w * 0.07 + bw / 2, h * 0.18, 'left'),
+      'top' => (w / 2, h * 0.18, 'center'),
+      _ => (w * 0.07 + bw / 2, h * 0.8, 'left'),
     };
     final cid = '${id}_caption';
     x({
       'op': 'add_layer', 'type': 'text', 'id': cid, 'text': text, 'start': at, 'duration': math.max(0.4, math.min(du, dur - at)),
-      'width': bw, 'height': h * 0.08, 'position': [px, py, 0], 'font_size': h * 0.038, 'align': align,
+      'width': bw, 'height': h * 0.1, 'position': [px, py, 0], 'font_size': h * 0.055, 'font_weight': 700, 'align': align,
+      'box_color': m['box_color'] ?? '#B0122A', // V2-lead: readable on any plate
       if (m['font'] != null) 'font': m['font'] else 'text_style': m['text_style'] ?? 'typewriter',
       'animator': 'typewriter', 'anim_duration': math.min(1.2, 0.05 * text.length + 0.3), 'shadow': true,
     });
