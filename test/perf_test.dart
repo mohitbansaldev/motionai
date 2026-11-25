@@ -27,7 +27,11 @@ void _run(Project p, Map<String, dynamic> c) => EditCommands.runAtomic(p, c);
 /// 48 layers, every one 3D, spread in depth; a 3D camera dollies and pans
 /// through them over 10 s. Mix of solids, text (with shadows), shapes and a
 /// few effects and masks, like a typical documentary scene.
-Project bench3D({bool motionBlur = false, double aperture = 0}) {
+///
+/// [viaMake3D]: the layers are built flat and converted with `make_3d`, then
+/// the camera does a `camera_shot` push_through (turns comp motion blur on),
+/// which is how most users make "all layers 3D".
+Project bench3D({bool motionBlur = false, double aperture = 0, bool viaMake3D = false}) {
   final p = Project(
     id: 'perf',
     name: 'Perf',
@@ -37,19 +41,20 @@ Project bench3D({bool motionBlur = false, double aperture = 0}) {
   for (int i = 0; i < 48; i++) {
     final x = 200.0 + (i % 8) * 220 + rnd.nextDouble() * 40;
     final y = 150.0 + (i ~/ 8) * 150 + rnd.nextDouble() * 40;
-    final z = (i % 6) * 350.0;
+    final z = viaMake3D ? 0.0 : (i % 6) * 350.0;
+    final d3 = !viaMake3D;
     final id = 'l$i';
     switch (i % 4) {
       case 0:
-        _run(p, {'op': 'add_layer', 'type': 'solid', 'id': id, 'is3d': true, 'color': '#3366CC', 'width': 420, 'height': 260, 'position': [x, y, z]});
+        _run(p, {'op': 'add_layer', 'type': 'solid', 'id': id, 'is3d': d3, 'color': '#3366CC', 'width': 420, 'height': 260, 'position': [x, y, z]});
       case 1:
-        _run(p, {'op': 'add_layer', 'type': 'text', 'id': id, 'is3d': true, 'text': 'Chapter $i: The Story', 'font_size': 64,
+        _run(p, {'op': 'add_layer', 'type': 'text', 'id': id, 'is3d': d3, 'text': 'Chapter $i: The Story', 'font_size': 64,
             'width': 700, 'height': 120, 'position': [x, y, z]});
       case 2:
-        _run(p, {'op': 'add_layer', 'type': 'shape', 'id': id, 'is3d': true, 'kind': i % 8 == 2 ? 'star' : 'ellipse',
+        _run(p, {'op': 'add_layer', 'type': 'shape', 'id': id, 'is3d': d3, 'kind': i % 8 == 2 ? 'star' : 'ellipse',
             'width': 260, 'height': 260, 'position': [x, y, z], 'fill': '#FFC107', 'stroke': '#FFFFFF', 'stroke_width': 6});
       default:
-        _run(p, {'op': 'add_layer', 'type': 'solid', 'id': id, 'is3d': true, 'color': '#AA3344', 'width': 640, 'height': 360, 'position': [x, y, z]});
+        _run(p, {'op': 'add_layer', 'type': 'solid', 'id': id, 'is3d': d3, 'color': '#AA3344', 'width': 640, 'height': 360, 'position': [x, y, z]});
     }
     // A few effects and masks (static parameters).
     if (i % 6 == 3) _run(p, {'op': 'add_effect', 'layer': id, 'effect': 'glow'});
@@ -62,6 +67,11 @@ Project bench3D({bool motionBlur = false, double aperture = 0}) {
       _run(p, {'op': 'set_keyframe', 'target': id, 'prop': 'rotation', 'time': 0, 'value': [0, 0, 0]});
       _run(p, {'op': 'set_keyframe', 'target': id, 'prop': 'rotation', 'time': 10, 'value': [0, 40, 0]});
     }
+  }
+  if (viaMake3D) {
+    _run(p, {'op': 'make_3d', 'start': 0});
+    _run(p, {'op': 'camera_shot', 'move': 'push_through', 'start': 0, 'duration': 10});
+    return p;
   }
   _run(p, {'op': 'set_camera_mode', 'mode': '3d'});
   _run(p, {'op': 'set_keyframe', 'target': 'camera', 'prop': 'position', 'time': 0, 'value': [960, 540, -2667], 'ease': 'linear'});
@@ -93,8 +103,8 @@ double _ms(Stopwatch sw) => sw.elapsedMicroseconds / 1000.0;
 void main() {
   group('PERF 48 layers, all 3D, moving camera', () {
     test('Evaluator.evaluate per frame', () {
-      for (final mb in [false, true]) {
-        final p = bench3D(motionBlur: mb);
+      for (final (mb, m3) in [(false, false), (true, false), (false, true)]) {
+        final p = bench3D(motionBlur: mb, viaMake3D: m3);
         expect(p.main.layers.length, 48);
         var items = 0;
         for (int f = 0; f < 120; f++) {
@@ -109,16 +119,17 @@ void main() {
         expect(items, greaterThan(0));
         final s = _Stats(times);
         // ignore: avoid_print
-        print('PERF evaluate motionBlur=$mb: $s');
+        print('PERF evaluate ${m3 ? 'make_3d+push_through (motionBlur=${p.main.motionBlur})' : 'motionBlur=$mb'}: $s');
         expect(s.mean, lessThan(25), reason: 'evaluate() of 48 3D layers should take well under a frame');
       }
     });
 
-    Future<void> previewBench(WidgetTester tester, {required bool play, double aperture = 0}) async {
+    Future<void> previewBench(WidgetTester tester, {required bool play, double aperture = 0, bool viaMake3D = false}) async {
       tester.view.physicalSize = const Size(1280, 720);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      final p = bench3D(aperture: aperture);
+      final p = bench3D(aperture: aperture, viaMake3D: viaMake3D);
+      expect(p.main.layers.where((l) => l.is3D).length, greaterThan(40), reason: 'all layers 3D');
       final c = EditorController(p, _NoSave());
       c.attachTicker(tester);
       await tester.pumpWidget(MaterialApp(
@@ -161,13 +172,14 @@ void main() {
       await tester.pump();
       final s = _Stats(times);
       // ignore: avoid_print
-      print('PERF preview ${play ? 'playing' : 'scrubbing (paused)'}${aperture > 0 ? ' with depth of field' : ''}: '
+      print('PERF preview ${viaMake3D ? 'make_3d+push_through ' : ''}${play ? 'playing' : 'scrubbing (paused)'}${aperture > 0 ? ' with depth of field' : ''}: '
           'build+layout+paint $s; re-recorded pictures/frame=${(repainted / frames).toStringAsFixed(1)} '
           '(pictures in tree: ${prev.length})');
       expect(s.mean, lessThan(400), reason: 'one preview frame (debug build) must not take ages');
     }
 
     testWidgets('editor preview while playing', (tester) => previewBench(tester, play: true));
+    testWidgets('editor preview while playing a make_3d + push_through shot', (tester) => previewBench(tester, play: true, viaMake3D: true));
     testWidgets('editor preview while scrubbing with depth of field', (tester) => previewBench(tester, play: false, aperture: 30));
   });
 }
