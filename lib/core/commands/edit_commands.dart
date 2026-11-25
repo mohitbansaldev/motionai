@@ -11,6 +11,7 @@ import '../presets/camera_presets.dart';
 import '../presets/components.dart';
 import '../presets/motion_presets.dart';
 import 'fx_commands.dart'; // FX (Agent B)
+import '../../audio/sound_commands.dart'; // Sound (Agent K)
 import '../../fonts/font_commands.dart'; // FONTS (Agent I)
 import '../engine/precomp.dart'; // PRECOMP (Agent L)
 import 'precomp_commands.dart'; // PRECOMP (Agent L)
@@ -67,6 +68,7 @@ class EditCommands {
     'set_camera_mode', 'camera_move', 'parallax_rig', 'set_comp', 'batch',
     'animate_in', 'animate_out', 'apply_style', 'add_mask', 'update_mask', 'remove_mask',
     'add_component', 'replace_media',
+    ...SoundCommands.ops, // Sound (Agent K): add_sfx, beat_sync, auto_mix
     ...PrecompCommands.ops, // PRECOMP (Agent L)
   ];
 
@@ -401,6 +403,21 @@ class EditCommands {
         FxCommands.applyComp(comp, c); // FX (Agent B): motion_blur
         PrecompCommands.afterSetComp(project, comp); // PRECOMP (Agent L): comp layers follow the size
         break;
+
+      // ---- Sound (Agent K): add_sfx / beat_sync / auto_mix → lib/audio/sound_commands.dart
+      case 'add_sfx':
+      case 'beat_sync':
+      case 'auto_mix':
+        final sound = SoundCommands.build(project, c, now);
+        for (int i = 0; i < sound.length; i++) {
+          try {
+            _run(project, sound[i], now, r);
+          } on CommandError catch (e) {
+            throw CommandError('$op: ${e.message}');
+          }
+        }
+        break;
+      // ---- end Sound
 
       default:
         throw CommandError('Unknown op "$op". Valid ops: ${ops.join(', ')}');
