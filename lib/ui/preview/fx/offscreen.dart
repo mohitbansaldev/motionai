@@ -29,20 +29,20 @@ ui.Image? paintChildToImage(OffsetLayer holder, RenderBox child, Size size, doub
   return holder.toImageSync(Offset.zero & size, pixelRatio: pixelRatio);
 }
 
-/// What a render subtree contains that an offscreen snapshot cannot handle:
-/// platform textures (video players draw through a [TextureBox], whose
-/// pixels a snapshot may miss → blank) and repaint boundaries (which cannot
-/// be painted more than once per frame).
-({bool texture, bool boundary}) scanSubtree(RenderObject root) {
-  var texture = false, boundary = false;
+/// Platform textures in a render subtree. Live video players draw through a
+/// [TextureBox], whose pixels an offscreen snapshot may miss (→ blank).
+List<TextureBox> texturesIn(RenderObject root) {
+  final out = <TextureBox>[];
   void visit(RenderObject r) {
-    if (r is TextureBox) texture = true;
-    if (r.isRepaintBoundary) boundary = true;
-    if (!(texture && boundary)) r.visitChildren(visit);
+    if (r is TextureBox) {
+      out.add(r);
+    } else {
+      r.visitChildren(visit);
+    }
   }
 
   visit(root);
-  return (texture: texture, boundary: boundary);
+  return out;
 }
 
 /// Picks a snapshot resolution: at most [maxSide] image pixels on the long
@@ -153,10 +153,12 @@ class RenderMeshWarp extends RenderProxyBox {
   }
 
   /// Live video (a platform texture) cannot be snapshotted reliably, so the
-  /// warp is approximated by painting the child several times, each copy
-  /// clipped to one strip and transformed like the mesh there (columns for
-  /// curve, rows for sway). Compositing only: no pixels are read back.
-  void _paintStrips(PaintingContext context, Offset offset, RenderBox child) {
+  /// warp is approximated by compositing the video texture several times,
+  /// each copy clipped to one strip and transformed like the mesh there
+  /// (columns for curve, rows for sway). No pixels are read back. Only the
+  /// texture is drawn: effects inside the warp are skipped in the live
+  /// preview (export renders decoded frames through the real mesh).
+  void _paintStrips(PaintingContext context, Offset offset, RenderBox child, List<TextureBox> textures) {
     final w = size.width, h = size.height;
     final curve = _mode == WarpMode.curve;
     final n = curve ? (_draft ? 16 : 32) : (_draft ? 10 : 20);
@@ -188,8 +190,14 @@ class RenderMeshWarp extends RenderProxyBox {
         clip = Rect.fromLTRB(0, y0 - 0.75, w, y1 + 0.75);
       }
       final ch = _stripC[i];
-      _stripT[i].layer = context.pushTransform(needsCompositing, offset, m, (ctx, o) {
-        ch.layer = ctx.pushClipRect(needsCompositing, o, clip, (c2, o2) => c2.paintChild(child, o2), oldLayer: ch.layer);
+      _stripT[i].layer = context.pushTransform(true, offset, m, (ctx, o) {
+        ch.layer = ctx.pushClipRect(true, o, clip, (c2, o2) {
+          for (final tex in textures) {
+            c2.pushTransform(true, o2, tex.getTransformTo(child), (c3, o3) {
+              c3.addLayer(TextureLayer(rect: o3 & tex.size, textureId: tex.textureId, freeze: tex.freeze, filterQuality: tex.filterQuality));
+            });
+          }
+        }, oldLayer: ch.layer);
       }, oldLayer: _stripT[i].layer);
     }
   }
@@ -235,15 +243,10 @@ class RenderMeshWarp extends RenderProxyBox {
       context.paintChild(child, offset);
       return;
     }
-    final scan = scanSubtree(child);
-    if (scan.texture) {
-      // Live video: a snapshot could come out blank. Approximate the warp by
-      // compositing (or, if that is impossible, draw it unwarped).
-      if (scan.boundary) {
-        context.paintChild(child, offset);
-      } else {
-        _paintStrips(context, offset, child);
-      }
+    final textures = texturesIn(child);
+    if (textures.isNotEmpty) {
+      // Live video: a snapshot could come out blank, so warp by compositing.
+      _paintStrips(context, offset, child, textures);
       return;
     }
     final ratio = snapshotRatio(size, _maxSide);
