@@ -245,6 +245,8 @@ class RenderLayerRaster extends RenderProxyBox {
   ui.Image? _blurred;
   ui.Image? _blurredFrom;
   double _blurredQ = 0;
+  double _blurredDs = 1, _blurredPad = 0; // geometry of [_blurred]
+  bool _redrawScheduled = false;
 
   static const double _blurStep = 1.3;
 
@@ -386,6 +388,37 @@ class RenderLayerRaster extends RenderProxyBox {
     return true;
   }
 
+  /// Most depth-blur steps re-rendered per frame.
+  static int maxReblursPerFrame = 4;
+  static int _reblurs = 0;
+  static bool _reblurResetArmed = false;
+
+  static bool _takeReblur() {
+    if (!_reblurResetArmed) {
+      _reblurResetArmed = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        _reblurResetArmed = false;
+        _reblurs = 0;
+      });
+    }
+    if (_reblurs >= maxReblursPerFrame) return false;
+    _reblurs++;
+    return true;
+  }
+
+  /// Draw again next frame without a new snapshot (deferred re-blur).
+  void _redrawNextFrame() {
+    if (_redrawScheduled) return;
+    _redrawScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _redrawScheduled = false;
+      if (!attached || !_enabled || _image == null) return;
+      _redrawOnly = true;
+      markNeedsPaint();
+      _redrawOnly = false;
+    });
+  }
+
   void _retryNextFrame() {
     if (_retryScheduled) return;
     _retryScheduled = true;
@@ -461,7 +494,12 @@ class RenderLayerRaster extends RenderProxyBox {
       final sigma = _blurQ * k; // in image px
       final ds = (2.0 / sigma).clamp(0.08, 1.0).toDouble();
       final pad = 3 * sigma; // image px
-      if (_blurred == null || !identical(_blurredFrom, img) || _blurredQ != _blurQ) {
+      final stale = _blurred != null && (!identical(_blurredFrom, img) || _blurredQ != _blurQ);
+      // While scrubbing, at most [maxReblursPerFrame] layers re-blur per
+      // frame; the others keep their previous blur step one more frame.
+      if (stale && identical(_blurredFrom, img) && !_takeReblur()) {
+        _redrawNextFrame();
+      } else if (_blurred == null || stale) {
         _blurred?.dispose();
         final bw = math.max(1, ((img.width + 2 * pad) * ds).ceil()), bh = math.max(1, ((img.height + 2 * pad) * ds).ceil());
         final rec = ui.PictureRecorder();
@@ -478,13 +516,15 @@ class RenderLayerRaster extends RenderProxyBox {
         pic.dispose();
         _blurredFrom = img;
         _blurredQ = _blurQ;
+        _blurredDs = ds;
+        _blurredPad = pad;
       }
       final b = _blurred!;
-      final m = pad / k; // layer px
+      final m = _blurredPad / k; // layer px
       context.canvas.drawImageRect(
         b,
         Rect.fromLTWH(0, 0, b.width.toDouble(), b.height.toDouble()),
-        Rect.fromLTWH(offset.dx - m, offset.dy - m, b.width / ds / k, b.height / ds / k),
+        Rect.fromLTWH(offset.dx - m, offset.dy - m, b.width / _blurredDs / k, b.height / _blurredDs / k),
         _paint,
       );
       return;
