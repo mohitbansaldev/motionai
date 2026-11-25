@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:motionai/core/commands/edit_commands.dart';
 import 'package:motionai/core/engine/evaluator.dart';
@@ -435,6 +436,85 @@ void main() {
           expect(tester.takeException(), isNull);
         }
       }
+    });
+  });
+
+  group('render pixels', () {
+    Future<List<int>> render(WidgetTester tester, Project p, double t, List<List<int>> at, {bool draft = false}) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: RepaintBoundary(key: key, child: CompositionCanvas(project: p, time: t, draft: draft)),
+        ),
+      ));
+      expect(tester.takeException(), isNull);
+      final out = <int>[];
+      await tester.runAsync(() async {
+        final ro = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+        final img = await ro.toImage();
+        final bd = (await img.toByteData())!;
+        for (final xy in at) {
+          final i = (xy[1] * img.width + xy[0]) * 4;
+          out.add((bd.getUint8(i + 3) << 24) | (bd.getUint8(i) << 16) | (bd.getUint8(i + 1) << 8) | bd.getUint8(i + 2));
+        }
+        img.dispose();
+      });
+      return out;
+    }
+
+    Project small() => Project(
+          id: 'p',
+          name: 'px',
+          main: Composition(id: 'm', name: 'm', width: 200, height: 100, fps: 30, duration: 5, background: 0xFF000000),
+        );
+
+    testWidgets('alpha and inverse track matte', (tester) async {
+      final p = small();
+      run(p, {'op': 'add_layer', 'type': 'solid', 'id': 'red', 'width': 200, 'height': 100, 'color': '#FF0000'});
+      run(p, {'op': 'add_layer', 'type': 'solid', 'id': 'hole', 'width': 40, 'height': 40, 'color': '#FFFFFF', 'position': [100, 50, 0]});
+      run(p, {'op': 'update_layer', 'layer': 'red', 'matte': {'layer': 'hole'}});
+      for (final draft in [false, true]) {
+        final px = await render(tester, p, 1, [[100, 50], [10, 10], [190, 90]], draft: draft);
+        expect(px[0], 0xFFFF0000, reason: 'inside the matte shows the layer');
+        expect(px[1], 0xFF000000, reason: 'outside shows the background');
+        expect(px[2], 0xFF000000);
+      }
+      run(p, {'op': 'update_layer', 'layer': 'red', 'matte': {'layer': 'hole', 'mode': 'inverse'}});
+      final inv = await render(tester, p, 1, [[100, 50], [10, 10]]);
+      expect(inv[0], 0xFF000000);
+      expect(inv[1], 0xFFFF0000);
+    });
+
+    testWidgets('curve mesh warp draws the layer bent', (tester) async {
+      final p = small();
+      run(p, {'op': 'add_layer', 'type': 'solid', 'id': 'g', 'width': 160, 'height': 80, 'color': '#00FF00', 'position': [100, 50, 0]});
+      run(p, {'op': 'add_effect', 'layer': 'g', 'effect': 'curve', 'params': {'bend': 100}});
+      final px = await render(tester, p, 1, [[100, 50], [100, 12], [21, 12], [21, 50], [100, 5]]);
+      expect(px[0], 0xFF00FF00, reason: 'centre is drawn');
+      expect(px[1], 0xFF00FF00, reason: 'convex centre keeps its full height');
+      expect(px[2], 0xFF000000, reason: 'edges recede (shorter)');
+      expect(px[3], 0xFF00FF00, reason: 'width is kept');
+      expect(px[4], 0xFF000000);
+    });
+
+    testWidgets('reveal iris hides the outside', (tester) async {
+      final p = small();
+      run(p, {'op': 'add_layer', 'type': 'solid', 'id': 'w', 'width': 200, 'height': 100, 'color': '#FFFFFF'});
+      run(p, {'op': 'add_effect', 'layer': 'w', 'effect': 'reveal', 'params': {'kind': 'iris', 'progress': 20, 'softness': 0}});
+      final px = await render(tester, p, 1, [[100, 50], [5, 5]]);
+      expect(px[0], 0xFFFFFFFF);
+      expect(px[1], 0xFF000000);
+    });
+
+    testWidgets('mono and duotone', (tester) async {
+      final p = small();
+      run(p, {'op': 'add_layer', 'type': 'solid', 'id': 'r', 'width': 200, 'height': 100, 'color': '#FF0000'});
+      run(p, {'op': 'add_effect', 'layer': 'r', 'effect': 'duotone', 'params': {'dark': '#000000', 'light': '#00FF00'}});
+      final px = await render(tester, p, 1, [[100, 50]]);
+      // red luminance 0.2126 → 21% green
+      expect((px[0] >> 16) & 0xFF, 0);
+      expect((px[0] >> 8) & 0xFF, closeTo(54, 3));
     });
   });
 }

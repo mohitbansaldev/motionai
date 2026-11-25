@@ -364,11 +364,12 @@ class Warp {
 
     final tmp = [0.0];
     proj(1, tmp);
-    final norm = hw / math.max(1e-6, tmp[0]); // keep the edges at the box sides
+    final norm = hw / math.max(1e-6, tmp[0]); // keep the edges at the box sides (width unchanged)
     final u = ((x - cx) / hw).clamp(-1.5, 1.5);
     final s = proj(u, tmp);
     out[0] = cx + tmp[0] * norm;
-    out[1] = cy + (y - cy) * s * norm;
+    // Height follows the perspective scale; the centre keeps its height.
+    out[1] = cy + (y - cy) * s;
   }
 
   /// Wind sway: horizontal displacement for a point at height [y] in a box of

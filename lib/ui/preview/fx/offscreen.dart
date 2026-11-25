@@ -68,7 +68,8 @@ class MeshWarp extends SingleChildRenderObjectWidget {
       RenderMeshWarp(mode, a, b, time, seed, maxSide, draft);
 
   @override
-  void updateRenderObject(BuildContext context, RenderMeshWarp r) {
+  void updateRenderObject(BuildContext context, RenderMeshWarp renderObject) {
+    final r = renderObject;
     r.set(mode, a, b, time, seed, maxSide, draft);
   }
 }
@@ -209,7 +210,8 @@ class MatteComposite extends MultiChildRenderObjectWidget {
   RenderMatteComposite createRenderObject(BuildContext context) => RenderMatteComposite(inverse, resolution);
 
   @override
-  void updateRenderObject(BuildContext context, RenderMatteComposite r) {
+  void updateRenderObject(BuildContext context, RenderMatteComposite renderObject) {
+    final r = renderObject;
     r
       ..inverse = inverse
       ..resolution = resolution;
