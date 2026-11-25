@@ -367,7 +367,7 @@ void main() {
       RenderItem item(String id, double t) => Evaluator.evaluate(p.main, t).firstWhere((i) => i.layer.id == id);
       final cam = Evaluator.camera3D(p.main, 3);
       expect(cam.focus, closeTo(item('house', 3).depth, item('house', 3).depth * 0.05));
-      expect(item('house', 3).dofBlur, lessThan(item('tree', 3).dofBlur));
+      expect(item('house', 3).dofBlur, lessThan(item('sky', 3).dofBlur)); // (the near tree is behind the camera by now)
       expect(item('house', 3).dofBlur, lessThan(1));
       // Smooth while scrubbing: focus changes a little per frame, never jumps.
       var maxJump = 0.0;
@@ -377,13 +377,13 @@ void main() {
       expect(maxJump, lessThan(Evaluator.camera3D(p.main, 0).focus * 0.1));
       // Focus on a layer.
       run(p, {'op': 'set_comp', 'dof': {'focus': 'tree'}});
-      expect(item('tree', 1.5).dofBlur, lessThan(0.05));
-      expect(item('sky', 1.5).dofBlur, greaterThan(1));
+      expect(item('tree', 0.3).dofBlur, lessThan(0.05));
+      expect(item('sky', 0.3).dofBlur, greaterThan(1));
       final back = Project.fromJson(jsonDecode(jsonEncode(p.toJson())) as Map<String, dynamic>);
       expect(back.main.dofFocus, 'tree');
       run(p, {'op': 'set_comp', 'dof': false});
       expect(p.main.dofFocus, isNull);
-      expect(item('sky', 1.5).dofBlur, 0);
+      expect(item('sky', 0.3).dofBlur, 0);
     });
 
     test('lens warp keeps corners and centre, barrel pushes edges out', () {
