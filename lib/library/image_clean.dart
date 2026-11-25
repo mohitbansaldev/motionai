@@ -236,10 +236,11 @@ class ImageClean {
         if (fill < 0.12 || fill > 0.72) continue;
         final cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
         final dr = w - 1 - cx, db = h - 1 - cy;
-        if (dr < ref * 0.005 || db < ref * 0.005 || dr > ref * 0.09 || db > ref * 0.09) continue;
+        // win-30: Gemini puts it ≈ 3.5 % in from the corner, Google Flow ≈ 9.3 %.
+        if (dr < ref * 0.005 || db < ref * 0.005 || dr > ref * 0.12 || db > ref * 0.12) continue;
         if (!_starShaped(pix, w, x0, y0, bw, bh)) continue;
         if (!_isolated(bright, w, h, x0, y0, x1, y1, size)) continue;
-        final dist = (dr - ref * 0.035).abs() + (db - ref * 0.035).abs();
+        final dist = math.min((dr - ref * 0.035).abs() + (db - ref * 0.035).abs(), (dr - ref * 0.093).abs() + (db - ref * 0.093).abs());
         if (dist < bestDist) {
           bestDist = dist;
           best = MarkInfo(x0, y0, x1, y1, pix);
@@ -342,6 +343,30 @@ class ImageClean {
     return Rgba(w, h, out);
   }
 
+  /// Google Flow's corner mark at its fixed spot (centre 9.3 % of the width
+  /// in from the right and bottom edges): blended over with a soft disc of
+  /// the pixels 7.3 % of the width to its left.
+  static Rgba patchFlowCorner(Rgba im) {
+    final w = im.width, h = im.height, d = im.data;
+    final off = (w * 0.093).round(), r = math.max(6, (w * 0.032).round()), shift = (w * 0.073).round();
+    final cx = w - off, cy = h - off;
+    if (cx - r - shift < 0 || cy - r < 0 || cx + r >= w || cy + r >= h) return im;
+    final out = Uint8List.fromList(d);
+    final soft = math.max(2.0, r * 0.32);
+    for (int dy = -r; dy < r; dy++) {
+      for (int dx = -r; dx < r; dx++) {
+        final dist = math.sqrt(dx * dx + dy * dy.toDouble());
+        final a = ((r - dist) / soft).clamp(0.0, 1.0);
+        if (a <= 0) continue;
+        final o = ((cy + dy) * w + cx + dx) * 4, so = ((cy + dy) * w + cx + dx - shift) * 4;
+        for (int c = 0; c < 3; c++) {
+          out[o + c] = (d[so + c] * a + d[o + c] * (1 - a)).round().clamp(0, 255);
+        }
+      }
+    }
+    return Rgba(w, h, out);
+  }
+
   /// Cheap size of an image file (header only).
   static (int, int) sizeOf(Uint8List bytes) {
     final dec = img.findDecoderForData(bytes);
@@ -364,6 +389,12 @@ class ImageClean {
       o.markFound = mark != null;
       if (mark != null && job.removeMark && !job.analyseOnly) {
         im = removeMark(im, mark);
+        o.markRemoved = true;
+      } else if (job.removeMark && !job.analyseOnly && job.source.toLowerCase().contains('motionai_flow')) {
+        // win-30: images uploaded from Google Flow always carry the mark at the
+        // same place; when the shape test misses it (busy / bright corner),
+        // cover it with the texture just left of it.
+        im = patchFlowCorner(im);
         o.markRemoved = true;
       }
       if (job.greenScreen != 'false' && !o.alpha) {
