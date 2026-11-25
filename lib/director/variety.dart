@@ -202,7 +202,7 @@ class Variety {
                   (uses[m] ?? 0) >= maxMediaUses);
           final personal = v['name_tag'] != null || v['label'] != null;
           if (repeated && !personal) {
-            final avoid = {for (final j in back) ?mediaOf(kept[j].visual), ?m};
+            final avoid = {for (final j in back) ?mediaOf(kept[j].visual), m};
             final type = pool.p.media[m]?.type;
             final alt = pool.pick(b.line, avoid: avoid, uses: uses, maxUses: maxMediaUses, type: type);
             if (alt != null) {
