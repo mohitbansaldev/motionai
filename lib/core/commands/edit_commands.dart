@@ -25,6 +25,7 @@ import 'map_commands.dart'; // V3-A
 import 'v3_fx_commands.dart'; // V3-D
 import '../presets/fx_animators.dart'; // V3-D
 import 'datahud_commands.dart'; // V3-C
+import 'pattern_commands.dart'; // V3-E
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -104,6 +105,7 @@ class EditCommands {
     ...ShotCommands.ops, // V2-B: add_shot, update_shot, remove_shot, sequence
     ...MapCommands.ops, // V3-A: geo component aliases (status_ring, signal_rings, …), map_tilt
     ...V3FxCommands.ops, // V3-D: mood_flood, tint_wipe, grade_swap, spotlight_subject, pulse, cut_to_black, lightning, montage, swap_layer
+    ...PatternCommands.ops, // V3-E: suggest_patterns, apply_patterns, list_patterns
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -202,6 +204,13 @@ class EditCommands {
         ShotCommands.run(project, c, r, (c2) => _run(project, c2, now, r));
         break;
       // <<< V2-B
+      // V3-E >>> story-grammar patterns → pattern_commands.dart
+      case 'suggest_patterns':
+      case 'apply_patterns':
+      case 'list_patterns':
+        PatternCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
+        break;
+      // <<< V3-E
 
       case 'add_layer':
         _addLayer(project, c, now, r);

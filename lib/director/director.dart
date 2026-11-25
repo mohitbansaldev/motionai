@@ -20,6 +20,7 @@ import '../services/speech.dart';
 import '../state/editor_controller.dart';
 import 'capabilities.dart';
 import 'json_repair.dart';
+import 'pattern_engine.dart'; // V3-E
 import 'planner.dart';
 import 'sfx.dart';
 import 'story_builder.dart';
@@ -453,7 +454,7 @@ DIRECTING RULES
 - Use transitions with intent: "fade" by default, "whip"/"slide" for change of place or time, "zoom_in" into details, "shatter" at most once for a dramatic break.
 - Prefer the specific documentary visuals above when they fit the line (article for quotes you have screenshots of, name_tag for introductions, maps for movement between places, number_tiles/date_title for big numbers and years, icon_stream for flows, scanner for who is involved, silhouette_crowd for groups, glass_screen for montages); never invent screenshots or faces.
 - If there's no presenter, every line needs a real visual.
-- Follow style_notes from the channel owner when given; they override these defaults.$long''';
+- Follow style_notes from the channel owner when given; they override these defaults.$long${caps != null && caps.patterns ? '\n${PatternEngine.promptSection}' : ''}'''; // V3-E: pattern hints
   }
 
   // ------------------------------------------------------------ 3b. Director v2 (long videos)

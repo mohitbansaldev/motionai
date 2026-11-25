@@ -7,6 +7,7 @@ import '../model/project.dart';
 import 'components.dart';
 import 'doc_transitions.dart'; // V2-C
 import 'templates_datahud.dart'; // V3-C
+import '../../director/patterns.dart'; // V3-E
 import 'world_map.dart';
 
 /// Starter templates: ready-made animated scenes built only from edit
@@ -250,7 +251,7 @@ class SceneTemplate {
 /// Built-in scene templates, insertion and "save as template".
 class SceneTemplates {
   static const mine = 'My templates';
-  static const categories = ['Intros', 'Showcases', 'Transitions', 'Captions', 'Lower thirds', 'Endings', 'Maps', '3D'];
+  static const categories = ['Intros', 'Showcases', 'Transitions', 'Captions', 'Lower thirds', 'Endings', 'Maps', '3D', 'Doc patterns' /* V3-E */];
 
   /// Built-ins available on this build (gated templates hidden).
   static List<SceneTemplate> get available => [for (final t in builtIn) if (t.available) t];
@@ -788,6 +789,7 @@ class SceneTemplates {
     ),
     ...docTransitionTemplates(), // V2-C: one per documentary transition
     ...dataHudTemplates(), // V3-C: stat title, date stamp, calendar, unit chart, social bug
+    ...docPatternTemplates(), // V3-E: one per story-grammar pattern ("Doc patterns")
     // ---------------------------------------------------------------- Captions
     SceneTemplate(
       id: 'glow_word', name: 'Glow word', category: 'Captions',
@@ -1097,3 +1099,53 @@ List<SceneTemplate> docTransitionTemplates() => [
         ),
     ];
 // <<< V2-C
+
+// V3-E >>> story-grammar pattern templates (category "Doc patterns"): one
+// per pattern of lib/director/patterns.dart, inserted as ONE apply_patterns
+// command so every pattern uses the V3 component when it is installed and
+// its plain-layer fallback before that.
+List<SceneTemplate> docPatternTemplates() => [
+      for (final p in PatternLibrary.all)
+        SceneTemplate(
+          id: 'pattern_${p.id}',
+          name: p.label,
+          category: 'Doc patterns',
+          subtitle: p.when.length > 90 ? '${p.when.substring(0, 89)}…' : p.when,
+          duration: p.isTransition ? 6 : p.hold.clamp(3.0, 8.0).toDouble(),
+          previewTime: p.isTransition ? 3 : (p.hold.clamp(3.0, 8.0) * 0.6).toDouble(),
+          needsOps: const ['apply_patterns'],
+          slots: [
+            if (p.isTransition) ...const [
+              TemplateSlot('a', 'Outgoing shot', kind: 'media'),
+              TemplateSlot('b', 'Incoming shot', kind: 'media'),
+            ] else ...[
+              for (final s in p.slots) TemplateSlot(s.key, s.label, kind: s.kind, media: s.kind == 'text' ? 'any' : s.media, initial: s.initial),
+              if (!p.fullscreen && !p.slots.any((s) => s.key == 'media')) const TemplateSlot('plate', 'Background photo / clip', kind: 'media'),
+            ],
+          ],
+          builder: (c) {
+            final dur = p.isTransition ? 6.0 : p.hold.clamp(3.0, 8.0).toDouble();
+            Map<String, dynamic> slotValues() => {
+                  for (final s in p.slots)
+                    s.key: switch (s.kind) {
+                      'media' => c.media(s.key)?.id,
+                      'medias' => c.mediaIds(s.key),
+                      _ => c.s(s.key, '${s.initial ?? ''}'),
+                    },
+                  if (c.media('plate') != null) 'plate': c.media('plate')!.id,
+                };
+            final beats = p.isTransition
+                ? [
+                    {'pattern': 'reenactment_shot', 'start': c.t(0), 'end': c.t(3.0), 'slots': {if (c.media('a') != null) 'media': c.media('a')!.id}},
+                    {'pattern': p.id, 'start': c.t(3.0), 'end': c.t(dur), 'slots': {if (c.media('b') != null) 'media': c.media('b')!.id}},
+                  ]
+                : [
+                    {'pattern': p.id, 'start': c.t(0), 'end': c.t(dur), 'reveal_at': c.t(math.min(1.0, dur * 0.3)), 'slots': slotValues()},
+                  ];
+            return [
+              {'op': 'apply_patterns', 'plan': {'beats': beats}, 'tone': 'snow'},
+            ];
+          },
+        ),
+    ];
+// <<< V3-E

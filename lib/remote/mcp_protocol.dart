@@ -383,6 +383,25 @@ final List<Map<String, dynamic>> kMcpTools = [
   _tool('list_effects', 'List effects', 'Every effect for add_effect: id, label, category, params (key, default, min, max, options).',
       _obj({}),
       readOnly: true),
+  // V3-E >>> story-grammar pattern planner (lib/director/pattern_engine.dart)
+  _tool('suggest_patterns', 'Suggest documentary patterns',
+      'Plans documentary visual patterns for narration lines (English / Hindi / Hinglish): per beat the pattern id (map, route, article '
+          'highlight, clock stamp, unit chart, mood flood, presenter…), times, reveal_at (0.1-0.3 s after the keyword), slots, transition_in, '
+          'grade, overlays (social_cta, presenter_stats…) and sfx, following the Nitish-Rajput grammar (ASL ~3.4 s, presenter every 12-25 s, '
+          'evidence then reenactment). Read-only: pass the plan to run_commands [{"op":"apply_patterns","plan":…,"assets":{…}}] to build it.',
+      _obj({
+        'lines': {
+          'type': 'array',
+          'description': 'Narration lines [{"text":"...","start":0,"end":3.2}] (times optional)',
+          'items': {'type': 'object'},
+        },
+        'style': _e(['nr_doc'], 'Style grammar (default nr_doc)'),
+        'tone': _s('Story tone: auto (default), snow, desert, neutral — picks the signature transition'),
+        'presenter': _b('A presenter (A-roll) is available (default true)'),
+        'asl': _n('Average shot length in seconds (default 3.4)'),
+      }, required: ['lines']),
+      readOnly: true),
+  // <<< V3-E
   _tool('list_components', 'List components',
       'Every component for add_component (source cards, lower thirds, maps, pins, counters, 3D scenes, …): type and label; '
           'fields are in get_command_spec.',

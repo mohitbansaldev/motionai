@@ -23,6 +23,7 @@ import '../director/director.dart';
 import '../director/planner.dart';
 import '../library/asset_library.dart';
 import '../library/library_ops.dart'; // V2-lead
+import '../core/commands/pattern_commands.dart'; // V3-E
 import '../services/captions.dart';
 import '../services/project_storage.dart';
 import '../state/editor_controller.dart';
@@ -358,6 +359,14 @@ class RemoteTools implements McpBackend {
               },
           ],
         });
+      // V3-E >>>
+      case 'suggest_patterns':
+        try {
+          return McpToolResult.json(PatternCommands.suggest(a));
+        } on CommandError catch (e) {
+          throw _Fail(e.message);
+        }
+      // <<< V3-E
       case 'list_components':
         return McpToolResult.json({
           'components': [for (final t in Components.types) {'type': t, 'label': Components.label(t)}],
