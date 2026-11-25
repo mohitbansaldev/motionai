@@ -265,11 +265,11 @@ class LayerPanel extends StatelessWidget {
       if (current != null)
         FilterChip(
           label: const Text('Inverse', style: TextStyle(fontSize: 12)),
-          selected: m!.inverse,
+          selected: m?.inverse ?? false,
           onSelected: (v) => c.tryRun({
             'op': 'update_layer',
             'layer': l.id,
-            'matte': {'layer': m.layerId, 'mode': v ? 'inverse' : 'alpha'},
+            'matte': {'layer': current, 'mode': v ? 'inverse' : 'alpha'},
           }),
         ),
     ]);
@@ -487,7 +487,7 @@ class _NumRow extends StatelessWidget {
   final String label;
   final double value, min, max;
   final void Function(double v, bool record) onChanged;
-  final int decimals;
+  static const decimals = 0;
   const _NumRow({
     required this.c,
     required this.label,
@@ -495,7 +495,6 @@ class _NumRow extends StatelessWidget {
     required this.min,
     required this.max,
     required this.onChanged,
-    this.decimals = 0,
   });
 
   @override

@@ -226,7 +226,7 @@ class RevealMask {
 
   /// Shader whose alpha is the mask, in layer pixels of a [size] box.
   /// [progress] and [softness] 0..1, centre ([cx], [cy]) 0..1 of the box.
-  static Shader shader(int kind, double progress, double softness, double cx, double cy, int seed, Size size, {bool draft = false}) {
+  static ui.Shader shader(int kind, double progress, double softness, double cx, double cy, int seed, Size size, {bool draft = false}) {
     final p = progress.clamp(0.0, 1.0);
     final w = size.width, h = size.height;
     final c = Offset(cx * w, cy * h);

@@ -1,7 +1,7 @@
 import 'dart:collection';
 import 'dart:math' as math;
 
-import 'package:flutter/painting.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../../core/engine/fx_math.dart';
 
