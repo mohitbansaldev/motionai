@@ -150,6 +150,11 @@ class Project {
   final Map<String, MediaAsset> media;
   Composition main;
 
+  // SCENE (Agent D): saved recipes (look/move/frame of a layer) and shots
+  // (camera + 3D arrangement), by name. JSON-only data, see presets/scene3d.dart.
+  final Map<String, dynamic> recipes = {};
+  final Map<String, dynamic> shots = {};
+  // end SCENE
   // PRECOMP (Agent L) >>>
   /// Nested compositions (precomps), by id. Used by `LayerType.comp` layers.
   final Map<String, Composition> comps;
@@ -183,6 +188,8 @@ class Project {
         'modified': modified.toIso8601String(),
         'media': media.values.map((m) => m.toJson()).toList(),
         'main': main.toJson(),
+        if (recipes.isNotEmpty) 'recipes': recipes, // SCENE (Agent D)
+        if (shots.isNotEmpty) 'shots': shots, // SCENE (Agent D)
         if (comps.isNotEmpty) 'comps': comps.values.map((c) => c.toJson()).toList(), // PRECOMP (Agent L)
       };
 
@@ -205,7 +212,10 @@ class Project {
       modified: DateTime.tryParse(j['modified'] as String? ?? '') ?? DateTime.now(),
       media: media,
       main: Composition.fromJson(j['main'] as Map<String, dynamic>),
-    );
+    )
+      // SCENE (Agent D): recipes + shots (absent in older projects).
+      ..recipes.addAll(j['recipes'] is Map ? Map<String, dynamic>.from(j['recipes'] as Map) : const {})
+      ..shots.addAll(j['shots'] is Map ? Map<String, dynamic>.from(j['shots'] as Map) : const {});
   }
 }
 
