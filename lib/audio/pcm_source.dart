@@ -91,7 +91,7 @@ class PcmSources {
   static PcmSource? platform;
 
   static Future<PcmBuffer?> load(String path, {int sampleRate = 22050, double sourceIn = 0, double duration = 0}) async {
-    for (final s in <PcmSource>[const WavFileSource(), if (platform != null) platform!, if (Platform.isAndroid) const Wav16kBridgeSource()]) {
+    for (final s in <PcmSource>[const WavFileSource(), ?platform, if (Platform.isAndroid) const Wav16kBridgeSource()]) {
       final b = await s.load(path, sampleRate: sampleRate, sourceIn: sourceIn, duration: duration);
       if (b != null && b.mono.isNotEmpty) return b;
     }

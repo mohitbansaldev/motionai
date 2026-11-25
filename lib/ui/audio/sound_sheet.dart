@@ -125,7 +125,7 @@ class _SoundSheetState extends State<SoundSheet> {
 
   void _insert(String kind) {
     final dur = Sfx.isBed(kind) ? math.min(30.0, math.max(Sfx.length(kind), c.comp.duration - c.time)) : null;
-    _run({'op': 'add_sfx', 'kind': kind, 'time': c.time, if (dur != null) 'duration': dur},
+    _run({'op': 'add_sfx', 'kind': kind, 'time': c.time, 'duration': ?dur},
         '${Sfx.info(kind).$1} added${Sfx.peak(kind) > 0 ? ' (its peak lands on the playhead)' : ''}');
   }
 
