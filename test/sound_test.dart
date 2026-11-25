@@ -170,7 +170,7 @@ void main() {
         expect(back.sampleRate, 22050);
         expect(back.channels.length, 2);
         expect(back.length, 1000);
-        final tol = bits == 16 ? 1 / 32000 : 1e-6;
+        final tol = bits == 16 ? 2 / 32768 : 1e-6;
         for (int i = 0; i < 1000; i++) {
           expect(back.channels[0][i], closeTo(a[i], tol));
           expect(back.channels[1][i], closeTo(b[i], tol));

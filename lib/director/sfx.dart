@@ -552,7 +552,7 @@ class Sfx {
           final y = buf[k];
           lp = y * 0.8 + lp * 0.2;
           buf[k] = x[i] + lp * 0.82;
-          out[i] += y * 0.25;
+          out[i] += y * 0.25 * 0.18; // ×(1 − feedback): unity steady-state gain
           k = (k + 1) % d;
         }
       }
