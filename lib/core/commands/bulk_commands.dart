@@ -25,7 +25,7 @@ import 'edit_commands.dart';
 ///   (also inside strings, e.g. "new_id": "$layer_b"); `"$index"` → 0, 1, 2…,
 ///   `"$layer_start"` / `"$layer_end"` → the layer's times.
 /// - `select` {layers | filter, mode?: replace|add|remove} — selects layers in the editor.
-/// - `align` {layers, mode: left|center|right|top|middle|bottom, to?: selection|comp|<layer id>, time?}
+/// - `align` {layers, mode: left|center|right|top|middle|bottom, to?: selection|comp|"layer id", time?}
 /// - `distribute` {layers, axis: horizontal|vertical, by?: center|gap, time?}
 /// - `align_time` {layers, mode: start|end|playhead|stagger|sequence, time?, step? (s), frames?, gap?, order?: given|stack|time}
 /// - `shift_time` {layers, by (s)}
@@ -559,8 +559,8 @@ class BulkCommands {
             : component != null
                 ? by[0]
                 : by.length == 1
-                    ? (key == Props.scale && i == 2 ? 0 : by[0])
-                    : (i < by.length ? by[i] : 0);
+                    ? (key == Props.scale && i == 2 ? 0.0 : by[0])
+                    : (i < by.length ? by[i] : 0.0);
         if (add != null) out[i] += add;
         if (factor != null && !(key == Props.scale && component == null && i == 2)) out[i] *= factor;
       }

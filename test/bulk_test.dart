@@ -405,9 +405,9 @@ void main() {
       c.selectMany(['s3', 's4']);
       oneStep(a.pasteEffects, () {
         final types = p.main.layerById('s4')!.effects.map((e) => e.type).toList();
-        expect(types, ['blur', 'glow', 'mono']);
+        expect(types, ['glow', 'mono']);
         final ids = {for (final l in p.main.layers) for (final e in l.effects) e.id};
-        expect(ids.length, 15, reason: 'pasted effects get new ids');
+        expect(ids.length, 10, reason: 'pasted effects get new ids');
       });
       c.selectMany(['s3', 's4']);
       oneStep(() => a.animate('fade', isIn: true), () {

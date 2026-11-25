@@ -102,7 +102,10 @@ class BulkActions {
     }
     return c.tryRun({
       'op': 'batch',
-      'commands': [for (int i = 0; i < order.length; i++) if (sel.contains(order[i])) {'op': 'reorder_layer', 'layer': order[i], 'index': i}],
+      // Placing each layer from the top keeps the already placed ones in order.
+      'commands': [
+        for (int i = 0; i < order.length; i++) {'op': 'reorder_layer', 'layer': order[i], 'index': i},
+      ],
     });
   }
 
