@@ -36,8 +36,6 @@ CommandResult run(Project p, Map<String, dynamic> c) => EditCommands.runAtomic(p
 
 Layer layer(Project p, String id, {String comp = 'main'}) => (comp == 'main' ? p.main : p.comps[comp]!).requireLayer(id);
 
-List<double> kfTimes(AnimProp p) => [for (final k in p.keyframes) k.time];
-
 /// Screen position of a layer-local point.
 Vector3 screen(Composition c, Layer l, double t, double x, double y) => Evaluator.worldMatrix(c, l, t).transformed3(Vector3(x, y, 0));
 

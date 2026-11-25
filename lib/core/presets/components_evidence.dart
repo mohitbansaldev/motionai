@@ -198,7 +198,7 @@ Map<String, dynamic> _evRings(_B b, String part, List<List<double>> rings,
       ...b.path(part, const [[0, 0], [1, 0]], stroke: stroke, width: width, fill: fill, closed: closed, parent: parent, st: st, du: du),
       'points': null,
       'rings': rings,
-      if (name != null) 'name': name,
+      'name': ?name,
     };
 
 /// Left→right wipe-on reveal: a rect mask (layer pixels) growing from x0 to x1.
@@ -1226,7 +1226,7 @@ List<Map<String, dynamic>> _evBook(_B b0, Project p) {
   final spine = b.id('spine');
   cmds.addAll(b.nul('spine', -cw / 2, 0, name: 'Spine'));
   Map<String, dynamic> on(String parent, Map<String, dynamic> x, [double? st, double? du]) =>
-      {...x, 'parent': parent, if (st != null) 'start': st, if (du != null) 'duration': du};
+      {...x, 'parent': parent, 'start': ?st, 'duration': ?du};
 
   // Back board + page block (right side).
   cmds.add(on(spine, b.shape('back', 'rect', cw * 1.02, ch * 1.02, cw / 2 + cw * 0.01, ch * 0.005, fill: _shade(cCover, 0.7))));
