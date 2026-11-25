@@ -834,9 +834,11 @@ class Scene3D {
     for (final k in sp.keyframes) {
       if (k.time > a && k.time < b) times.add(k.time);
     }
-    const n = 12;
-    for (int i = 1; i < n; i++) {
-      times.add(a + (b - a) * i / n);
+    // Every frame while the map zooms (1/scale is not linear in time).
+    final z0 = math.max(a, sp.keyframes.first.time), z1 = math.min(b, sp.keyframes.last.time);
+    final fd = comp.frameDuration;
+    for (var t = z0 + fd; t < z1 - 1e-6 && times.length < 2000; t += fd) {
+      times.add(t);
     }
     for (final t in times.toList()..sort()) {
       p.setKeyframe(t, inv(t), easing: Easing.linear);
