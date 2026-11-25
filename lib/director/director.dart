@@ -8,6 +8,7 @@ import '../ai/agent.dart';
 import '../ai/ai_client.dart';
 import '../ai/ai_settings.dart';
 import '../ai/command_spec.dart';
+import '../ai/phrase_finder.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../core/commands/edit_commands.dart';
@@ -351,8 +352,9 @@ Return ONLY JSON: {"look":"cinematic_doc|retro_film|noir|warm_travel|clean_minim
 
 VISUALS (pick ONE per line):
 - {"aroll":true,"punch":<true for emphasis — a hard zoom on the presenter>}  — only if presenter_on_camera; ~25-35% of lines (opinions, jokes, questions to the viewer, transitions)
-- {"media":"<media id>","move":"ken_burns|push_in|pull_out|pan_left|pan_right|parallax${cutouts ? '|depth' : ''}","transition":"fade|zoom_in|zoom_out|slide_left|slide_right|whip|blur|pop|shatter"${cutouts ? ',"behind_text":"<optional ONE dramatic word shown BETWEEN the subject and background>"' : ''}}
-${cutouts ? '  "depth" cuts the subject out and moves it separately from the background (3D parallax). Use it ONLY on photos whose "about" says "clear subject" — great for people introduced, hooks and dramatic moments, at most ~1 in 6 lines.\n' : ''}- {"component":"source_card","source":"Source: <site>","headline":"...","body":"<the cited claim, 1-3 sentences>","highlights":["<key phrase from body>"],"circle":"<date or number from body>"}  — when a line cites a report, article, book or "according to"
+- {"media":"<media id>","move":"ken_burns|push_in|pull_out|pan_left|pan_right|parallax${cutouts ? '|depth' : ''}|drift|fly_to|push_through|pass_by|reveal|pull_back|orbit","transition":"fade|zoom_in|zoom_out|slide_left|slide_right|whip|blur|pop|shatter|iris|ink|smoke|flash|glitch_flash|foreground_wipe"${cutouts ? ',"behind_text":"<optional ONE dramatic word shown BETWEEN the subject and background>"' : ''},"name_tag":{"name":"<person>","role":"<who they are>"},"label":"<SHORT TAG on the subject>"}  — name_tag and label are optional overlays: name_tag when a person is first introduced, label to tag a character in the picture
+${cutouts ? '  "depth" cuts the subject out and moves it separately from the background (3D parallax). Use it ONLY on photos whose "about" says "clear subject" — great for people introduced, hooks and dramatic moments, at most ~1 in 6 lines.\n' : ''}  3D camera moves (the photo becomes a 3D scene${cutouts ? ', subject cut out when it has a clear subject' : ''}): "drift" slow float, "fly_to" glide towards the subject, "push_through" fast push into a door/window/the subject (a cut), "pass_by" sideways past it, "reveal" from behind, "pull_back" from an extreme close-up, "orbit" around it. At most ~1 in 5 lines. "ink"/"smoke"/"iris" are soft story transitions, "flash"/"glitch_flash" hard hits, "foreground_wipe" hides a cut behind something sweeping past the lens.
+- {"component":"source_card","source":"Source: <site>","headline":"...","body":"<the cited claim, 1-3 sentences>","highlights":["<key phrase from body>"],"circle":"<date or number from body>"}  — when a line cites a report, article, book or "according to"
 - {"component":"lower_third","source":"Source: <site>","text":"...","highlights":["..."],"over_aroll":true}
 - {"component":"map","countries":["<English country names>"],"focus":"<country>","style":"dark|paper|blue"}  — places/countries/borders
 - {"component":"badge","label":"<ORGANISATION / PARTY / AGENCY>","media":"<optional logo/photo media id>"}
@@ -362,6 +364,20 @@ ${cutouts ? '  "depth" cuts the subject out and moves it separately from the bac
 - {"component":"speech_bubble","text":"\\"<short quote>\\""}  — a quoted statement
 - {"component":"photo_card","media":"<image id>","caption":"<name>"}  — a person or object introduced
 - {"component":"cta","text":"<Subscribe / Comment …>","over_aroll":true}  — once, near the end
+- {"component":"title_slam","title":"<2-3 WORDS>","subtitle":"<1 WORD>"}  — ONLY as the very first line when the video opens with a punchy title (impact sound → silence → music drop)
+- {"component":"article","media":"<screenshot/newspaper/document media id>","marks":[{"phrase":"<exact words visible in that screenshot>","style":"highlight|circle|underline|redact"}],"coming_up":false}  — when a line quotes an article, post or document you HAVE as media; 1-2 marks; "redact" hides a word (add "word" to reveal it)
+- {"component":"name_tag","name":"<person>","role":"<role>","over_aroll":true}  — introduce the presenter or someone on screen
+- {"component":"date_title","text":"<YEAR or DATE>","subtitle":"<optional place/name>"}  — a dramatic jump in time
+- {"component":"number_tiles","text":"<short number/year like 200 or 1996>","word":"<optional word after, e.g. YEARS AGO>"}  — a striking number or year
+- {"component":"icon_stream","icons":["<media ids of logos/flags/items or short emoji>"]}  — money/data/goods flowing from one place to another
+- {"component":"scanner","logo":"<logo media id>","targets":[{"media":"<face/photo id>","label":"<NAME>"}]}  — an agency/company watching, searching or choosing people
+- {"component":"silhouette_crowd","media":["<person photo ids>"],"labels":["<SHORT LABELS>"],"highlight":<index of the one to keep in colour, or -1>}  — groups, victims, workers, "millions of people"
+- {"component":"glass_screen","media":["<footage/photo ids>"]}  — showing websites, apps, news footage or a montage on a screen
+- {"component":"plaque","name":"<NAME>","dates":"<YYYY – YYYY>","text":"<short epitaph>"}  — a death or memorial
+- {"component":"poster","title":"<WANTED / JOBS …>","subtitle":"...","media":"<optional image id>"}  — old adverts, recruitment, propaganda
+- {"component":"route_follow","from":"<country>","to":"<country>","avatar":"<optional face media id>"}  — a journey, migration, trade or escape route
+- {"component":"map_fly","from":"<country>","to":"<country>"}  — the story moves from one country to another
+- {"component":"needle_pin","country":"<country>","label":"<place>"}  — pin one place on a map
 Optional on any visual: "sfx":"whoosh|hit|riser|pop|tick|none" (defaults are chosen for you; use "riser" before the big reveal of the hook, "none" to keep a moment quiet).
 
 DIRECTING RULES
@@ -370,6 +386,7 @@ DIRECTING RULES
 - Keep the eye moving: never the same component type or same media on two lines in a row; use each media at most twice (see media_used_so_far).
 - Text on screen must be short, factual and ONLY from the narration line — never add facts.
 - Use transitions with intent: "fade" by default, "whip"/"slide" for change of place or time, "zoom_in" into details, "shatter" at most once for a dramatic break.
+- Prefer the specific documentary visuals above when they fit the line (article for quotes you have screenshots of, name_tag for introductions, route_follow/map_fly for movement between places, number_tiles/date_title for big numbers and years); never invent screenshots or faces.
 - If there's no presenter, every line needs a real visual.
 - Follow style_notes from the channel owner when given; they override these defaults.''';
 
@@ -405,6 +422,7 @@ DIRECTING RULES
         }
       }
     }
+    await _locatePhrases(beats);
     final sfx = <String, String>{};
     if (o.sfx) {
       status('Making sound effects…');
@@ -432,6 +450,38 @@ DIRECTING RULES
       captions: CaptionOptions(language: o.language == 'auto' ? null : o.language, roman: o.roman, style: 'karaoke'),
       look: look,
     );
+  }
+
+  /// Article beats name phrases; find them in the screenshot with vision so
+  /// the highlights land on the right words.
+  Future<void> _locatePhrases(List<Beat> beats) async {
+    final todo = [
+      for (final b in beats)
+        if (b.keep && b.visual['component'] == 'article' && b.visual['marks'] is List && (b.visual['marks'] as List).any((m) => m is Map && m['phrase'] is String && m['box'] == null && m['boxes'] == null))
+          b,
+    ];
+    if (todo.isEmpty) return;
+    final s = await AiSettings.load();
+    var k = 0;
+    for (final b in todo) {
+      k++;
+      status('Finding the quoted words in the screenshots… $k/${todo.length}');
+      final media = b.visual['media'];
+      final m = p.media[media is List ? (media.isEmpty ? '' : '${media.first}') : '$media'];
+      final marks = [for (final x in b.visual['marks'] as List) if (x is Map) Map<String, dynamic>.from(x)];
+      if (m == null || m.type != MediaType.image) {
+        b.visual = {...b.visual, 'marks': [for (final x in marks) if (x['box'] != null || x['boxes'] != null) x]};
+        continue;
+      }
+      try {
+        final img = await thumbnail(m, size: 1600);
+        if (img == null) throw AiException('no image');
+        final resolved = await PhraseFinder.resolveMarks(settings: s, image: img, marks: marks, width: m.width, height: m.height);
+        b.visual = {...b.visual, 'marks': resolved};
+      } catch (_) {
+        b.visual = {...b.visual, 'marks': [for (final x in marks) if (x['box'] != null || x['boxes'] != null) x]};
+      }
+    }
   }
 
   // ------------------------------------------------------------ 5. build
