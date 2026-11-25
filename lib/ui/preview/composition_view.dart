@@ -7,6 +7,7 @@ import '../../core/engine/evaluator.dart';
 import '../../core/model/layer.dart';
 import '../../state/editor_controller.dart';
 import '../precomp_bar.dart'; // PRECOMP (Agent L)
+import '../bulk/bulk_preview.dart'; // BULK (Agent N)
 import 'composition_canvas.dart';
 import 'preview_quality.dart'; // PERF (Agent O)
 
@@ -32,6 +33,8 @@ class _CompositionViewState extends State<CompositionView> {
 
   EditorController get c => widget.controller;
 
+  late final BulkPreview _bulk = BulkPreview(c); // BULK (Agent N)
+
   // PRECOMP (Agent L): double-tap a comp layer to open it.
   String? _lastTapId;
   DateTime _lastTapAt = DateTime(0);
@@ -54,7 +57,10 @@ class _CompositionViewState extends State<CompositionView> {
         child: SizedBox(
           width: comp.width * _viewScale,
           height: comp.height * _viewScale,
-          child: GestureDetector(
+          child: Listener( // BULK (Agent N): pointer kind (rubber band with a mouse), Alt+wheel scale/rotate
+            onPointerDown: (e) => _bulk.kind = e.kind,
+            onPointerSignal: _bulk.onSignal,
+            child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapUp: _onTap,
             onScaleStart: _onScaleStart,
@@ -78,18 +84,27 @@ class _CompositionViewState extends State<CompositionView> {
                     playing: c.playing,
                     // PERF (Agent O): on-screen pixels per comp pixel → cached 3D layers, photo decode size
                     previewScale: _viewScale * (MediaQuery.maybeDevicePixelRatioOf(context) ?? 1) * PreviewQuality.instance.factor(playing: c.playing),
-                    overlay: selected != null && !c.playing
-                        ? CustomPaint(painter: _SelectionPainter(selected, 1 / _viewScale))
-                        : null,
+                    overlay: !c.playing ? _bulkOverlay(selected) : null, // BULK (Agent N): all selected layers
                   ),
                 );
               },
             ),
           ),
+          ),
         ),
       );
     });
   }
+
+  // BULK (Agent N) >>>
+  Widget? _bulkOverlay(RenderItem? selected) {
+    if (!c.hasMultiSelection && _bulk.marquee == null) {
+      return selected == null ? null : CustomPaint(painter: _SelectionPainter(selected, 1 / _viewScale));
+    }
+    final items = [for (final i in _items) if (c.isSelected(i.layer.id)) i];
+    return CustomPaint(painter: BulkSelectionPainter(items, c.selectedLayerId, 1 / _viewScale, _bulk.marquee));
+  }
+  // <<< BULK (Agent N)
 
   Offset _toComp(Offset local) => local / _viewScale;
 
@@ -114,6 +129,7 @@ class _CompositionViewState extends State<CompositionView> {
     _lastTapId = hit?.layer.id;
     _lastTapAt = now;
     // <<< PRECOMP (Agent L)
+    if (_bulk.onTap(hit?.layer.id)) return; // BULK (Agent N): Ctrl/Shift+click, multi-select mode
     c.select(hit?.layer.id);
   }
 
@@ -121,6 +137,12 @@ class _CompositionViewState extends State<CompositionView> {
     final layer = c.selectedLayer;
     final compPos = _toComp(d.localFocalPoint);
     final hit = _hit(compPos);
+    // BULK (Agent N): rubber band, or move/scale/rotate the whole selection.
+    if (_bulk.onStart(compPos, hit?.layer.id, d.pointerCount, _items)) {
+      _gestureOnLayer = false;
+      setState(() {});
+      return;
+    }
     // Start dragging only on the selected layer (or select what's under the finger).
     if (layer == null || (hit != null && hit.layer.id != layer.id && d.pointerCount == 1)) {
       if (hit != null) c.select(hit.layer.id);
@@ -135,6 +157,11 @@ class _CompositionViewState extends State<CompositionView> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (_bulk.active) { // BULK (Agent N)
+      _bulk.onUpdate(_toComp(d.localFocalPoint), d, _items);
+      setState(() {});
+      return;
+    }
     final layer = c.selectedLayer;
     if (!_gestureOnLayer || layer == null) return;
     final last = _lastFocal ?? d.localFocalPoint;
@@ -172,6 +199,10 @@ class _CompositionViewState extends State<CompositionView> {
   }
 
   void _onScaleEnd() {
+    if (_bulk.active) { // BULK (Agent N)
+      _bulk.onEnd();
+      setState(() {});
+    }
     if (_gestureOnLayer) c.endGesture();
     _gestureOnLayer = false;
     _lastFocal = null;

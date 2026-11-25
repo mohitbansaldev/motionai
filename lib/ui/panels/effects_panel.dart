@@ -4,6 +4,7 @@ import '../../core/model/effects_catalog.dart';
 import '../../core/model/layer.dart';
 import '../../core/presets/motion_presets.dart';
 import '../common.dart';
+import '../bulk/bulk_panel.dart'; // BULK (Agent N)
 import '../../state/editor_controller.dart';
 import 'prop_row.dart';
 
@@ -42,6 +43,7 @@ class EffectsPanel extends StatelessWidget {
           ]),
           const SectionTitle('Effects on selected layer'),
         ];
+        if (c.hasMultiSelection) return BulkEffectsPanel(c: c); // BULK (Agent N): add/copy/paste effects for all
         if (l == null) {
           return ListView(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), children: [
             ...looks,

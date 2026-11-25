@@ -4,9 +4,11 @@ import '../../core/model/layer.dart';
 import '../../core/presets/motion_presets.dart';
 import '../../state/editor_controller.dart';
 import '../ai_tools.dart';
+import '../bulk/bulk_panel.dart'; // BULK (Agent N)
 import '../common.dart';
 import '../fonts/font_picker.dart'; // FONTS (Agent I)
 import '../precomp_bar.dart'; // PRECOMP (Agent L)
+import 'chroma_controls.dart'; // CHROMA (Agent M)
 import 'prop_row.dart';
 
 /// Transform, text and layer options for the selected layer.
@@ -19,6 +21,7 @@ class LayerPanel extends StatelessWidget {
     return AnimatedBuilder(
       animation: Listenable.merge([c, c.timeNotifier]),
       builder: (context, _) {
+        if (c.hasMultiSelection) return BulkPanel(c: c); // BULK (Agent N): several layers selected
         final l = c.selectedLayer;
         if (l == null) {
           return const Center(
@@ -82,6 +85,12 @@ class LayerPanel extends StatelessWidget {
                   ),
               ]),
             ],
+            // CHROMA (Agent M) >>>
+            if (l.type == LayerType.image || l.type == LayerType.video) ...[
+              const SectionTitle('Green screen'),
+              ChromaControls(c: c, layer: l),
+            ],
+            // <<< CHROMA (Agent M)
             if (l.type == LayerType.shape) _ShapeSection(c: c, layer: l),
             if (l.type == LayerType.video || l.type == LayerType.audio) ...[
               const SectionTitle('Audio'),

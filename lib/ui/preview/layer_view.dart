@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart' hide Easing;
 import 'package:video_player/video_player.dart';
 
+import '../../core/engine/chroma.dart'; // CHROMA (Agent M)
 import '../../core/engine/evaluator.dart';
 import '../../core/engine/fx_math.dart';
 import '../../core/model/easing.dart';
@@ -13,6 +14,7 @@ import '../../core/model/layer.dart';
 import '../../core/model/project.dart';
 import '../../fonts/font_catalog.dart'; // FONTS (Agent I)
 import '../../state/video_pool.dart';
+import 'fx/chroma_key.dart'; // CHROMA (Agent M)
 import 'fx/fx_painters.dart';
 import 'fx/layer_cache.dart'; // PERF (Agent O)
 import 'fx/offscreen.dart';
@@ -122,6 +124,14 @@ class LayerView extends StatefulWidget {
   }
 
   Widget _content(Layer l, {int? decodeWidth}) {
+    // CHROMA (Agent M): green screen keys the source pixels (decoded frames,
+    // never the live texture) before every other effect.
+    final ck = (l.type == LayerType.video || l.type == LayerType.image) ? chromaEffectOf(l) : null;
+    if (ck != null) {
+      return ChromaSource(
+          layer: l, project: project, time: time, settings: ChromaSettings.fromEffect(ck, time),
+          frame: videoFrames?[l.id], draft: draft, playing: playing);
+    }
     switch (l.type) {
       case LayerType.video:
         final frame = videoFrames?[l.id];
@@ -629,6 +639,9 @@ class LayerView extends StatefulWidget {
         );
       case 'motion_blur':
         return child; // applied in screen space in build()
+      case 'chroma_key': // CHROMA (Agent M): video/image keyed in _content
+        if (l.type == LayerType.video || l.type == LayerType.image) return child;
+        return ChromaSnapshot(settings: ChromaSettings.fromEffect(e, time), maxSide: draft ? 1280 : 3000, child: child);
       case 'flash':
         final a = (p('amount') / 100).clamp(0.0, 1.0);
         if (a <= 0.001) return child;

@@ -19,6 +19,7 @@ import '../platform/win_tools.dart';
 import '../services/media_bridge.dart';
 import 'common.dart';
 import 'preview/composition_canvas.dart';
+import 'preview/fx/chroma_key.dart'; // CHROMA (Agent M)
 
 /// Renders the composition frame by frame and encodes an MP4 (phone:
 /// MediaCodec; Windows: FFmpeg with the GPU encoder when available).
@@ -150,6 +151,7 @@ class _ExportScreenState extends State<ExportScreen> {
     try {
       if (!mounted) return;
       await _precacheImages();
+      await ChromaKeyer.load(); // CHROMA (Agent M): green screen shader ready before frame 1
       await MediaBridge.encoderStart(outPath: tmp, width: w, height: h, fps: fps, bitrate: bitrate);
       for (int i = 0; i < _frames; i++) {
         if (_cancel) throw _Cancelled();
@@ -179,6 +181,11 @@ class _ExportScreenState extends State<ExportScreen> {
           _frame = i;
         });
         await WidgetsBinding.instance.endOfFrame;
+        // CHROMA (Agent M): CPU-fallback keying finishes → paint it.
+        if (ChromaKeyer.busy) {
+          await ChromaKeyer.settle();
+          await WidgetsBinding.instance.endOfFrame;
+        }
         for (final img in old.values) {
           img.dispose();
         }
