@@ -73,3 +73,13 @@ Same skeleton (presenter ~40 %, returns every 10–20 s; B-roll 3–8 s; element
 - **Symbol shots**: hand holding a money bag with an animated price tag ($83,455 → $250,000), burning half-face for "EXTREMISM", grunge stamped words ("SECONDARY EDUCATION", "RESIGN").
 - **Logo nodes** linked by dashed lines (Oman Air → GCAA → flydubai) with photo bubbles.
 - A-roll overlays: dated timeline ruler (2013 / 2014 / 30 SEP 2026), "Join us on" WhatsApp / Instagram, "Click the LINK in Description" ticker.
+
+## Motion timings (non-AI-video parts, measured at 4–5 fps) — build targets
+- **No fades, no black**: every change of picture is a camera move — whip pan / fast push / pull-out with motion blur, 0.2–0.5 s.
+- **Map state changes** (Balochistan 08): country fills wipe in ~0.5 s, borders draw, quote card pops (0.25 s, small→full), red callout line grows 0.5 s then "1871" badge, then a 0.25 s blurred zoom-out to a wider map. Camera drifts the whole time.
+- **Map flyover** (14 @30.5): 0.2 s whip from a document; ~2 s accelerating push + tilt from flat to ~50° oblique; big standing labels; pins drop one by one ~0.4 s apart with a bounce, names type on.
+- **Timeline ruler** (08 @9.6): fades up at the bottom over a dark gradient, the decade scale slides ~1.2 s to the era, a dot lands, "8 DEC 1876" pops above in red.
+- **Source montage** (18 @6.5): 10–12 article screenshots in 4 s (0.2–0.4 s each), each pushing in, white-vignette blurred edges, the same keyword highlighted yellow in every one.
+- **Torn note on map** (10 @9): crumpled paper flies in rotating and unfolds 0.75 s, settles; highlight sweeps line by line (~0.5 s / line); the next note unfolds elsewhere while the first leaves; a small name tag pops.
+- **Newspaper** (14 @23.5): the previous frame turns B&W and pulls back to become the photo on a front page (0.5 s), headline bar slides in, fast push into the column, highlight sweeps 3–4 lines over ~1.5 s, blurred whip to the next document, red underline draws under the key line.
+- Every shot: slow drift (+3–5 % scale), something new each 1–2 s, enters with fast ease-out (0.25–0.5 s) and a slight overshoot.
