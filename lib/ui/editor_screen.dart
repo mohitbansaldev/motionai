@@ -397,20 +397,9 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
   }
 
   /// Files dropped from Explorer: import and place them at the playhead.
-  Future<void> _onDrop(DropDetails d) async {
+  Future<void> _onDrop(DropDoneDetails d) async {
     setState(() => _dropHover = false);
-    final paths = <String>[];
-    for (final item in d.items.whereType<DropFileItem>()) {
-      final local = item.localPath;
-      if (local != null && local.isNotEmpty) {
-        paths.add(local);
-      } else {
-        // Virtual file (e.g. from a zip or phone): copy its bytes first.
-        final tmp = '${Directory.systemTemp.path}${Platform.pathSeparator}drop_${DateTime.now().microsecondsSinceEpoch}_${item.name}';
-        await File(tmp).writeAsBytes(await item.file.readAsBytes());
-        paths.add(tmp);
-      }
-    }
+    final paths = [for (final f in d.files) if (f.path.isNotEmpty) f.path];
     if (paths.isEmpty) return;
     setState(() => _importing = true);
     try {
@@ -655,10 +644,9 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
   Widget _dropLayer(Widget child) {
     if (!_desktopOs) return child;
     return DropTarget(
-      acceptedKinds: const {DropItemKind.file},
-      onEnter: (_) => setState(() => _dropHover = true),
-      onLeave: () => setState(() => _dropHover = false),
-      onDrop: _onDrop,
+      onDragEntered: (_) => setState(() => _dropHover = true),
+      onDragExited: (_) => setState(() => _dropHover = false),
+      onDragDone: _onDrop,
       child: Stack(children: [
         Positioned.fill(child: child),
         if (_dropHover || _importing)
