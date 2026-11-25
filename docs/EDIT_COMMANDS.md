@@ -195,3 +195,16 @@ near ≈ 0.63). The flat photo layer is hidden, then `camera_shot` adds the move
   {"op": "camera_move", "preset": "shake", "start": 4.5, "duration": 0.6, "amount": 8}
 ]
 ```
+
+## Realism (V2-D): photo-real 2.5D from flat cut-outs
+
+| op | fields |
+|---|---|
+| `make_3d` (extras) | `haze`? 0–100 (default 25; 0 = off): far/sky layers get a `haze` effect toward the sky colour; `contact_shadows`? (default true): near/mid image cut-outs whose bottom is in the lower frame get a `contact_shadow` (feet measured from the alpha). Adjustment layers are never put in depth. |
+| `match_colour` (`match_color`) | `layer` (cut-out), `to`? plate layer id or `"below"` (default), `amount`? 0–100, `time`?, `light_wrap`? true. Sets a `grade` effect `<layer>_match` (exposure, white balance, saturation, contrast, black level) from pixel statistics of the cut-out and of the plate region behind it. Image/solid layers. |
+| `camera_shake` | `start`?, `duration`? (impact 0.8 s, else 2 s), `amount`? 0–100 (40), `style`: `handheld` \| `walk` \| `impact` \| `earthquake`. Smooth deterministic noise on the camera (3D: 70% rotation, 30% movement; 2D: pan/rotation) with an eased envelope. Camera props `shake3d` (px) / `shake3dStyle`. |
+| `set_dof` | `focus`: `"target"` (camera point of interest — follows camera_shot targets) \| layer id (3D) \| number (px) \| `"off"`, `aperture`? (default 20). Same as `set_comp {dof: {...}}` / `{dof: false}`. Comp field `dofFocus`. |
+| `apply_style` (extras) | `doc_golden_hour`, `doc_cold_night`, `doc_archive_sepia`, `doc_teal_orange`, `doc_noir_contrast`, `doc_desaturated_war` → adjustment layer `look`; `film_look` → adjustment layer `film_look` above it. |
+| `add_layer` / `update_layer` | `adjustment`: true on a solid/null layer → its effects (and masks, opacity as a mix) apply to everything below it. |
+
+Effects: `contact_shadow` {opacity 55, softness, length, angle (light direction °, 0 right / 90 overhead / 180 left), color, cast 0–100 (skewed fading silhouette), x0/x1/bottom (feet, % of the box)}, `grade` {lift [r,g,b] %, gain [r,g,b] %, saturation, contrast, amount}, `haze` {amount, color}, `light_wrap` {amount, width, color}, `bloom` {threshold, amount, radius}, `halation` {amount, radius, threshold}, `chromatic_aberration` {amount}, `lens_distortion` {amount −100..100, + barrel}, `gate_weave` {amount, flicker}.

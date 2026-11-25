@@ -63,6 +63,12 @@ class Composition {
   /// Motion blur on fast-moving layers and camera moves (see Evaluator).
   bool motionBlur;
 
+  // V2-D >>>
+  /// Depth of field focus follows: "target" (the 3D camera's point of
+  /// interest) or a layer id; null = the camera's own focus distance.
+  String? dofFocus;
+  // <<< V2-D
+
   Composition({
     required this.id,
     required this.name,
@@ -112,7 +118,7 @@ class Composition {
         layers: layers.map((l) => l.copy()).toList(),
         camera: camera.copy(),
         motionBlur: motionBlur,
-      );
+      )..dofFocus = dofFocus; // V2-D
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -125,6 +131,7 @@ class Composition {
         'layers': layers.map((l) => l.toJson()).toList(),
         'camera': camera.toJson(),
         if (motionBlur) 'motionBlur': true,
+        if (dofFocus != null) 'dofFocus': dofFocus, // V2-D
       };
 
   static Composition fromJson(Map<String, dynamic> j) => Composition(
@@ -138,7 +145,7 @@ class Composition {
         layers: (j['layers'] as List? ?? []).map((e) => Layer.fromJson(e as Map<String, dynamic>)).toList(),
         camera: j['camera'] == null ? null : CameraRig.fromJson(j['camera'] as Map<String, dynamic>),
         motionBlur: j['motionBlur'] as bool? ?? false,
-      );
+      )..dofFocus = j['dofFocus'] as String?; // V2-D
 }
 
 class Project {

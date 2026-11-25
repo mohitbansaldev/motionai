@@ -190,6 +190,55 @@ class EffectsCatalog {
       ParamDef('back', 'Back of page', [238, 230, 214], 0, 255, color: true),
     ], category: 'reveal'),
     // <<< V2-C
+    // V2-D >>> realism (lib/ui/preview/fx/realism_painters.dart, lib/core/presets/realism.dart)
+    EffectDef('contact_shadow', 'Contact Shadow', [
+      ParamDef('opacity', 'Opacity', [55], 0, 100),
+      ParamDef('softness', 'Softness', [50], 0, 100),
+      ParamDef('length', 'Length', [50], 0, 100),
+      ParamDef('angle', 'Light direction °', [120], 0, 360),
+      ParamDef('color', 'Color', [12, 10, 8], 0, 255, color: true),
+      ParamDef('cast', 'Cast shadow', [0], 0, 100),
+      ParamDef('x0', 'Feet left %', [25], 0, 100),
+      ParamDef('x1', 'Feet right %', [75], 0, 100),
+      ParamDef('bottom', 'Feet line %', [100], 0, 100),
+    ], category: 'stylize'),
+    EffectDef('grade', 'Colour Grade (lift/gain)', [
+      ParamDef('lift', 'Lift (R,G,B) %', [0, 0, 0], -50, 50),
+      ParamDef('gain', 'Gain (R,G,B) %', [100, 100, 100], 0, 200),
+      ParamDef('saturation', 'Saturation', [0], -100, 100),
+      ParamDef('contrast', 'Contrast', [0], -100, 100),
+      ParamDef('amount', 'Amount', [100], 0, 100),
+    ], category: 'color'),
+    EffectDef('haze', 'Atmospheric Haze', [
+      ParamDef('amount', 'Amount', [25], 0, 100),
+      ParamDef('color', 'Haze color', [196, 210, 224], 0, 255, color: true),
+    ], category: 'atmosphere'),
+    EffectDef('light_wrap', 'Light Wrap', [
+      ParamDef('amount', 'Amount', [40], 0, 100),
+      ParamDef('width', 'Width', [12], 1, 80),
+      ParamDef('color', 'Light color', [255, 236, 210], 0, 255, color: true),
+    ], category: 'color'),
+    EffectDef('bloom', 'Bloom', [
+      ParamDef('threshold', 'Threshold', [70], 0, 100),
+      ParamDef('amount', 'Amount', [40], 0, 100),
+      ParamDef('radius', 'Radius', [30], 1, 120),
+    ], category: 'stylize'),
+    EffectDef('halation', 'Film Halation', [
+      ParamDef('amount', 'Amount', [35], 0, 100),
+      ParamDef('radius', 'Radius', [18], 1, 80),
+      ParamDef('threshold', 'Threshold', [72], 0, 100),
+    ], category: 'stylize'),
+    EffectDef('chromatic_aberration', 'Chromatic Aberration', [
+      ParamDef('amount', 'Amount', [25], 0, 100),
+    ], category: 'distort'),
+    EffectDef('lens_distortion', 'Lens Distortion', [
+      ParamDef('amount', 'Amount (+ barrel / − pincushion)', [20], -100, 100),
+    ], category: 'distort'),
+    EffectDef('gate_weave', 'Film Gate Weave', [
+      ParamDef('amount', 'Weave', [30], 0, 100),
+      ParamDef('flicker', 'Flicker', [25], 0, 100),
+    ], category: 'atmosphere'),
+    // <<< V2-D
   ];
 
   static const categories = ['keying', 'color', 'blur', 'stylize', 'distort', 'atmosphere', 'reveal']; // CHROMA (Agent M): + keying

@@ -62,6 +62,19 @@ class CompositionCanvas extends StatelessWidget {
     ];
     for (int i = 0; i < list.length; i++) {
       final item = list[i];
+      // V2-D >>> adjustment layer: its effects act on everything painted so far
+      if (item.layer.adjustment) {
+        if (children.isNotEmpty) {
+          final below = Stack(clipBehavior: Clip.none, children: List.of(children));
+          children
+            ..clear()
+            ..add(Positioned.fill(
+                key: ValueKey('${item.layer.id}#adjust'),
+                child: _layerView(item, null).buildAdjustment(below, comp.width, comp.height)));
+        }
+        continue;
+      }
+      // <<< V2-D
       final matte = item.matte;
       if (matte == null) {
         children.add(_view(item, ValueKey(item.layer.id)));
@@ -101,7 +114,9 @@ class CompositionCanvas extends StatelessWidget {
     return draft ? RepaintBoundary(child: canvas) : canvas;
   }
 
-  Widget _view(RenderItem item, Key? key, {bool asMatte = false}) => LayerView(
+  Widget _view(RenderItem item, Key? key, {bool asMatte = false}) => _layerView(item, key, asMatte: asMatte); // V2-D
+
+  LayerView _layerView(RenderItem item, Key? key, {bool asMatte = false}) => LayerView(
         key: key,
         item: item,
         project: project,

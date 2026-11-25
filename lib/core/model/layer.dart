@@ -390,6 +390,12 @@ class Layer {
   bool loop;
   // <<< PRECOMP (Agent L)
 
+  // V2-D >>>
+  /// Adjustment layer: its effects (and masks / opacity as a mix) apply to
+  /// everything below it in the comp instead of to its own pixels.
+  bool adjustment = false;
+  // <<< V2-D
+
   MotionPath? _path;
 
   /// Motion path (see [MotionPath]); setting one adds the `path_progress` prop.
@@ -542,7 +548,7 @@ class Layer {
         path: _path?.copy(),
         compId: compId, // PRECOMP (Agent L)
         loop: loop, // PRECOMP (Agent L)
-      );
+      )..adjustment = adjustment; // V2-D
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -570,6 +576,7 @@ class Layer {
         if (_path != null) 'path': _path!.toJson(),
         if (compId != null) 'compId': compId, // PRECOMP (Agent L)
         if (loop) 'loop': true, // PRECOMP (Agent L)
+        if (adjustment) 'adjustment': true, // V2-D
       };
 
   static Layer fromJson(Map<String, dynamic> j) => Layer(
@@ -599,5 +606,5 @@ class Layer {
         path: j['path'] is Map ? MotionPath.fromJson(Map<String, dynamic>.from(j['path'] as Map)) : null,
         compId: j['compId'] as String?, // PRECOMP (Agent L)
         loop: j['loop'] as bool? ?? false, // PRECOMP (Agent L)
-      );
+      )..adjustment = j['adjustment'] == true; // V2-D
 }

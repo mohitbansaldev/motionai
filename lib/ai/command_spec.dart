@@ -184,4 +184,17 @@ PHOTO → 3D (2.5D parallax from ONE flat photo, like After Effects documentary 
 - depth_map {media, model?} — background job; result.media = a new grayscale photo (near = white) for reference/mattes.
 - Use photo_to_3d for landscapes, streets, forts, rooms, archive photos that need life; then add titles in front as 2D layers. For a photo that already has cut-outs prefer make_3d.
 // ---- end V2-E ----
+
+
+// ---- V2-D REALISM: make flat cut-outs look photographed ----
+REALISM (2.5D scenes from cut-outs + background plates):
+- make_3d {..., haze?: 0-100 (default 25, 0 = off), contact_shadows?: true} — far/sky layers get atmospheric haze toward the sky colour; near/mid image cut-outs standing in the lower frame get a contact_shadow under their feet automatically.
+- match_colour {layer: cut-out id, to?: plate layer id | "below" (default), amount?: 0-100, light_wrap?: true} — matches the cut-out's exposure, white balance, saturation and contrast to the plate region behind it (adds a "grade" effect). Run it for every pasted person/building/prop.
+- camera_shake {start, duration?, amount?: 0-100 (40), style: handheld|walk|impact|earthquake} — smooth camera shake (impact: short hit; works with 3D and 2D cameras).
+- set_dof {focus: "target" (follows the camera_shot target) | layer id | px | "off", aperture? (default 20; 10 subtle, 40 strong)} — depth of field (also set_comp {dof: {focus, aperture}}).
+- Adjustment layer: add_layer {type: "solid", adjustment: true, color: "#00000000"} — its effects apply to everything BELOW it (global grade, vignette, letterbox, bloom, lens effects). Opacity mixes it.
+- effects: contact_shadow{opacity 55, softness, length, angle (light direction: 0 right, 90 overhead, 180 left), color, cast 0-100 (long cast shadow)} grade{lift [r,g,b] %, gain [r,g,b] % (100 = none), saturation, contrast, amount} haze{amount, color} light_wrap{amount, width, color} bloom{threshold, amount, radius} halation{amount, radius} chromatic_aberration{amount} lens_distortion{amount -100..100} gate_weave{amount, flicker}.
+- apply_style looks (put on an adjustment layer over the whole scene): doc_golden_hour, doc_cold_night, doc_archive_sepia, doc_teal_orange, doc_noir_contrast, doc_desaturated_war; film_look (grain + gate weave + halation + vignette + flicker, can be combined with a doc_* look).
+- Photo-real recipe: make_3d → match_colour on each cut-out → camera_shot → set_dof {focus:"target"} → a doc_* look (+ film_look) → camera_shake handheld for a filmed feel.
+// ---- end V2-D REALISM ----
 ''';

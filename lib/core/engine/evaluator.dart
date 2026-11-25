@@ -5,6 +5,7 @@ import 'package:vector_math/vector_math_64.dart';
 import '../model/camera.dart';
 import '../model/layer.dart';
 import '../model/project.dart';
+import '../presets/realism.dart'; // V2-D
 
 const double _deg = math.pi / 180;
 /// Layers closer to the camera than this (px) are culled: a layer almost
@@ -194,7 +195,7 @@ class Evaluator {
     // layers[0] is the top layer, so paint from the end.
     for (int i = comp.layers.length - 1; i >= 0; i--) {
       final layer = comp.layers[i];
-      if (!layer.isActiveAt(t) || layer.type == LayerType.nullObject || layer.type == LayerType.audio) continue;
+      if (!layer.isActiveAt(t) || (layer.type == LayerType.nullObject && !layer.adjustment) || layer.type == LayerType.audio) continue; // V2-D: adjustment nulls
       if (matteIds != null && matteIds.contains(layer.id)) continue;
       var item = _item(f, layer);
       if (item == null) continue;
@@ -276,9 +277,14 @@ class Evaluator {
       if (f.comp.camera.mode == CameraMode.threeD && f.cam.aperture > 0) {
         blur = f.cam.aperture * 0.4 * (depth - f.cam.focus).abs() / math.max(depth, 1.0);
       }
+      // V2-D >>> w = 1 at the layer centre (same projection): compositor
+      // blurs inside the perspective transform are sized correctly.
+      final mat = f.camProj.multiplied(world);
+      Realism.normalizeW(mat, depth);
+      // <<< V2-D
       return RenderItem(
         layer: layer,
-        matrix: f.camProj.multiplied(world),
+        matrix: mat,
         opacity: opacity,
         depth: depth,
         dofBlur: blur,
@@ -401,6 +407,14 @@ class Evaluator {
       roll = rig.prop(CamProps.roll).scalarAt(t);
       focus = rig.prop(CamProps.focus).scalarAt(t);
       aperture = math.max(0.0, rig.prop(CamProps.aperture).scalarAt(t));
+      // V2-D >>> camera_shake
+      final sh = Realism.shake3D(rig, t, pos, poi, zoom);
+      if (sh != null) {
+        pos = sh.$1;
+        poi = sh.$2;
+        roll += sh.$3;
+      }
+      // <<< V2-D
     } else {
       zoom = defaultZoomFor(w);
       pos = Vector3(w / 2, h / 2, -zoom);
@@ -416,6 +430,7 @@ class Evaluator {
     if (r.length < 1e-6) r = Vector3(1, 0, 0);
     r.normalize();
     var d = f.cross(r)..normalize();
+    if (rig.mode == CameraMode.threeD) focus = Realism.focusFollow(comp, t, pos, poi, f) ?? focus; // V2-D: dof follow
     if (roll != 0) {
       final c = math.cos(roll * _deg), s = math.sin(roll * _deg);
       final r2 = r * c + d * s;
@@ -473,6 +488,14 @@ class Evaluator {
       sy = amp * shakeNoise(t * f, 3.7);
       rot += amp * 0.02 * shakeNoise(t * f, 7.1);
     }
+    // V2-D >>> camera_shake
+    final sh = Realism.shake2D(rig, t);
+    if (sh != null) {
+      sx += sh.$1;
+      sy += sh.$2;
+      rot += sh.$3;
+    }
+    // <<< V2-D
     return Matrix4.translationValues(cx, cy, 0)
       ..multiply(Matrix4.rotationZ(-rot * _deg))
       ..multiply(Matrix4.diagonal3Values(z, z, 1))
