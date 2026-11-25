@@ -8,6 +8,7 @@ import '../../core/model/layer.dart';
 import '../../state/editor_controller.dart';
 import '../precomp_bar.dart'; // PRECOMP (Agent L)
 import 'composition_canvas.dart';
+import 'preview_quality.dart'; // PERF (Agent O)
 
 /// Live preview of the composition. Tap a layer to select it, drag to move
 /// it, pinch with two fingers to scale and rotate it.
@@ -41,6 +42,7 @@ class _CompositionViewState extends State<CompositionView> {
     return ListenableBuilder(listenable: c, builder: (context, _) => Stack(fit: StackFit.passthrough, children: [
       _view(),
       if (c.inPrecomp) Positioned(left: 8, top: 8, child: PrecompBreadcrumbs(c: c)),
+      const Positioned(right: 8, bottom: 8, child: PreviewHud()), // PERF (Agent O): quality + FPS meter
     ]));
   }
 
@@ -59,10 +61,10 @@ class _CompositionViewState extends State<CompositionView> {
             onScaleUpdate: _onScaleUpdate,
             onScaleEnd: (_) => _onScaleEnd(),
             child: AnimatedBuilder(
-              animation: Listenable.merge([c, c.timeNotifier, c.videos]),
+              animation: Listenable.merge([c, c.timeNotifier, c.videos, PreviewQuality.instance]), // PERF (Agent O): + quality
               builder: (context, _) {
                 final t = c.time;
-                _items = Evaluator.evaluate(comp, t);
+                _items = Evaluator.evaluate(comp, t, velocity: !c.playing); // PERF (Agent O): motion blur is not drawn while playing
                 final selected = _items.where((i) => i.layer.id == c.selectedLayerId).firstOrNull;
                 return FittedBox(
                   fit: BoxFit.contain,
@@ -74,6 +76,8 @@ class _CompositionViewState extends State<CompositionView> {
                     items: _items,
                     draft: true,
                     playing: c.playing,
+                    // PERF (Agent O): on-screen pixels per comp pixel → cached 3D layers, photo decode size
+                    previewScale: _viewScale * (MediaQuery.maybeDevicePixelRatioOf(context) ?? 1) * PreviewQuality.instance.factor(playing: c.playing),
                     overlay: selected != null && !c.playing
                         ? CustomPaint(painter: _SelectionPainter(selected, 1 / _viewScale))
                         : null,
