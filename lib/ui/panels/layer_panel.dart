@@ -5,6 +5,7 @@ import '../../core/presets/motion_presets.dart';
 import '../../state/editor_controller.dart';
 import '../ai_tools.dart';
 import '../common.dart';
+import '../fonts/font_picker.dart'; // FONTS (Agent I)
 import 'prop_row.dart';
 
 /// Transform, text and layer options for the selected layer.
@@ -341,6 +342,8 @@ class _TextSectionState extends State<_TextSection> {
         decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
         onChanged: (s) => c.tryRun({'op': 'update_layer', 'layer': l.id, 'text': s}),
       ),
+      // FONTS (Agent I): font picker + text style presets
+      FontPanelRow(layerId: l.id, fontFamily: t.fontFamily, text: t.text, run: (cmd) => c.tryRun(cmd)),
       Row(children: [
         const SizedBox(width: 84, child: Text('Size', style: TextStyle(fontSize: 12.5, color: Colors.white70))),
         Expanded(

@@ -29,3 +29,119 @@ flutter:
   uses-material-design: true
   assets:
     - assets/world_countries.json
+    # FONTS (Agent I): font licences (shown from the font picker)
+    - assets/fonts/anton/OFL.txt
+    - assets/fonts/bebasneue/OFL.txt
+    - assets/fonts/oswald/OFL.txt
+    - assets/fonts/teko/OFL.txt
+    - assets/fonts/barlowcondensed/OFL.txt
+    - assets/fonts/playfairdisplay/OFL.txt
+    - assets/fonts/dmserifdisplay/OFL.txt
+    - assets/fonts/cinzel/OFL.txt
+    - assets/fonts/greatvibes/OFL.txt
+    - assets/fonts/dancingscript/OFL.txt
+    - assets/fonts/permanentmarker/LICENSE.txt
+    - assets/fonts/specialelite/LICENSE.txt
+    - assets/fonts/robotomono/OFL.txt
+    - assets/fonts/inter/OFL.txt
+    - assets/fonts/montserrat/OFL.txt
+    - assets/fonts/poppins/OFL.txt
+    - assets/fonts/notosansdevanagari/OFL.txt
+    - assets/fonts/hind/OFL.txt
+    - assets/fonts/mukta/OFL.txt
+    - assets/fonts/baloo2/OFL.txt
+    - assets/fonts/rozhaone/OFL.txt
+    - assets/fonts/yatraone/OFL.txt
+    - assets/fonts/kalam/OFL.txt
+  # FONTS (Agent I): bundled OFL/Apache fonts from github.com/google/fonts (see lib/fonts/font_catalog.dart)
+  fonts:
+    - family: Anton
+      fonts:
+        - asset: assets/fonts/anton/Anton-Regular.ttf
+    - family: Bebas Neue
+      fonts:
+        - asset: assets/fonts/bebasneue/BebasNeue-Regular.ttf
+    - family: Oswald
+      fonts:
+        - asset: assets/fonts/oswald/Oswald-VariableFont_wght.ttf
+    - family: Teko
+      fonts:
+        - asset: assets/fonts/teko/Teko-VariableFont_wght.ttf
+    - family: Barlow Condensed
+      fonts:
+        - asset: assets/fonts/barlowcondensed/BarlowCondensed-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/barlowcondensed/BarlowCondensed-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/barlowcondensed/BarlowCondensed-Black.ttf
+          weight: 900
+    - family: Playfair Display
+      fonts:
+        - asset: assets/fonts/playfairdisplay/PlayfairDisplay-VariableFont_wght.ttf
+    - family: DM Serif Display
+      fonts:
+        - asset: assets/fonts/dmserifdisplay/DMSerifDisplay-Regular.ttf
+    - family: Cinzel
+      fonts:
+        - asset: assets/fonts/cinzel/Cinzel-VariableFont_wght.ttf
+    - family: Great Vibes
+      fonts:
+        - asset: assets/fonts/greatvibes/GreatVibes-Regular.ttf
+    - family: Dancing Script
+      fonts:
+        - asset: assets/fonts/dancingscript/DancingScript-VariableFont_wght.ttf
+    - family: Permanent Marker
+      fonts:
+        - asset: assets/fonts/permanentmarker/PermanentMarker-Regular.ttf
+    - family: Special Elite
+      fonts:
+        - asset: assets/fonts/specialelite/SpecialElite-Regular.ttf
+    - family: Roboto Mono
+      fonts:
+        - asset: assets/fonts/robotomono/RobotoMono-VariableFont_wght.ttf
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/inter/Inter-VariableFont_opsz_wght.ttf
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/montserrat/Montserrat-VariableFont_wght.ttf
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/poppins/Poppins-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/poppins/Poppins-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/poppins/Poppins-Black.ttf
+          weight: 900
+    - family: Noto Sans Devanagari
+      fonts:
+        - asset: assets/fonts/notosansdevanagari/NotoSansDevanagari-VariableFont_wdth_wght.ttf
+    - family: Hind
+      fonts:
+        - asset: assets/fonts/hind/Hind-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/hind/Hind-Bold.ttf
+          weight: 700
+    - family: Mukta
+      fonts:
+        - asset: assets/fonts/mukta/Mukta-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/mukta/Mukta-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/mukta/Mukta-ExtraBold.ttf
+          weight: 800
+    - family: Baloo 2
+      fonts:
+        - asset: assets/fonts/baloo2/Baloo2-VariableFont_wght.ttf
+    - family: Rozha One
+      fonts:
+        - asset: assets/fonts/rozhaone/RozhaOne-Regular.ttf
+    - family: Yatra One
+      fonts:
+        - asset: assets/fonts/yatraone/YatraOne-Regular.ttf
+    - family: Kalam
+      fonts:
+        - asset: assets/fonts/kalam/Kalam-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/kalam/Kalam-Bold.ttf
+          weight: 700

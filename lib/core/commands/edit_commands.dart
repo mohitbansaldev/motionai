@@ -11,6 +11,7 @@ import '../presets/camera_presets.dart';
 import '../presets/components.dart';
 import '../presets/motion_presets.dart';
 import 'fx_commands.dart'; // FX (Agent B)
+import '../../fonts/font_commands.dart'; // FONTS (Agent I)
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -605,6 +606,7 @@ class EditCommands {
   }
 
   static void _applyText(Layer l, Map<String, dynamic> c) {
+    c = FontCommands.expand(l, c); // FONTS (Agent I): `font` (validated) + `text_style` presets
     final t = l.text ??= TextData();
     final v = c['text'];
     if (v is String) t.text = v;
