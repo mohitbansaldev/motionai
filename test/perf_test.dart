@@ -16,6 +16,7 @@ import 'package:motionai/core/model/project.dart';
 import 'package:motionai/services/project_storage.dart';
 import 'package:motionai/state/editor_controller.dart';
 import 'package:motionai/ui/preview/composition_view.dart';
+import 'package:motionai/ui/preview/fx/layer_cache.dart';
 
 class _NoSave extends ProjectStorage {
   @override
@@ -199,5 +200,10 @@ void main() {
     testWidgets('editor preview while playing', (tester) => previewBench(tester, play: true));
     testWidgets('editor preview while playing a make_3d + push_through shot', (tester) => previewBench(tester, play: true, viaMake3D: true));
     testWidgets('editor preview while scrubbing with depth of field', (tester) => previewBench(tester, play: false, aperture: 30));
+    testWidgets('EXPERIMENT scrub dof no reblur', (tester) async {
+      RenderLayerRaster.maxReblursPerFrame = 0;
+      await previewBench(tester, play: false, aperture: 30);
+      RenderLayerRaster.maxReblursPerFrame = 4;
+    });
   });
 }
