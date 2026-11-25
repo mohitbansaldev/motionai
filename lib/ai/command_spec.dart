@@ -19,6 +19,7 @@ CONVENTIONS
 
 COMMANDS
 add_layer {type: video|image|text|solid|null|audio|shape, id?, name?, media (for video/image/audio), start?, duration?, source_in?, index?, is3d?, fit?: contain|cover|none, position?, scale?, text?, font_size?, font_weight?, text_color?, align?, color?, width?, height?, animator?, anim_duration?, box_color?, highlight_color?, shadow?}
+  timing (V2-B): no "start" = 0 (NOT the playhead); no start AND no duration = the whole comp (inside a shot / precomp: the whole shot). With only "start", stills last 5 s. Video/audio/comp layers last their source. add_component: no start = 0; set components (map, room, board, tv_frame, glass_screen, map_fly, route_follow, silhouette_crowd, poster, plaque, article) without start/duration span the whole comp, pop-ups default to 5 s.
 remove_layer {layer} | duplicate_layer {layer, new_id?} | reorder_layer {layer, index}
 update_layer {layer, + any of: name, start (moves keyframes too), duration, source_in, speed, is3d, visible, locked, parent (id or null), color, text, font_size, font_weight, text_color, align, width, height, animator, anim_duration, box_color ("none" to remove), highlight_color, shadow, outline, extrude, matte, path (see RENDER EXTRAS)}
 trim_layer {layer, in?, out?} | split_layer {layer, time, new_id?}
@@ -147,4 +148,21 @@ MANY LAYERS AT ONCE (CURRENT PROJECT "selected_layers" = what the user selected;
 - paste_layers {layers: [layer JSON], media?, comps?, time?, index?} (the editor's copy/paste format) · paste_effects {layer, effects: [effect JSON], replace?} · paste_animation {layer, props, from_start?}
 - precompose {layers: [ids]} groups the selection into one comp layer.
 // ---- end BULK ----
+
+// ---- V2-B SHOTS & SEQUENCES ----
+SHOTS (one command = a whole parallax documentary shot; prefer these over hand-built make_3d + camera_shot + precomps):
+- add_shot {id?, name?, start? (default: end of the last shot in main), duration? (6), style?, plate: media id (background, cover-fit; omit = dark backdrop),
+    layers: [{media, role?: sky|far|mid|near|front|ground, id?, name?, x? (0..1 of width, centre), ground? (0..1 of height where its BOTTOM stands; default = on the floor), height? (0..1 of frame height), flip?, hero?: true, effects?: ["sway" | {effect, params}]}],
+    floor? (0.55-1.2: ground line of the mid band, default 0.88), ground?: "auto" (contact shadows + soft floor plane, default) | "shadows" | "none" | floor-texture media id, ground_color?,
+    camera?: [{move: drift|fly_to|push_through|pass_by|reveal|pull_back|orbit, target?: layer id | media id | role | "hero", start, duration (seconds inside the shot), intensity 0-1, ease?, direction?}] | "none" (default: style camera, else reveal → fly_to the hero),
+    atmosphere?: "dust" | ["dust","haze"] | {dust: 40, haze: 30} (dust, rain, snow, smoke, fog, haze, light_rays, birds, leaves, bokeh, embers, clouds, stars),
+    look?: cinematic_doc|shorts_punch|retro_film|noir|warm_travel|clean_minimal|none (graded once on the shot), title?: "text" | {text, subtitle?, font?, text_style?, at? (s into the shot), position?: center|top|bottom|[x,y]}, caption?: "text" | {text, at?, duration?, position?: bottom_left|bottom|top_left|top, font?},
+    keep_far_visible? (default true: far cut-outs grow/lift so mid ones never swallow them)}
+  Builds a precomp (own 3D camera) with the plate + cut-outs auto-sized by role (front ≤ 45% of frame height, people at mid ≈ 62%, far ≈ 27%), feet on one floor so nothing floats, depth bands, camera moves that never touch a layer or show an empty edge, then ONE comp layer in main. The shot id = precomp id = comp layer id in main (use in_comp: <shot id> to edit inside). Hero = layer with hero:true, else the biggest mid one.
+  styles: opening_reveal (reveal from behind the foreground + drift, haze, cinematic_doc), character_focus (drift → fly_to hero), crowd_pass (pass_by, warm_travel), slow_push_detail (one slow fly_to, light rays), crash_pull_back (tight → crash back to wide, noir). Explicit keys override the style.
+- sequence {shots: [add_shot specs...], start?, transition?: type (all gaps), transition_duration?, transitions?: [{between: [i, i+1], type, duration? (0.6), overlap?: true, ...params}]} — shots back to back; a transition overlaps the next shot by its duration (type "cut" = none). Types: documentary transitions when installed, else fade, flash, ink, smoke, iris, whip, blur, glitch_flash, zoom_in… (animate_in on the incoming shot).
+- update_shot {shot, ...any add_shot field, ripple?} — rebuilds the shot with those fields changed (same id; ripple: true moves later layers when the duration changes).
+- remove_shot {shot, ripple?: true (closes the gap)}.
+CURRENT PROJECT "shots" lists them (id, start, end, style, layers by role, hero, camera).
+// ---- end V2-B ----
 ''';

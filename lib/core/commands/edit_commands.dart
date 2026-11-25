@@ -17,6 +17,7 @@ import '../../fonts/font_commands.dart'; // FONTS (Agent I)
 import '../engine/precomp.dart'; // PRECOMP (Agent L)
 import 'precomp_commands.dart'; // PRECOMP (Agent L)
 import 'bulk_commands.dart'; // BULK (Agent N)
+import 'shot_commands.dart'; // V2-B
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -60,6 +61,11 @@ class ProjectSnapshot {
     p.comps
       ..clear()
       ..addAll(r.comps);
+    // V2-B >>> shot specs
+    p.seqShots
+      ..clear()
+      ..addAll(r.seqShots);
+    // <<< V2-B
     if (p.editCompId != null && p.comps[p.editCompId] == null) p.editCompId = null;
     Precomp.touch();
   }
@@ -85,6 +91,7 @@ class EditCommands {
     ...SoundCommands.ops, // Sound (Agent K): add_sfx, beat_sync, auto_mix
     ...PrecompCommands.ops, // PRECOMP (Agent L)
     ...BulkCommands.ops, // BULK (Agent N): for_layers, select, align, group_layers, paste_layers…
+    ...ShotCommands.ops, // V2-B: add_shot, update_shot, remove_shot, sequence
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -153,6 +160,15 @@ class EditCommands {
         BulkCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
         break;
       // <<< BULK (Agent N)
+
+      // V2-B >>> shots & sequences → shot_commands.dart
+      case 'add_shot':
+      case 'update_shot':
+      case 'remove_shot':
+      case 'sequence':
+        ShotCommands.run(project, c, r, (c2) => _run(project, c2, now, r));
+        break;
+      // <<< V2-B
 
       case 'add_layer':
         _addLayer(project, c, now, r);
@@ -400,7 +416,7 @@ class EditCommands {
       case 'add_component':
         final List<Map<String, dynamic>> cmds;
         try {
-          cmds = Components.build(project, c, now);
+          cmds = Components.build(project, ShotCommands.componentDefaults(comp, c), now); // V2-B: start 0, sets span the comp
         } on ArgumentError catch (e) {
           throw CommandError('component ${c['type']}: ${e.message}');
         }
@@ -527,7 +543,9 @@ class EditCommands {
     }
     final id = (c['id'] as String?) ?? Ids.next('L');
     _checkNewId(comp, id);
-    final start = _optNum(c, 'start') ?? now;
+    // V2-B >>> no "start" = 0 (not the playhead); see the duration default below.
+    final start = _optNum(c, 'start') ?? 0;
+    // <<< V2-B
 
     MediaAsset? media;
     if (type == LayerType.video || type == LayerType.image || type == LayerType.audio) {
@@ -582,7 +600,9 @@ class EditCommands {
     } else if (child != null) {
       duration = math.max(comp.frameDuration, child.duration - sourceIn); // PRECOMP (Agent L)
     } else {
-      duration = 5;
+      // V2-B >>> no start and no duration = the whole comp (or the shot span inside a shot precomp)
+      duration = c['start'] == null ? math.max(comp.frameDuration, comp.duration - start) : 5;
+      // <<< V2-B
     }
 
     final layer = Layer(

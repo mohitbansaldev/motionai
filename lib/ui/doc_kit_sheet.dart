@@ -219,12 +219,14 @@ class _DocKitSheetState extends State<DocKitSheet> {
         'points': [[w * 0.3, h * 0.55], [w * 0.5, h * 0.42], [w * 0.7, h * 0.5]],
         'smooth': true, 'closed': false, 'fill': 'none', 'stroke': '#FFFFFF', 'stroke_width': w * 0.004,
         'arrow_end': kind == 'arrow',
+        'start': widget.c.time, // V2-B: add_layer no longer defaults to the playhead
       };
     } else {
       cmd = {
         'op': 'add_layer', 'type': 'shape', 'kind': kind, 'width': w * 0.2, 'height': w * 0.2,
         'fill': '#FFC400', 'stroke': '#FFFFFF', 'stroke_width': 0, 'sides': kind == 'star' ? 5 : 6,
         'name': kind[0].toUpperCase() + kind.substring(1),
+        'start': widget.c.time, // V2-B
       };
     }
     final r = _tryRun(cmd);

@@ -125,9 +125,9 @@ class _AddPanelState extends State<AddPanel> {
       (Icons.newspaper, 'Article', () => DocKitSheet.open(context, c, component: 'article')),
       (Icons.bolt, 'Title Intro', () => DocKitSheet.open(context, c, component: 'title_slam')),
       (Icons.badge_outlined, 'Name Tag', () => DocKitSheet.open(context, c, component: 'name_tag')),
-      (Icons.text_fields, 'Text', () => _add({'op': 'add_layer', 'type': 'text', 'text': 'Your Title'})),
-      (Icons.square_outlined, 'Solid', () => _add({'op': 'add_layer', 'type': 'solid', 'color': '#1E2A44'})),
-      (Icons.control_camera, 'Null', () => _add({'op': 'add_layer', 'type': 'null', 'name': 'Controller'})),
+      (Icons.text_fields, 'Text', () => _add({'op': 'add_layer', 'type': 'text', 'text': 'Your Title', 'start': c.time})),
+      (Icons.square_outlined, 'Solid', () => _add({'op': 'add_layer', 'type': 'solid', 'color': '#1E2A44', 'start': c.time})),
+      (Icons.control_camera, 'Null', () => _add({'op': 'add_layer', 'type': 'null', 'name': 'Controller', 'start': c.time})),
       (Icons.layers_outlined, 'Parallax', () => _parallax(context)),
       (Icons.view_in_ar_outlined, '3D Photo (AI)', () => _photo3d()),
       (Icons.graphic_eq, 'Sound FX & Beats', () => SoundSheet.open(context, c)), // Sound (Agent K)

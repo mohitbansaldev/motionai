@@ -155,6 +155,10 @@ class Project {
   final Map<String, dynamic> recipes = {};
   final Map<String, dynamic> shots = {};
   // end SCENE
+  // V2-B >>> shots built by add_shot / sequence: shot id → {spec, start, duration} (see commands/shot_commands.dart).
+  // The shot's precomp and its comp layer in main share the shot id.
+  final Map<String, dynamic> seqShots = {};
+  // <<< V2-B
   // PRECOMP (Agent L) >>>
   /// Nested compositions (precomps), by id. Used by `LayerType.comp` layers.
   final Map<String, Composition> comps;
@@ -190,6 +194,7 @@ class Project {
         'main': main.toJson(),
         if (recipes.isNotEmpty) 'recipes': recipes, // SCENE (Agent D)
         if (shots.isNotEmpty) 'shots': shots, // SCENE (Agent D)
+        if (seqShots.isNotEmpty) 'seq_shots': seqShots, // V2-B
         if (comps.isNotEmpty) 'comps': comps.values.map((c) => c.toJson()).toList(), // PRECOMP (Agent L)
       };
 
@@ -215,7 +220,8 @@ class Project {
     )
       // SCENE (Agent D): recipes + shots (absent in older projects).
       ..recipes.addAll(j['recipes'] is Map ? Map<String, dynamic>.from(j['recipes'] as Map) : const {})
-      ..shots.addAll(j['shots'] is Map ? Map<String, dynamic>.from(j['shots'] as Map) : const {});
+      ..shots.addAll(j['shots'] is Map ? Map<String, dynamic>.from(j['shots'] as Map) : const {})
+      ..seqShots.addAll(j['seq_shots'] is Map ? Map<String, dynamic>.from(j['seq_shots'] as Map) : const {}); // V2-B
   }
 }
 

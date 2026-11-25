@@ -117,3 +117,29 @@ Audio: `add_layer` with `type: "audio"` and an audio media id. Every layer has a
   {"op": "camera_move", "preset": "shake", "start": 4.5, "duration": 0.6, "amount": 8}
 ]
 ```
+
+## V2-B: default layer timing, shots and sequences
+
+**Default timing.** `add_layer` without `start` starts at 0 (not at the playhead). Without `start` *and* `duration` a still/text/solid/shape/null layer lasts the whole comp — inside a shot precomp, the whole shot. With only `start` it lasts 5 s (as before); video, audio and comp layers last their source. `add_component` without `start` starts at 0; "set" components (map, room, board, tv_frame, glass_screen, map_fly, route_follow, silhouette_crowd, poster, plaque, article) without start/duration span the comp, pop-ups keep 5 s. Existing projects are unchanged (only new layers are affected). The editor's Add panel still inserts at the playhead (it passes `start`).
+
+| op | fields |
+|---|---|
+| `add_shot` | `id`?, `name`?, `start`? (end of the last shot), `duration`? (6), `style`?, `plate` (media id), `layers` [{`media`, `role`? sky/far/mid/near/front/ground, `id`?, `x`? 0..1, `ground`? 0..1 (bottom), `height`? 0..1, `flip`?, `hero`?, `effects`?}], `floor`? (0.88), `ground`? auto/shadows/none/media id, `ground_color`?, `camera`? [{`move`, `target`?, `start`, `duration`, `intensity`, `ease`?, `direction`?}] or "none", `atmosphere`?, `look`?, `title`?, `caption`?, `keep_far_visible`? (true) |
+| `sequence` | `shots` [add_shot specs], `start`?, `transition`?, `transition_duration`?, `transitions`? [{`between`: [i, i+1], `type`, `duration`?, `overlap`?}] |
+| `update_shot` | `shot`, any add_shot field, `ripple`? |
+| `remove_shot` | `shot`, `ripple`? |
+
+A shot is a precomp (own 3D camera) + ONE comp layer in main; both use the shot id. Cut-outs are sized by role (front ≤ 45 % of the frame height, tall mid ≈ 62 %, far ≈ 27 %, aspect-aware), their bottoms stand on one floor plane (the ground lines of the far/near bands follow from the perspective), they get soft contact shadows, and a soft floor plane fades out with distance (`ground: "auto"`). The camera moves are the `camera_shot` moves, clamped to keep clear of every layer; the plate is grown so no empty edge shows at any time of the shot. Shots are stored in `Project.seqShots` (`seq_shots` in JSON) so `update_shot` can rebuild them.
+
+Styles (`style`): `opening_reveal`, `character_focus`, `crowd_pass`, `slow_push_detail`, `crash_pull_back` — each sets camera, atmosphere and look; explicit fields override.
+
+Transitions come from `TransitionRegistry` (lib/core/presets/transition_registry.dart; providers call `TransitionRegistry.addRegistrar(DocTransitions.registerAll)`); unknown types fall back to an `animate_in` preset on the incoming shot (fade, flash, ink, smoke, iris, whip, blur, glitch_flash…).
+
+```json
+{"op": "sequence", "transition": "flash", "transition_duration": 0.5, "shots": [
+  {"plate": "dutch_sky", "style": "opening_reveal", "title": {"text": "TULIP MANIA", "subtitle": "Amsterdam, 1637"},
+   "layers": [{"media": "windmill", "role": "far"}, {"media": "houses", "role": "mid"}, {"media": "tulips", "role": "front"}]},
+  {"plate": "market", "style": "character_focus", "layers": [{"media": "merchant", "role": "mid", "hero": true}, {"media": "crowd", "role": "far"}]},
+  {"plate": "vault", "style": "slow_push_detail", "duration": 5, "layers": [{"media": "gold", "role": "front"}, {"media": "bulb", "role": "mid", "hero": true}]}
+]}
+```

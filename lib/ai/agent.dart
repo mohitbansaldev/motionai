@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../core/commands/edit_commands.dart';
+import '../core/commands/shot_commands.dart'; // V2-B
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../services/media_bridge.dart';
@@ -170,6 +171,9 @@ class EditAgent {
           for (final k in c.project.comps.values)
             {'id': k.id, 'name': k.name, 'size': [k.width.round(), k.height.round()], 'duration': r(k.duration), 'layers': k.layers.length},
         ],
+      // V2-B >>> shots built by add_shot / sequence (each one = a precomp + a comp layer in main with the shot id)
+      if (c.project.seqShots.isNotEmpty) 'shots': ShotCommands.summary(c.project),
+      // <<< V2-B
       'camera': {'mode': comp.camera.mode.name, 'keyframes': comp.camera.allKeyframeTimes().length},
       'media': [
         for (final m in c.project.media.values)
