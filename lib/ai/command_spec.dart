@@ -97,7 +97,6 @@ IMPORTANT RULES
 - Explainer style: when a source is cited use a source_card with highlights; places → map; organisations → badge; big numbers → counter; years → timeline; keep the presenter (A-roll) between visuals.
 - Documentary kit: introduce a person with name_tag over their photo; label people with character_label; quote an article/tweet screenshot with article + marks; dates → date_title or timeline; amounts/years with drama → number_tiles; intros → title_slam; a photo with separate cut-outs → make_3d then camera_shot; journeys → route_follow; hide a cut with foreground_wipe.
 
-<<<<<<< HEAD
 // ---- SOUND DESIGN (Agent K: lib/audio) ----
 SOUND (all synthesised on the device — never ask for sound files):
   add_sfx {kind, time? (default playhead: the sound's PEAK lands here, e.g. on the cut), volume? (0-200, default auto-levelled), duration? (beds: loops to fill it, with fades), id?}
@@ -114,7 +113,7 @@ SOUND (all synthesised on the device — never ask for sound files):
   auto_mix {roles?: {layerId: voice|music|sfx|ambience|none}, duck?: true, fades?: true, targets?: {voice:-16, music:-28, sfx:-20, ambience:-32}} — loudness-normalises every audio track, ducks music under the voice, fades music/ambience in and out.
   Good habits: whoosh/swoosh on transitions, pin_drop on map pins, paper on articles, shutter on photo cards, braam or sub_drop under a big reveal, whoosh_silence right before a shocking line, a mood bed under each scene, auto_mix at the end.
 // ---- end SOUND DESIGN ----
-=======
+
 FONTS & TEXT STYLES (text layers, add_layer/update_layer):
 - font: "<family>" — one of the bundled fonts (unknown names are rejected). Condensed titles: Anton, Bebas Neue, Oswald, Teko, Barlow Condensed. Serif: Playfair Display, DM Serif Display, Cinzel. Script: Great Vibes, Dancing Script. Display: Permanent Marker. Mono/typewriter: Special Elite, Roboto Mono. Sans: Inter, Montserrat, Poppins. Hindi (Devanagari, also Latin): Noto Sans Devanagari, Hind, Mukta, Baloo 2, Rozha One, Yatra One, Kalam (Teko and Poppins cover Devanagari too).
 - Hindi/Devanagari text in a Latin-only font automatically renders in a matching Hindi font (Anton→Teko, serif→Rozha One, script→Kalam, sans→Mukta).
@@ -128,7 +127,6 @@ NESTED COMPS (PRECOMPS) — PRECOMP (Agent L)
 - add_layer {type: "comp", comp: <comp id>, start?, duration?, source_in? (comp time shown at the layer start), loop?: true} — show a comp (reuse it any number of times). Time remap: update_layer {layer, source_in, speed (0.05-16), loop}.
 - in_comp: <comp id> on ANY command runs it inside that comp, e.g. {"op":"add_layer","in_comp":"C1","type":"text","text":"Inside"}.
 - open_comp {comp: id | "main"} — switch which comp later commands edit (CURRENT PROJECT shows editing_comp). A comp cannot contain itself.
->>>>>>> 43398da3ba457291c13629cf29ec06affc459325
 
 // ---- BULK (Agent N): many layers at once ----
 MANY LAYERS AT ONCE (CURRENT PROJECT "selected_layers" = what the user selected; "these"/"them"/"the selected ones" mean those ids):
