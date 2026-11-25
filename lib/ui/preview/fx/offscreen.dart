@@ -29,6 +29,22 @@ ui.Image? paintChildToImage(OffsetLayer holder, RenderBox child, Size size, doub
   return holder.toImageSync(Offset.zero & size, pixelRatio: pixelRatio);
 }
 
+/// What a render subtree contains that an offscreen snapshot cannot handle:
+/// platform textures (video players draw through a [TextureBox], whose
+/// pixels a snapshot may miss → blank) and repaint boundaries (which cannot
+/// be painted more than once per frame).
+({bool texture, bool boundary}) scanSubtree(RenderObject root) {
+  var texture = false, boundary = false;
+  void visit(RenderObject r) {
+    if (r is TextureBox) texture = true;
+    if (r.isRepaintBoundary) boundary = true;
+    if (!(texture && boundary)) r.visitChildren(visit);
+  }
+
+  visit(root);
+  return (texture: texture, boundary: boundary);
+}
+
 /// Picks a snapshot resolution: at most [maxSide] image pixels on the long
 /// side, never more than 1.5× the layer's own pixels.
 double snapshotRatio(Size size, double maxSide) {
@@ -85,6 +101,10 @@ class RenderMeshWarp extends RenderProxyBox {
   final LayerHandle<OffsetLayer> _holder = LayerHandle<OffsetLayer>(OffsetLayer());
   ui.Image? _image;
   ui.Vertices? _vertices;
+
+  // Strip fallback for live video (see [_paintStrips]); layers reused per strip.
+  final List<LayerHandle<TransformLayer>> _stripT = [];
+  final List<LayerHandle<ClipRectLayer>> _stripC = [];
   final Paint _paint = Paint()..filterQuality = FilterQuality.medium;
 
   // Mesh buffers, rebuilt only when the grid or size changes.
@@ -117,7 +137,61 @@ class RenderMeshWarp extends RenderProxyBox {
     _vertices?.dispose();
     _vertices = null;
     _holder.layer = null;
+    _clearStrips();
     super.dispose();
+  }
+
+  void _clearStrips() {
+    for (final h in _stripT) {
+      h.layer = null;
+    }
+    for (final h in _stripC) {
+      h.layer = null;
+    }
+    _stripT.clear();
+    _stripC.clear();
+  }
+
+  /// Live video (a platform texture) cannot be snapshotted reliably, so the
+  /// warp is approximated by painting the child several times, each copy
+  /// clipped to one strip and transformed like the mesh there (columns for
+  /// curve, rows for sway). Compositing only: no pixels are read back.
+  void _paintStrips(PaintingContext context, Offset offset, RenderBox child) {
+    final w = size.width, h = size.height;
+    final curve = _mode == WarpMode.curve;
+    final n = curve ? (_draft ? 16 : 32) : (_draft ? 10 : 20);
+    while (_stripT.length < n) {
+      _stripT.add(LayerHandle<TransformLayer>());
+      _stripC.add(LayerHandle<ClipRectLayer>());
+    }
+    final cy = h / 2;
+    for (int i = 0; i < n; i++) {
+      final Matrix4 m;
+      final Rect clip;
+      if (curve) {
+        final x0 = i / n * w, x1 = (i + 1) / n * w;
+        Warp.curve(x0, 0, w, h, _a, _tmp);
+        final dx0 = _tmp[0];
+        Warp.curve(x1, 0, w, h, _a, _tmp);
+        final dx1 = _tmp[0];
+        Warp.curve((x0 + x1) / 2, 0, w, h, _a, _tmp);
+        final sy = cy > 0 ? (cy - _tmp[1]) / cy : 1.0;
+        final sx = (dx1 - dx0) / math.max(1e-6, x1 - x0);
+        m = Matrix4.translationValues(dx0, cy, 0)
+          ..multiply(Matrix4.diagonal3Values(sx, sy, 1))
+          ..multiply(Matrix4.translationValues(-x0, -cy, 0));
+        clip = Rect.fromLTRB(x0 - 0.75, 0, x1 + 0.75, h); // slight overlap hides seams
+      } else {
+        final y0 = i / n * h, y1 = (i + 1) / n * h;
+        final dx = Warp.sway(w / 2, (y0 + y1) / 2, w, h, _a, _b, _time, _seed);
+        m = Matrix4.translationValues(dx, 0, 0);
+        clip = Rect.fromLTRB(0, y0 - 0.75, w, y1 + 0.75);
+      }
+      final ch = _stripC[i];
+      _stripT[i].layer = context.pushTransform(needsCompositing, offset, m, (ctx, o) {
+        ch.layer = ctx.pushClipRect(needsCompositing, o, clip, (c2, o2) => c2.paintChild(child, o2), oldLayer: ch.layer);
+      }, oldLayer: _stripT[i].layer);
+    }
   }
 
   void _ensureMesh(int cols, int rows, Size size, double ratio) {
@@ -159,6 +233,17 @@ class RenderMeshWarp extends RenderProxyBox {
     if (child == null) return;
     if (_identity) {
       context.paintChild(child, offset);
+      return;
+    }
+    final scan = scanSubtree(child);
+    if (scan.texture) {
+      // Live video: a snapshot could come out blank. Approximate the warp by
+      // compositing (or, if that is impossible, draw it unwarped).
+      if (scan.boundary) {
+        context.paintChild(child, offset);
+      } else {
+        _paintStrips(context, offset, child);
+      }
       return;
     }
     final ratio = snapshotRatio(size, _maxSide);

@@ -285,8 +285,9 @@ void main() {
       EditCommands.runAtomic(p, {
         'op': 'batch',
         'commands': [
+          {'op': 'add_layer', 'type': 'solid', 'id': 'mt', 'width': 400, 'height': 400},
           {'op': 'add_layer', 'type': 'text', 'id': 't', 'text': 'HELLO', 'animator': 'random_pop', 'extrude': {'depth': 10, 'color': '#888888'}},
-          {'op': 'update_layer', 'layer': 't', 'animator': 'scramble', 'matte': {'layer': 't', 'mode': 'alpha'}, 'path': {'points': [[0, 0], [100, 100]]}},
+          {'op': 'update_layer', 'layer': 't', 'animator': 'scramble', 'matte': {'layer': 'mt', 'mode': 'alpha'}, 'path': {'points': [[0, 0], [100, 100]]}},
           for (final tr in ['iris', 'ink', 'smoke', 'spin', 'flash', 'glitch_flash']) {'op': 'animate_in', 'layer': 't', 'preset': tr},
           {'op': 'set_keyframe', 'target': 't', 'prop': 'path_progress', 'time': 0, 'value': 0},
           {'op': 'set_keyframe', 'target': 't', 'prop': 'path_progress', 'time': 2, 'value': 100},
@@ -295,7 +296,10 @@ void main() {
       });
       final t = p.main.requireLayer('t');
       expect(t.text!.animator, 'scramble');
+      expect(t.matte, const LayerMatte('mt'));
+      expect(t.text!.extrude, 10);
       expect(t.prop('path_progress').valueAt(1)[0], greaterThan(0));
+      expect(() => EditCommands.runAtomic(p, {'op': 'update_layer', 'layer': 't', 'matte': {'layer': 't'}}), throwsA(isA<CommandError>()));
       expect(() => EditCommands.runAtomic(p, {'op': 'update_layer', 'layer': 't', 'animator': 'wobble'}), throwsA(isA<CommandError>()));
       expect(() => EditCommands.runAtomic(p, {'op': 'set_comp', 'motion_blur': 'yes'}), throwsA(isA<CommandError>()));
     });

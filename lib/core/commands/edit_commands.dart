@@ -208,19 +208,20 @@ class EditCommands {
         final l = _layer(comp, c['layer']);
         final type = c['effect'] as String? ?? '';
         final id = (c['id'] as String?) ?? Ids.next('fx');
-        final lenient = contractEffects.contains(type);
-        final e = lenient && EffectsCatalog.byType(type) == null ? Effect(id: id, type: type) : EffectsCatalog.create(type, id);
+        final Effect e;
+        try {
+          e = EffectsCatalog.create(type, id);
+        } on ArgumentError catch (ex) {
+          throw CommandError('${ex.message}');
+        }
         final params = c['params'];
         if (params is Map) {
           params.forEach((k, v) {
             final ap = e.params[k];
-            final values = FxCommands.effectValue(type, '$k', v) ?? _paramValues(type, '$k', v); // FX (Agent B): "#hex" / option names
-            if (ap == null) {
-              if (!lenient) throw CommandError('Effect "$type" has no param "$k". Params: ${e.params.keys.join(', ')}');
-              e.params['$k'] = AnimProp(values);
-            } else {
-              ap.staticValue = _fitList(ap, values);
-            }
+            if (ap == null) throw CommandError('Effect "$type" has no param "$k". Params: ${e.params.keys.join(', ')}');
+            // "#RRGGBB" colours and option names ("snow", "top") become numbers.
+            final values = FxCommands.effectValue(type, '$k', v) ?? _values(v is bool ? (v ? 1 : 0) : v);
+            ap.staticValue = _fitList(ap, values);
           });
         }
         l.effects.add(e);
@@ -286,10 +287,7 @@ class EditCommands {
       case 'animate_in':
       case 'animate_out':
         final l = _layer(comp, c['layer']);
-        var preset = c['preset'] as String? ?? 'fade';
-        if (!MotionPresets.transitions.contains(preset) && contractTransitions.containsKey(preset)) {
-          preset = contractTransitions[preset]!; // renderer transition not on this build yet
-        }
+        final preset = c['preset'] as String? ?? 'fade';
         MotionPresets.animate(comp, l, preset, isIn: op == 'animate_in', duration: _optNum(c, 'duration') ?? 0.6);
         break;
 
@@ -613,7 +611,7 @@ class EditCommands {
     if (c['text_color'] != null) t.color = _color(c['text_color']);
     if (c['animator'] != null) {
       final a = '${c['animator']}';
-      if (!TextAnimators.all.contains(a) && !contractAnimators.contains(a)) {
+      if (!TextAnimators.all.contains(a)) {
         throw CommandError('Unknown animator "$a". Available: ${TextAnimators.all.join(', ')}');
       }
       t.animator = a;
@@ -677,45 +675,6 @@ class EditCommands {
     if (end > comp.duration) comp.duration = end;
   }
 
-  // ------------------------------------------- V1 renderer contract (B/C)
-  // Names from docs/V1_PLAN.md that the renderer branch (feat/fx) implements.
-  // Until both branches are merged they are accepted and stored as plain data
-  // so components and the AI can already use them; afterwards these lists are
-  // harmless (known names take the normal path).
-  static const contractEffects = [
-    'silhouette', 'mono', 'duotone', 'edge_blur', 'curve', 'glass_frame', 'torn_edge',
-    'particles', 'light_rays', 'sway', 'reveal', 'motion_blur',
-  ];
-  static const contractAnimators = ['random_pop', 'scramble'];
-
-  /// Contract transitions → closest existing one when the renderer lacks it.
-  static const contractTransitions = {
-    'iris': 'zoom_in', 'ink': 'fade', 'smoke': 'blur', 'spin': 'spin', 'flash': 'fade', 'glitch_flash': 'whip',
-  };
-  static const contractProps = <String, List<double>>{'path_progress': [0]};
-
-  /// String options of effect params, stored as their index.
-  static const contractEnums = <String, Map<String, List<String>>>{
-    'particles': {'kind': ['confetti', 'leaves', 'stars', 'rain', 'snow', 'smoke', 'dust', 'bokeh', 'streaks', 'birds', 'clouds']},
-    'reveal': {'kind': ['iris', 'ink', 'smoke', 'wipe']},
-    'torn_edge': {'side': ['top', 'bottom', 'left', 'right']},
-  };
-
-  /// Effect param value: numbers, "#RRGGBB" colours (→ [r, g, b]) or enum names (→ index).
-  static List<double> _paramValues(String effect, String key, dynamic v) {
-    if (v is bool) return [v ? 1 : 0];
-    if (v is String) {
-      final options = contractEnums[effect]?[key];
-      if (options != null) {
-        if (options.contains(v)) return [options.indexOf(v).toDouble()];
-        throw CommandError('Effect "$effect": unknown $key "$v". Use ${options.join(', ')}');
-      }
-      final argb = _color(v);
-      return [((argb >> 16) & 0xFF).toDouble(), ((argb >> 8) & 0xFF).toDouble(), (argb & 0xFF).toDouble()];
-    }
-    return _values(v);
-  }
-
   // --------------------------------------------------------------- helpers
 
   static Layer _layer(Composition comp, dynamic id) {
@@ -770,11 +729,11 @@ class EditCommands {
     } else {
       props = _layer(comp, target).props;
     }
-    var p = props[key];
-    if (p == null && target != 'camera' && c['effect'] == null && c['mask'] == null && contractProps.containsKey(key)) {
-      p = props[key] = AnimProp(List.of(contractProps[key]!)); // e.g. path_progress before the renderer merge
+    final p = props[key];
+    if (p == null) {
+      final hint = key == Props.pathProgress ? ' (give the layer a "path" with update_layer first)' : '';
+      throw CommandError('No property "$key" on $target$hint. Properties: ${props.keys.join(', ')}');
     }
-    if (p == null) throw CommandError('No property "$key" on $target. Properties: ${props.keys.join(', ')}');
     if (component != null && component >= p.dims) throw CommandError('"$key" has only ${p.dims} dimension(s)');
     return (prop: p, component: component);
   }
