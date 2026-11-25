@@ -199,10 +199,13 @@ final List<Map<String, dynamic>> kMcpTools = [
       idempotent: true),
   _tool('play', 'Play', 'Starts playback in the editor preview (for the user to watch).', _obj({}), idempotent: true),
   _tool('pause', 'Pause', 'Pauses playback.', _obj({}), idempotent: true),
-  _tool('select', 'Select layer',
-      'Selects a layer in the editor (shows its properties to the user), or the camera, or nothing.',
+  _tool('select', 'Select layers',
+      'Selects layers in the editor so the user sees what you mean (runs the "select" edit command; selection is not an undo step). '
+          'Many edit commands accept "layers": "selection" to act on the selected layers. Or select the camera, or nothing (empty layers).',
       _obj({
-        'layers': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Layer ids (empty = deselect). The first one becomes the active layer.'},
+        'layers': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Layer ids (empty list = deselect)'},
+        'filter': {'type': 'object', 'description': 'Instead of ids: a layer filter as in get_command_spec, e.g. {"type":"text"}'},
+        'mode': _e(['replace', 'add', 'remove'], 'How to combine with the current selection (default replace)'),
         'camera': _b('Select the camera instead'),
       }),
       idempotent: true),

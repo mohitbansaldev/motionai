@@ -16,6 +16,7 @@ import '../core/model/project.dart';
 import '../platform/ffmpeg_args.dart';
 import '../platform/win_media.dart';
 import '../platform/win_tools.dart';
+import '../remote/remote_export.dart'; // MCP (Agent P)
 import '../services/media_bridge.dart';
 import 'common.dart';
 import 'preview/composition_canvas.dart';
@@ -24,7 +25,8 @@ import 'preview/composition_canvas.dart';
 /// MediaCodec; Windows: FFmpeg with the GPU encoder when available).
 class ExportScreen extends StatefulWidget {
   final Project project;
-  const ExportScreen({super.key, required this.project});
+  final RemoteExport? remote; // MCP (Agent P): started by Claude: preset options, starts at once
+  const ExportScreen({super.key, required this.project, this.remote});
 
   @override
   State<ExportScreen> createState() => _ExportScreenState();
@@ -72,6 +74,19 @@ class _ExportScreenState extends State<ExportScreen> {
         if (mounted) setState(() => _error = 'FFmpeg was not found: $e');
       });
     }
+    // MCP (Agent P) >>>
+    final r = widget.remote;
+    if (r != null) {
+      _shortSide = r.shortSide;
+      _high = r.high;
+      _fpsChoice = r.fps;
+      r.job.probe = () => {'phase': _phase.name, 'frame': _frame + 1, 'frames': _frames, if (_result != null) 'file': _result};
+      r.job.onCancel = () => _cancel = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _run().whenComplete(() => r.finished(_phase.name, _result, _error));
+      });
+    }
+    // <<< MCP (Agent P)
   }
 
   Future<File> _settingsFile() async => File('${(await WinTools.dataDir('settings')).path}${Platform.pathSeparator}export_dir.txt');
@@ -96,6 +111,7 @@ class _ExportScreenState extends State<ExportScreen> {
   }
 
   String _fileName() {
+    if (widget.remote?.fileName != null) return widget.remote!.fileName!; // MCP (Agent P)
     final base = p.name.replaceAll(RegExp(r'[^\w\- ]'), '').trim();
     return '${base.isEmpty ? 'MotionAI' : base}_${DateTime.now().millisecondsSinceEpoch}.mp4';
   }
@@ -133,6 +149,7 @@ class _ExportScreenState extends State<ExportScreen> {
     final tmp = '${dir.path}${Platform.pathSeparator}export_video.mp4';
     var finalPath = '${dir.path}${Platform.pathSeparator}MotionAI_${DateTime.now().millisecondsSinceEpoch}.mp4';
     if (_win) {
+      if (widget.remote?.folder != null) _outDir = widget.remote!.folder!; // MCP (Agent P)
       WinMedia.preferredEncoder = _encoder;
       await Directory(_outDir).create(recursive: true);
       finalPath = '$_outDir${Platform.pathSeparator}${_fileName()}';

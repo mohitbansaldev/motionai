@@ -355,7 +355,7 @@ class RemoteTools implements McpBackend {
     }
     out['project'] = {'id': c.project.id, 'name': c.project.name};
     out.addAll(EditAgent.projectSummary(c));
-    out['selection'] = {'layer': c.selectedLayerId, 'camera': c.cameraSelected};
+    out['selection'] = {'layers': c.selectedLayerIds, 'primary': c.selectedLayerId, 'camera': c.cameraSelected};
     out['playing'] = c.playing;
     out['can_undo'] = c.canUndo;
     out['can_redo'] = c.canRedo;
@@ -427,14 +427,17 @@ class RemoteTools implements McpBackend {
       return McpToolResult.json({'ok': true, 'selected': 'camera'});
     }
     final ids = _strings(a, 'layers');
-    if (ids.isEmpty) {
-      c.select(null);
-      return McpToolResult.json({'ok': true, 'selected': null});
+    final filter = a['filter'];
+    if (ids.isEmpty && filter is! Map) {
+      c.clearSelection();
+      return McpToolResult.json({'ok': true, 'selected': const <String>[]});
     }
-    final missing = [for (final id in ids) if (c.comp.layerById(id) == null) id];
-    if (missing.isNotEmpty) throw _Fail('No layer(s) ${missing.join(', ')} in ${c.comp.name}.');
-    c.select(ids.first);
-    return McpToolResult.json({'ok': true, 'selected': ids.first});
+    c.run({
+      'op': 'select',
+      if (filter is Map) 'filter': Map<String, dynamic>.from(filter) else 'layers': ids,
+      'mode': _str(a, 'mode') ?? 'replace',
+    });
+    return McpToolResult.json({'ok': true, 'selected': c.selectedLayerIds, 'primary': c.selectedLayerId});
   }
 
   // ------------------------------------------------------------ projects

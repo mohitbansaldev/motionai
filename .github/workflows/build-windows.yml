@@ -6,7 +6,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main, feat/windows, integ/v1]
+    branches: [main, feat/windows, integ/v1, feat/mcp] # TEMP feat/mcp (Agent P): verify bundling, remove before merge
   workflow_dispatch:
 
 permissions:
@@ -128,6 +128,31 @@ jobs:
           }
           Get-ChildItem $env:REL | Format-Table Name, Length
 
+      # --- MCP BRIDGE (Agent P) ---
+      # motionai-mcp.exe next to motionai.exe: the stdio MCP server that Claude
+      # Desktop starts. It forwards to the running app's localhost server
+      # (lib/remote/, tool/motionai_mcp.dart). The installer packs it with
+      # the rest of the Release folder.
+      - name: Build Claude MCP bridge (motionai-mcp.exe)
+        shell: pwsh
+        run: |
+          dart compile exe tool/motionai_mcp.dart -o "$env:REL\motionai-mcp.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'dart compile exe failed' }
+          # Smoke test over stdio: initialize + tools/list are answered without starting the app.
+          $init = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}'
+          $list = '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+          $out = @($init, '{"jsonrpc":"2.0","method":"notifications/initialized"}', $list) | & "$env:REL\motionai-mcp.exe" --control "$env:RUNNER_TEMP\no-mcp.json"
+          $out | ForEach-Object { Write-Host ($_.Substring(0, [Math]::Min(200, $_.Length))) }
+          $lines = @($out | Where-Object { $_.Trim() -ne '' })
+          if ($lines.Count -ne 2) { throw "Expected 2 JSON-RPC lines on stdout, got $($lines.Count)" }
+          $msgs = @($lines | ForEach-Object { $_ | ConvertFrom-Json })
+          $r1 = $msgs | Where-Object { $_.id -eq 1 }
+          $r2 = $msgs | Where-Object { $_.id -eq 2 }
+          if ($r1.result.protocolVersion -ne '2025-06-18') { throw 'initialize failed' }
+          if ($r2.result.tools.Count -lt 25) { throw "tools/list returned $($r2.result.tools.Count) tools" }
+          Write-Host "MCP bridge OK: $($r2.result.tools.Count) tools"
+      # --- END MCP BRIDGE (Agent P) ---
+
       - name: Installer and portable zip
         shell: pwsh
         run: |
@@ -139,6 +164,7 @@ jobs:
           Get-ChildItem MotionAI-* | Format-Table Name, Length
 
       - uses: softprops/action-gh-release@v2
+        if: github.ref_name != 'feat/mcp' # TEMP (Agent P): no release from the test branch
         with:
           tag_name: win-${{ github.run_number }}
           name: MotionAI for Windows · build ${{ github.run_number }}

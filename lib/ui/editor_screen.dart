@@ -33,6 +33,7 @@ import 'audio/sound_sheet.dart';
 import 'bulk/bulk_actions.dart'; // BULK (Agent N)
 import 'bulk/bulk_bar.dart'; // BULK (Agent N)
 import 'bulk/bulk_menu.dart'; // BULK (Agent N)
+import '../remote/remote_control.dart'; // MCP (Agent P)
 
 class EditorScreen extends StatefulWidget {
   final Project project;
@@ -65,6 +66,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
     c.seek(0);
     HardwareKeyboard.instance.addHandler(_onKey);
     WinWindow.setTitle(c.project.name);
+    RemoteControl.instance.attach(c); // MCP (Agent P): Claude can drive this editor
   }
 
   void _onSelectionChange() {
@@ -78,6 +80,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
 
   @override
   void dispose() {
+    RemoteControl.instance.detach(c); // MCP (Agent P)
     HardwareKeyboard.instance.removeHandler(_onKey);
     _nudgeTimer?.cancel();
     if (_nudgeTimer != null) c.endGesture();
