@@ -231,6 +231,7 @@ void main() {
       final h = lay(p, 'co_hour').prop(Props.rotation);
       expect(h.valueAt(4)[2] - h.valueAt(0)[2], closeTo(120, 1e-6));
       expect(lay(p, 'co_minute').blendMode, 'screen');
+      expect(lay(p, 'co_n3').blendMode, 'normal', reason: 'numerals are not re-composited');
       expect(p.main.layers.any((l) => l.type == LayerType.audio), isTrue, reason: 'clock_tick bed');
       expect(lay(p, 'co_g').prop(Props.position).valueAt(0)[1], greaterThan(540));
     });

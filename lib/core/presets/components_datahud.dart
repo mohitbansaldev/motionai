@@ -785,7 +785,9 @@ List<Map<String, dynamic>> _clockOverlay(_B b) {
   }
   final blend = b.c['blend'];
   if (blend is String && blend != 'normal') {
+    // each blended layer re-composites the frame: only the ring, ticks and hands
     for (final id in parts) {
+      if (RegExp(r'_n\d+$').hasMatch(id)) continue;
       cmds.add({'op': 'update_layer', 'layer': id, 'blend': blend});
     }
   }

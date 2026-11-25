@@ -282,7 +282,8 @@ grey, each word eases to its colour in 0.2 s at `word_times`, else spread over `
 **Blend**: `update_layer {blend}` — normal, screen, add, lighten, multiply, overlay, darken, soft_light, hard_light,
 color_dodge, difference (validated). Rendered by `BlendComposite` (lib/ui/preview/fx/datahud_fx.dart): everything below
 and the layer are drawn to images and composited with the blend mode (falls back to normal over a live video texture in
-the preview; export blends). A layer with a track matte ignores its blend.
+the preview; export blends). A layer with a track matte ignores its blend. Each blended layer snapshots the frame
+below it (two full-frame images per frame), so blend a few layers, not dozens.
 
 **Effect**: `disintegrate` {progress 0–100, size (block px, 14), drift (50)} — blocks drop out in random order sweeping
 left → right; the breaking edge drifts up-right.
