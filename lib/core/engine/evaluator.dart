@@ -37,6 +37,10 @@ class RenderItem {
   /// drawn instead of culling the whole layer (which gave black frames).
   final List<double>? crop;
 
+  /// 3D only: unit normal of the layer's plane (toward the camera) and the
+  /// camera's distance to that plane — orders stacked parallel layers.
+  final double nx, ny, nz, planeDist;
+
   RenderItem({
     required this.layer,
     required this.matrix,
@@ -48,6 +52,10 @@ class RenderItem {
     this.matte,
     this.matteInverse = false,
     this.crop,
+    this.nx = 0,
+    this.ny = 0,
+    this.nz = 0,
+    this.planeDist = 0,
   });
 
   RenderItem withExtras({double? vx, double? vy, RenderItem? matte, bool? matteInverse}) => RenderItem(
@@ -57,6 +65,10 @@ class RenderItem {
         depth: depth,
         dofBlur: dofBlur,
         crop: crop,
+        nx: nx,
+        ny: ny,
+        nz: nz,
+        planeDist: planeDist,
         vx: vx ?? this.vx,
         vy: vy ?? this.vy,
         matte: matte ?? this.matte,
@@ -201,10 +213,11 @@ class Evaluator {
       if (group3D.length == 1) {
         items.add(group3D.first);
       } else {
+        final key = stackedDepthKeys(group3D);
         // Far first; stable for equal depth.
         final order = List<int>.generate(group3D.length, (i) => i)
           ..sort((a, b) {
-            final c = group3D[b].depth.compareTo(group3D[a].depth);
+            final c = key[b].compareTo(key[a]);
             return c != 0 ? c : a.compareTo(b);
           });
         for (final i in order) {
@@ -282,6 +295,67 @@ class Evaluator {
     final (a0, a1, a2) = d;
     final w = layer.width * a0, h = layer.height * a1;
     return a2 < kNearPlane || w + a2 < kNearPlane || w + h + a2 < kNearPlane || h + a2 < kNearPlane;
+  }
+
+  /// Paint-order depth per 3D item. Centre depth, except for stacks of
+  /// parallel layers lying close together (pages of a tilted calendar, cards
+  /// on a tilted board): their centres sit at different depths once tilted,
+  /// so a big back plate could sort in front of the pages on it (V3-C bug:
+  /// the calendar went black when tilted). A stack sorts by the distance to
+  /// each plane instead — always right for parallel planes — around the
+  /// stack's mean depth.
+  static List<double> stackedDepthKeys(List<RenderItem> g) {
+    final n = g.length;
+    final key = [for (final it in g) it.depth];
+    final root = List<int>.generate(n, (i) => i);
+    int find(int i) {
+      while (root[i] != i) {
+        root[i] = root[root[i]];
+        i = root[i];
+      }
+      return i;
+    }
+
+    var any = false;
+    for (int i = 0; i < n; i++) {
+      final a = g[i];
+      if (a.planeDist <= 0) continue;
+      for (int j = i + 1; j < n; j++) {
+        final b = g[j];
+        if (b.planeDist <= 0) continue;
+        final dot = a.nx * b.nx + a.ny * b.ny + a.nz * b.nz;
+        if (dot < 0.9995) continue;
+        final gap = (a.planeDist - b.planeDist).abs();
+        if (gap > 0.02 * math.max(1.0, math.min(a.depth, b.depth))) continue;
+        final ra = find(i), rb = find(j);
+        if (ra != rb) {
+          root[rb] = ra;
+          any = true;
+        }
+      }
+    }
+    if (!any) return key;
+    final groups = <int, List<int>>{};
+    for (int i = 0; i < n; i++) {
+      (groups[find(i)] ??= []).add(i);
+    }
+    for (final m in groups.values) {
+      if (m.length < 2) continue;
+      var mean = 0.0;
+      for (final i in m) {
+        mean += g[i].depth;
+      }
+      mean /= m.length;
+      // Farthest plane first; equal planes keep their layer order.
+      final byPlane = [...m]..sort((a, b) {
+          final c = g[b].planeDist.compareTo(g[a].planeDist);
+          return c != 0 ? c : a.compareTo(b);
+        });
+      for (int r = 0; r < byPlane.length; r++) {
+        key[byPlane[r]] = mean - r * 1e-6 * math.max(1.0, mean);
+      }
+    }
+    return key;
   }
 
   /// The part of a layer that crosses the near plane worth drawing:
@@ -372,6 +446,18 @@ class Evaluator {
       final mat = f.camProj.multiplied(world);
       Realism.normalizeW(mat, depth);
       // <<< V2-D
+      final ws = world.storage;
+      var n = Vector3(ws[0], ws[1], ws[2]).cross(Vector3(ws[4], ws[5], ws[6]));
+      var pd = 0.0;
+      if (n.length2 > 1e-18) {
+        n.normalize();
+        pd = n.dot(Vector3(ws[12], ws[13], ws[14]) - f.cam.position);
+        if (pd > 0) {
+          n = -n;
+        } else {
+          pd = -pd;
+        }
+      }
       return RenderItem(
         layer: layer,
         matrix: mat,
@@ -379,6 +465,10 @@ class Evaluator {
         depth: depth,
         dofBlur: blur,
         crop: crop,
+        nx: n.x,
+        ny: n.y,
+        nz: n.z,
+        planeDist: pd,
       );
     }
     return RenderItem(

@@ -194,4 +194,38 @@ class _NoBackend implements McpBackend {
       expect(items.single.crop, isNull);
     });
   });
+
+  group('stacked parallel layers', () {
+    test('pages on a tilted calendar stay in front of the back plate', () {
+      final p = _project();
+      final z = defaultZoomFor(1920);
+      final g = Layer(id: 'g', name: 'g', type: LayerType.nullObject, start: 0, duration: 4, width: 10, height: 10, is3D: true)
+        ..prop(Props.position).staticValue = [960, 540, 0]
+        ..prop(Props.rotation).staticValue = [50, 0, -20];
+      Layer plate(String id, double w, double h, double y, double zz) => Layer(
+            id: id, name: id, type: LayerType.solid, start: 0, duration: 4, width: w, height: h, is3D: true)
+        ..parentId = 'g'
+        ..prop(Props.anchor).staticValue = [w / 2, h / 2, 0]
+        ..prop(Props.position).staticValue = [0, y, zz];
+      // layers[0] is the top layer: page on top of the back.
+      p.main.layers.addAll([g, plate('page', 360, 280, 60, 0), plate('back', 400, 450, 0, 3)]);
+      p.main.camera.mode = CameraMode.threeD;
+      p.main.camera.prop(CamProps.zoom).staticValue = [z];
+      p.main.camera.prop(CamProps.position).staticValue = [960, 540, -z];
+      p.main.camera.prop(CamProps.poi).staticValue = [960, 540, 0];
+      final ids = [for (final i in Evaluator.evaluate(p.main, 1)) i.layer.id];
+      expect(ids.indexOf('page'), greaterThan(ids.indexOf('back')), reason: 'back plate painted over the page');
+    });
+
+    test('layers far apart in depth still sort by depth', () {
+      final p = _project();
+      p.main.layers.addAll([_card('far', 3000), _card('near', -500)]);
+      final z = defaultZoomFor(1920);
+      p.main.camera.mode = CameraMode.threeD;
+      p.main.camera.prop(CamProps.zoom).staticValue = [z];
+      p.main.camera.prop(CamProps.position).staticValue = [960, 540, -z];
+      p.main.camera.prop(CamProps.poi).staticValue = [960, 540, 0];
+      expect([for (final i in Evaluator.evaluate(p.main, 1)) i.layer.id], ['far', 'near']);
+    });
+  });
 }
