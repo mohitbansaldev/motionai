@@ -21,6 +21,8 @@ import 'transition_commands.dart'; // V2-C
 import 'depth_commands.dart'; // V2-E (depth from photo)
 import 'realism_commands.dart'; // V2-D
 import 'shot_commands.dart'; // V2-B
+import 'v3_fx_commands.dart'; // V3-D
+import '../presets/fx_animators.dart'; // V3-D
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -98,6 +100,7 @@ class EditCommands {
     ...DepthCommands.ops, // V2-E: photo_to_3d, depth_map
     ...RealismCommands.ops, // V2-D: match_colour, camera_shake, set_dof
     ...ShotCommands.ops, // V2-B: add_shot, update_shot, remove_shot, sequence
+    ...V3FxCommands.ops, // V3-D: mood_flood, tint_wipe, grade_swap, spotlight_subject, pulse, cut_to_black, lightning, montage, swap_layer
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -367,6 +370,12 @@ class EditCommands {
       case 'animate_out':
         final l = _layer(comp, c['layer']);
         final preset = c['preset'] as String? ?? 'fade';
+        // V3-D >>> punch_in / swing_in / exposure_in take their own params and default length
+        if (FxAnimators.handles(preset)) {
+          FxAnimators.animate(comp, l, preset, isIn: op == 'animate_in', duration: _optNum(c, 'duration'), c: c);
+          break;
+        }
+        // <<< V3-D
         MotionPresets.animate(comp, l, preset, isIn: op == 'animate_in', duration: _optNum(c, 'duration') ?? 0.6);
         break;
 
@@ -554,6 +563,20 @@ class EditCommands {
         }
         break;
       // ---- end Sound
+
+      // V3-D >>> mood & character FX → v3_fx_commands.dart
+      case 'mood_flood':
+      case 'tint_wipe':
+      case 'grade_swap':
+      case 'spotlight_subject':
+      case 'pulse':
+      case 'cut_to_black':
+      case 'lightning':
+      case 'montage':
+      case 'swap_layer':
+        V3FxCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
+        break;
+      // <<< V3-D
 
       // V2-E >>> depth from photo → depth_commands.dart
       case 'photo_to_3d':

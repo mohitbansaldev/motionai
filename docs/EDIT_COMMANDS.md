@@ -234,3 +234,50 @@ Transitions come from `TransitionRegistry` (lib/core/presets/transition_registry
   {"plate": "vault", "style": "slow_push_detail", "duration": 5, "layers": [{"media": "gold", "role": "front"}, {"media": "bulb", "role": "mid", "hero": true}]}
 ]}
 ```
+
+<!-- V3-D >>> -->
+## V3-D: transitions, mood & character FX (documentary patterns 35–54)
+
+New `transition` types (same op, same rules as V2-C: one undo step, eased keys, helper layers `tr_<to>_*`, default SFX peak on the cut; `sequence` picks them up too):
+
+| type | params | when to use |
+|---|---|---|
+| `powder_burst` | `direction` right/left/center/top/bottom, `kind` snow/dust/sand/ash, `color`, `density` 80, `linger` 0.3 | signature cut for snowy/desert stories, in/out of the presenter; full cover 2–3 frames at the cut, flakes linger (powder_whoosh) |
+| `debris_burst` | `kind` ice/snow/cloud/glass/dust/leaves, `from` (9 origins), `pre_roll` 1.2, `peak_cover` 100, `tail` 0.5, `tone`, `density` | the most frequent scene change: sparse shards, dense burst toward the lens, clears over the next shot (ice_crash) |
+| `frost_shatter` | `corner` | cold/ice stories: frost grows from a corner, then the shot shatters with a radial blur |
+| `zoom_blur` | `zoom` 2.5, `flash`, `grain`, `cx`, `cy` | evidence → reenactment, macro → presenter, leaving an archive photo |
+| `eye_reflection` | `point` (pupil), `size` (15% w), `opacity` 70, `linger` 0.8 | event → witness reaction; incoming eye ECU pulls back 5× → 1× |
+| `holes` | `count` 45, `size` 10, `rim` | harsh exit from a gruesome still |
+| `shatter` | `tone` glass/ice/gold, `lead_in` 1.0, `shard_color`, `cx`, `cy` | impact: cracks spread, then the break |
+| `slice` | `bands` 4, `stagger` 30 | fast topic changes |
+| `slant_wipe` | `direction` (enters from), `angle` 10, `edge` 60 | a slanted panel slides in, the old shot compresses aside |
+| `shrink_to_card` | `size` 0.45, `bg` grunge_red/none, `tilt`, `hold` 1.5, `border` | footage becomes an evidence card over the next shot |
+| `emerge` | `target` / `point`, `from` 0.05 | next card grows out of a point/layer |
+| `zoom_out_of_photo` | `layer` (photo in the incoming shot / precomp) or `photo_box` [x0,y0,x1,y1] or `point`+`size` | pull back from a full-frame photo into the article/book it is in |
+| `slide_film` | `size` 0.55, `pink` 30 | reconstruction → real archive photo (35 mm slide carousel) |
+| `exposure_in` | `from` 3.0, `color` | sun-glare entry |
+| `punch_in` | — | presenter return: 150% blurred → 100% in 0.25 s |
+| `cut_to_black` | `silence` true (duration = black hold) | crash → black + silence |
+| `ink_bleed` | + `incoming`: "duotone_of_outgoing" (no `to` = split the outgoing at `at`) | turning point: navy duotone of the same image |
+
+Ops (lib/core/commands/v3_fx_commands.dart):
+
+| op | fields | when to use |
+|---|---|---|
+| `mood_flood` | `at`, `duration` 0.9, `hold` 2.5, `color` "#E0283A", `dark` "#5A0A10", `from` corner, `keep` [ids], `sfx` "braam" | dread/despair/negative twist: red monochrome ink flood from a corner, kept layers stay in colour (copies above the flood), hard end |
+| `tint_wipe` | `at`, `color`, `amount` 70, `from`, `duration` 0.6, `hold` 2 | a colour mood sweeping across |
+| `grade_swap` | `to` hope/warm/cold/dread/archive/normal, `at`, `duration` (0 = snap), `until` | story turns (hope = saturated green/warm); ends a running grade_swap |
+| `spotlight_subject` | `keep` [ids], `layers` / `shot`, `others` {mono 100, dim 15, blur}, `tint` {color, amount}, `start`, `duration` 3, `attack` 0.25, `release` 0.5 | one person among many, injury/danger |
+| `pulse` | `layer`, `effect` (tint default) / `prop`, `param`, `from`, `to`, `period` 1, `start`, `duration` 3, `sync` [ids], `sfx` | red pain pulse, blinking, heartbeat |
+| `cut_to_black` | `at`, `hold` 1.5, `silence` true, `sfx` "impact" | crash → black + silence |
+| `lightning` | `at` s or [s…], `bolt` true, `x` 0.62, `color`, `sfx` "thunder" | storms, shock flashes |
+| `montage` | `media` [ids], `start`, `every` 0.35, `looks` [threshold, duotone_green, red_paint, magenta, grunge, crop], `zoom` 8, `sound` | one-breath recap before the presenter |
+| `swap_layer` | `layer`, `with` (layer or media id), `at`, `transition` pop/cut/fade/flash, `duration`, `sfx` | an object/photo changes in place |
+| `set_dof` | + `keys` [{`t`, `focus` px or 3D layer id}] | keyframed rack focus |
+
+`animate_in` / `animate_out` presets: `punch_in`, `swing_in` {`rotation` 20, `scale_from` 2.5, `background` layer id blurred → sharp}, `exposure_in` {`from` 3.0, `color`}.
+
+`speech_bubble` (add_component): `text` or `messages` [{`text`, `at`}], `style` comic/clean/radio (`classic` = the V1 bubble), `tail_to` [x,y] or layer id, `attach` layer id (parented, follows it), `cps` 30, `type_delay` 0.15, `caps` true, `exit` pop/puff/fade/none, `blink` period, `auto_fade`, `sound` (pop / radio_crackle + typing + puff). Pops 0 → 110 → 100 % in 0.2 s; Comic Neue (OFL, assets/fonts/comicneue) for comic.
+
+Effects: `burst` (powder/debris engine: kind, origin, density, color, cut/rise/hold/clear/linger/pre_roll in s after the layer start, cover), `radial_blur` {amount, cx, cy}, `holes` {progress, count, size, rim}, `frost` {progress, corner, color}, `cracks` {progress, cx, cy, color}, `threshold` {level, softness, amount}, `red_paint` {amount, color}, `lightning` {flash, bolt, x, variant, color}, `slices` {progress, bands, stagger}, `slant_wipe` {progress, angle, side, softness, edge}, `slide_mount` {color, print, window, number}, `puff` {amount, color}. Particle kinds + `debris`, `snow_spray`, `ice`. Sounds + `thunder`, `powder_whoosh`, `ice_crash`, `puff`, `marker`, `radio_crackle`.
+<!-- <<< V3-D -->

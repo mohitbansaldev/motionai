@@ -213,7 +213,7 @@ class ParticlesPainter extends CustomPainter {
       final a = (_sim[o + 4] * ((_sim[o + 6].toInt() >> 24) & 0xFF)).round().clamp(0, 255);
       _colors[i] = (a << 24) | (_sim[o + 6].toInt() & 0x00FFFFFF);
     }
-    final light = kind == PKind.stars || kind == PKind.bokeh || kind == PKind.streaks || kind == PKind.dust;
+    final light = kind == PKind.stars || kind == PKind.bokeh || kind == PKind.streaks || kind == PKind.dust || kind == PKind.ice; // V3-D: ice glints
     _paint.blendMode = light ? BlendMode.plus : BlendMode.srcOver;
     canvas.save();
     canvas.clipRect(Offset.zero & size);
