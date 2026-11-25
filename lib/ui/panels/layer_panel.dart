@@ -19,7 +19,7 @@ class LayerPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([c, c.timeNotifier]),
+      animation: Listenable.merge([c, c.panelTime]), // PERF: quiet while playing
       builder: (context, _) {
         if (c.hasMultiSelection) return BulkPanel(c: c); // BULK (Agent N): several layers selected
         final l = c.selectedLayer;

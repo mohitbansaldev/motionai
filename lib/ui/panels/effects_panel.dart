@@ -16,7 +16,7 @@ class EffectsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([c, c.timeNotifier]),
+      animation: Listenable.merge([c, c.panelTime]), // PERF: quiet while playing
       builder: (context, _) {
         final l = c.selectedLayer;
         final looks = [

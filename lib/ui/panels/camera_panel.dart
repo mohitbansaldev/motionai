@@ -25,7 +25,7 @@ class _CameraPanelState extends State<CameraPanel> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: Listenable.merge([c, c.timeNotifier]),
+      animation: Listenable.merge([c, c.panelTime]), // PERF: quiet while playing
       builder: (context, _) {
         final comp = c.comp;
         final mode = comp.camera.mode;

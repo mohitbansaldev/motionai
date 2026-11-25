@@ -23,6 +23,10 @@ class EditorController extends ChangeNotifier {
   final VideoPool videos = VideoPool();
   final ValueNotifier<double> timeNotifier = ValueNotifier(0);
 
+  /// Like [timeNotifier] but silent while playing (fires again on pause), so
+  /// side panels don't rebuild 60× a second during playback. PERF
+  late final Listenable panelTime = _PanelTime(this);
+
   // BULK (Agent N): `selectedLayerId` is the PRIMARY of [selectedLayerIds].
   String? _primary;
   final List<String> _sel = [];
@@ -440,5 +444,23 @@ class EditorController extends ChangeNotifier {
     videos.dispose();
     timeNotifier.dispose();
     super.dispose();
+  }
+}
+
+
+class _PanelTime extends ChangeNotifier {
+  final EditorController c;
+  bool _wasPlaying = false;
+  _PanelTime(this.c) {
+    c.timeNotifier.addListener(_tick);
+    c.addListener(_state);
+  }
+  void _tick() {
+    if (!c.playing) notifyListeners();
+  }
+
+  void _state() {
+    if (_wasPlaying && !c.playing) notifyListeners();
+    _wasPlaying = c.playing;
   }
 }
