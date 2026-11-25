@@ -61,3 +61,15 @@ Pacing: B-roll shots 3–8 s, presenter returns every 10–20 s, a new element e
 - **Story scenes**: rich warm AI illustrations (treaty signing, council, fighters in mountains), faces anonymised with black / red bars, name label in a colour box + year, crowd cut-outs layered in rows sliding in (parallax), slow push.
 - **A-roll overlays**: timeline ruler with a dated marker (8 DEC 1876), "Join us on" social CTA, handle bug.
 - **Look**: warm tungsten A-roll, dark vignettes, high contrast, light grain; heavy condensed white caps, highlighter yellow, red accents. Very little free text — labels and highlighted sources carry the words.
+
+## Reference analysis — "flydubai hijack" (20 clips, ~7.5 min sampled)
+
+Same skeleton (presenter ~40 %, returns every 10–20 s; B-roll 3–8 s; element every 1–2 s), more photographic:
+- **Photoreal AI story frames** (hospital, classroom, airport, cockpit), "Generative AI" tag bottom-left; often **selective colour**: subject black-and-white over a red / colour background; **sticker cut-outs** with a thick orange / red / white outline over a texture or map.
+- **Source block lower third** on almost every B-roll shot: "SOURCE: WWW.BBC.COM", bold headline, body with red / yellow underline or highlight. Torn-paper notes with highlighted lines on the right.
+- **Maps**: flat paper-texture maps with bold country fills (red / blue), big rotated country names, **photo insets in a polygon frame with an orange stroke** on the map, plane icon flying a glowing route, 3D terrain map with a giant figure placing a toy plane (scale play), dotted route lines between airports.
+- **Investigation board**: cork board, pinned photos, red string, circular spotlight vignette.
+- **Fake UI**: airline app / crew roster on a laptop or monitor, a tweet card, a police portal search with "no record found", stamped "CLEARED".
+- **Symbol shots**: hand holding a money bag with an animated price tag ($83,455 → $250,000), burning half-face for "EXTREMISM", grunge stamped words ("SECONDARY EDUCATION", "RESIGN").
+- **Logo nodes** linked by dashed lines (Oman Air → GCAA → flydubai) with photo bubbles.
+- A-roll overlays: dated timeline ruler (2013 / 2014 / 30 SEP 2026), "Join us on" WhatsApp / Instagram, "Click the LINK in Description" ticker.
