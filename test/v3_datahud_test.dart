@@ -144,13 +144,13 @@ void main() {
       expect(red.length, 10);
       expect(grey.length, 6);
       final dead = red.firstWhere((l) => l.prop(Props.opacity).isAnimated);
-      expect(dead.prop(Props.opacity).valueAt(1.9), closeTo(100, 1e-6));
-      expect(dead.prop(Props.opacity).valueAt(3.2), closeTo(0, 1e-6));
+      expect(dead.prop(Props.opacity).scalarAt(1.9), closeTo(100, 1e-6));
+      expect(dead.prop(Props.opacity).scalarAt(3.2), closeTo(0, 1e-6));
       expect(lay(p, 'pg_count').text!.text, '4 SURVIVED');
       expect(lay(p, 'pg_count').start, closeTo(3.1, 1e-9));
       expect(lay(p, 'pg_n0').text!.text, 'ROBERTO');
       expect(lay(p, 'pg_r0').text!.text, 'Medical student');
-      expect(lay(p, 'pg_under').prop(Props.opacity).valueAt(0), closeTo(20, 1e-9));
+      expect(lay(p, 'pg_under').prop(Props.opacity).scalarAt(0), closeTo(20, 1e-9));
       final x = project();
       run(x, {'op': 'add_component', 'type': 'people_grid', 'id': 'q', 'start': 0, 'duration': 5, 'total': 4, 'alive': 1, 'dead': 'x'});
       expect(x.main.layers.where((l) => RegExp(r'^q_x\d+$').hasMatch(l.id)).length, 3);
@@ -170,8 +170,8 @@ void main() {
       expect(vals[3].start - vals[2].start, closeTo(0.25, 1e-9));
       expect(lay(p, 'sf_label').text!.animator, 'typewriter');
       final red = lay(p, 'sf_fig_red').prop(Props.opacity);
-      expect(red.valueAt(0.5), 0);
-      expect(red.valueAt(3), closeTo(100, 1e-6));
+      expect(red.scalarAt(0.5), 0);
+      expect(red.scalarAt(3), closeTo(100, 1e-6));
     });
 
     test('calendar_flip: 3D tear-off pages flip over the binding, the last page stays', () {
@@ -183,9 +183,10 @@ void main() {
       expect(pages.length, 12);
       expect(lay(p, 'cal_p11_num').text!.text, '12');
       expect(lay(p, 'cal_p11').end, closeTo(6, 1e-9));
-      final rot = lay(p, 'cal_p0').prop(Props.rotation);
-      expect(rot.valueAt(0.4)[0], 0);
-      expect(rot.valueAt(0.5 + 0.42)[0], closeTo(-115, 1e-6));
+      final fold = lay(p, 'cal_p0').prop(Props.scale);
+      expect(fold.valueAt(0.4)[1], closeTo(100, 1e-9));
+      expect(fold.valueAt(0.5 + 0.42)[1], closeTo(0, 1e-6));
+      expect(lay(p, 'cal_p0_paper').prop(Props.opacity).scalarAt(0.95), closeTo(0, 1e-6));
       expect(lay(p, 'cal_p0_paper').is3D, isTrue);
       expect(lay(p, 'cal_caption').text!.text, 'DAYS');
       // long ranges are sampled to max_pages
@@ -211,8 +212,10 @@ void main() {
       final colon = lay(p, 'cs_c1');
       expect(colon.text!.text, '  :     ');
       final op = colon.prop(Props.opacity);
-      expect(op.keyframes.length, greaterThan(3));
-      expect(op.keyframes.every((k) => k.easing.type == EaseType.hold), isTrue);
+      final blinks = op.keyframes.where((k) => k.time < colon.end - 0.35).toList();
+      expect(blinks.length, greaterThan(3));
+      expect(blinks.every((k) => k.easing.type == EaseType.hold), isTrue);
+      expect({for (final k in blinks) k.value[0]}, {0.0, 100.0});
       expect(lay(p, 'cs_l1').end, closeTo(4, 1e-9), reason: 'retyped at 4 s');
       expect(lay(p, 'cs_l2').text!.text, '05 40 PM');
       expect(lay(p, 'cs_l2').start, closeTo(4, 1e-9));
@@ -222,7 +225,7 @@ void main() {
     test('clock_overlay: translucent face, hands spin, clock_tick bed', () {
       final p = project();
       run(p, {'op': 'add_component', 'type': 'clock_overlay', 'id': 'co', 'start': 0, 'duration': 4, 'spin': 1, 'enter': 'rise', 'blend': 'screen'});
-      expect(lay(p, 'co_ring').prop(Props.opacity).valueAt(2), closeTo(30, 1e-6));
+      expect(lay(p, 'co_ring').prop(Props.opacity).scalarAt(2), closeTo(30, 1e-6));
       final m = lay(p, 'co_minute').prop(Props.rotation);
       expect(m.valueAt(4)[2] - m.valueAt(0)[2], closeTo(360 * 4, 1e-6));
       final h = lay(p, 'co_hour').prop(Props.rotation);
@@ -308,8 +311,8 @@ void main() {
       run(b, {'op': 'add_component', 'type': 'social_bug', 'id': 'sb', 'start': 0, 'platform': 'instagram', 'hold': 2});
       final txt = b.main.requireLayer('sb_l2');
       final fx = txt.effects.firstWhere((e) => e.type == 'disintegrate');
-      expect(fx.params['progress']!.valueAt(2.2), 0);
-      expect(fx.params['progress']!.valueAt(2.7), closeTo(100, 1e-6));
+      expect(fx.params['progress']!.scalarAt(2.2), 0);
+      expect(fx.params['progress']!.scalarAt(2.7), closeTo(100, 1e-6));
       for (final pl in ['youtube', 'facebook', 'twitter', 'x', 'telegram', 'custom']) {
         final q = project();
         run(q, {'op': 'add_component', 'type': 'social_cta', 'id': 'q', 'start': 0, 'platform': pl, 'handle': 'none'});
@@ -323,10 +326,10 @@ void main() {
       final knob = lay(p, 'tg_knob').prop(Props.position);
       expect(knob.valueAt(0.9)[0], lessThan(0));
       expect(knob.valueAt(1.2)[0], greaterThan(0));
-      expect(lay(p, 'tg_track_on').prop(Props.opacity).valueAt(0.5), 0);
-      expect(lay(p, 'tg_track_on').prop(Props.opacity).valueAt(1.3), closeTo(100, 1e-6));
+      expect(lay(p, 'tg_track_on').prop(Props.opacity).scalarAt(0.5), 0);
+      expect(lay(p, 'tg_track_on').prop(Props.opacity).scalarAt(1.3), closeTo(100, 1e-6));
       expect(lay(p, 'tg_knob').prop(Props.scale).valueAt(1.18)[0], closeTo(105, 1e-6));
-      expect(lay(p, 'tg_on_txt').prop(Props.opacity).valueAt(1.5), closeTo(100, 1e-6));
+      expect(lay(p, 'tg_on_txt').prop(Props.opacity).scalarAt(1.5), closeTo(100, 1e-6));
       expect(p.main.layers.any((l) => l.type == LayerType.audio), isTrue);
     });
 

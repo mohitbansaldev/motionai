@@ -115,6 +115,11 @@ Map<String, dynamic>? _dhSfx(_B b, String kind, double time, {double? duration})
   return {'op': 'add_sfx', 'kind': kind, 'time': math.max(0.0, time), 'duration': ?duration};
 }
 
+/// [_B.finish] without the component's own `enter` / `exit` keys (they mean
+/// something else here, e.g. icon_drop enter: rise, social exit: disintegrate).
+List<Map<String, dynamic>> _dhFinish(_B b, List<Map<String, dynamic>> cmds, {String? enter, String? exit}) =>
+    _B(b.w, b.h, {...b.c}..remove('enter')..remove('exit'), b.now, b.root).finish(cmds, enter: enter, exit: exit);
+
 /// Pop-in keyframes on [id] at [t]: 0 → [over]% → 100% (eased).
 List<Map<String, dynamic>> _dhPop(_B b, String id, double t, {double over = 115, double dur = 0.26, double sx = 100, double sy = 100}) => [
       b.kf(id, 'scale', t, [0, 0, 100], 'ease_out'),
@@ -329,7 +334,7 @@ List<Map<String, dynamic>> _peopleGrid(_B b, Project p) {
   final rows = b.n('rows', 2).round().clamp(1, 6);
   final cols = (total / rows).ceil();
   final cmds = b.group('People Tally', x: 0, y: 0);
-  if (b.flag('bg', true)) cmds.add(b.backdrop('bg', b.str('bg_color', '#0B1630'), color2: '#050A18', name: 'Tally backdrop'));
+  if (b.flag('bg', true)) cmds.add(b.backdrop('board', b.str('bg_color', '#0B1630'), color2: '#050A18', name: 'Tally backdrop'));
   final under = b.mediaOf(p, 'media');
   if (under != null) {
     final s = math.max(b.w / under.width, b.h / under.height);
@@ -583,8 +588,12 @@ List<Map<String, dynamic>> _calendarFlip(_B b) {
       'parent': pid, 'start': st, 'duration': du,
     });
     if (!last && tFlip < b.end) {
-      cmds.add(b.kf(pid, 'rotation', tFlip, [0, 0, 0], 'ease_in'));
-      cmds.add(b.kf(pid, 'rotation', tFlip + flip, [-115, 0, 0]));
+      // fold up onto the binding (scale about the hinge, coplanar with the
+      // calendar: a real rotation would turn the page edge-on to the camera)
+      cmds.add(b.kf(pid, 'scale', tFlip, [100, 100, 100], 'ease_in'));
+      cmds.add(b.kf(pid, 'scale', tFlip + flip, [100, 4, 100])); // never 0: a singular 3D matrix
+      cmds.add(b.kf(pid, 'position', tFlip, [0, -ch / 2 + headH, z], 'ease_in'));
+      cmds.add(b.kf(pid, 'position', tFlip + flip, [0, -ch / 2 + headH, z - 6]));
       cmds.add(b.kf(b.id('${pg}_paper'), 'opacity', tFlip + flip * 0.55, 100, 'ease_in'));
       cmds.add(b.kf(b.id('${pg}_paper'), 'opacity', tFlip + flip, 0));
       cmds.add(b.kf(b.id('${pg}_num'), 'opacity', tFlip + flip * 0.55, 100, 'ease_in'));
@@ -613,7 +622,17 @@ List<Map<String, dynamic>> _calendarFlip(_B b) {
       });
     }
   }
-  return b.finish(cmds, enter: 'pop', exit: 'pop');
+  // enter: children fade in while the calendar settles (no scale-0 pop on a 3D group);
+  // exit: whatever is still up at the end fades out
+  cmds.add(b.kf(b.g, 'scale', b.start, [72, 72, 100], 'back'));
+  cmds.add(b.kf(b.g, 'scale', b.start + 0.5, [100, 100, 100]));
+  final out = <Map<String, dynamic>>[
+    for (final m in cmds)
+      if (m['op'] == 'add_layer' && m['type'] != 'null' && m['type'] != 'audio' &&
+          (((m['start'] as num?) ?? b.start) + ((m['duration'] as num?) ?? b.dur) - b.end).abs() < 1e-6)
+        {'op': 'animate_out', 'layer': m['id'], 'preset': 'fade', 'duration': 0.35},
+  ];
+  return _dhFinish(b, cmds, enter: 'fade_children', exit: null)..addAll(out);
 }
 
 // ---------------------------------------------------------- 26 clock_stamp
@@ -779,7 +798,7 @@ List<Map<String, dynamic>> _clockOverlay(_B b) {
   final tick = b.c['sfx'] is String ? '${b.c['sfx']}' : 'clock_tick';
   final s = _dhSfx(b, tick, b.start, duration: b.dur);
   if (s != null) cmds.add(s);
-  return b.finish(cmds, enter: 'fade_children', exit: null)..addAll(_dhFadeOutChildren(b, cmds, 0.5));
+  return _dhFinish(b, cmds, enter: 'fade_children', exit: null)..addAll(_dhFadeOutChildren(b, cmds, 0.5));
 }
 
 // --------------------------------------------------------- 24 split_screen
@@ -1088,7 +1107,7 @@ List<Map<String, dynamic>> _iconDrop(_B b, Project p) {
   }
   final s = _dhSfx(b, 'pop', land);
   if (s != null) cmds.add(s);
-  return b.finish(cmds, enter: 'none', exit: 'pop');
+  return _dhFinish(b, cmds, enter: 'none', exit: 'pop');
 }
 
 // ------------------------------------------------------- 32 / 64 social_cta
@@ -1209,11 +1228,11 @@ List<Map<String, dynamic>> _socialCta(_B b0, {required bool bug}) {
     }
     final g = _dhSfx(b, 'glitch', te + 0.05);
     if (g != null) cmds.add(g);
-    return b.finish(cmds, enter: 'none', exit: null);
+    return _dhFinish(b, cmds, enter: 'none', exit: null);
   }
-  if (exit == 'none') return b.finish(cmds, enter: 'none', exit: null);
-  if (exit == 'fade') return b.finish(cmds, enter: 'none', exit: null)..addAll(_dhFadeOutChildren(b, cmds, out));
-  return [...b.finish(cmds, enter: 'none', exit: null), {'op': 'animate_out', 'layer': b.g, 'preset': exit, 'duration': out}];
+  if (exit == 'none') return _dhFinish(b, cmds, enter: 'none', exit: null);
+  if (exit == 'fade') return _dhFinish(b, cmds, enter: 'none', exit: null)..addAll(_dhFadeOutChildren(b, cmds, out));
+  return [..._dhFinish(b, cmds, enter: 'none', exit: null), {'op': 'animate_out', 'layer': b.g, 'preset': exit, 'duration': out}];
 }
 
 // ------------------------------------------------------------- 28 ui_toggle
