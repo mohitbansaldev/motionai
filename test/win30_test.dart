@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vector_math/vector_math_64.dart' show Vector2;
 import 'package:motionai/core/engine/evaluator.dart';
 import 'package:motionai/core/model/camera.dart';
 import 'package:motionai/core/model/layer.dart';
@@ -147,4 +148,50 @@ void main() {
 class _NoBackend implements McpBackend {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
+  group('layers reaching behind the camera', () {
+    test('a big background seen at an angle is cropped to its part in view, not culled', () {
+      final p = _project();
+      final z = defaultZoomFor(1920);
+      final bg = Layer(id: 'bg', name: 'bg', type: LayerType.solid, start: 0, duration: 4, width: 20000, height: 8000, is3D: true)
+        ..prop(Props.position).staticValue = [960, 540, 0];
+      p.main.layers.add(bg);
+      p.main.camera.mode = CameraMode.threeD;
+      p.main.camera.prop(CamProps.zoom).staticValue = [z];
+      p.main.camera.prop(CamProps.position).staticValue = [960, 540, -z];
+      p.main.camera.prop(CamProps.poi).staticValue = [960 + 3000, 540, 0]; // yawed ~60°: the far left edge is behind the lens
+      final items = Evaluator.evaluate(p.main, 1);
+      expect(items, hasLength(1), reason: 'was culled whole (black frame)');
+      final it = items.single;
+      final c = it.crop!;
+      expect(c[2] - c[0], lessThan(20000));
+      expect(it.depth, greaterThan(kNearPlane));
+      final q = it.corners();
+      for (final sc in [
+        [1.0, 1.0],
+        [1919.0, 1.0],
+        [1919.0, 1079.0],
+        [1.0, 1079.0],
+      ]) {
+        expect(pointInQuad(Vector2(sc[0], sc[1]), q), isTrue, reason: 'screen corner $sc uncovered');
+      }
+      // The drawn box maps (0,0) of the crop to its corner.
+      final dm = it.drawMatrix;
+      final a = projectPoint(dm, 0, 0), b = it.project(c[0], c[1]);
+      expect((a - b).length, lessThan(1e-3));
+    });
+
+    test('a layer fully behind the camera is still culled; a normal layer has no crop', () {
+      final p = _project();
+      final z = defaultZoomFor(1920);
+      p.main.layers.addAll([_card('behind', -z - 2000), _card('front', 0)]);
+      p.main.camera.mode = CameraMode.threeD;
+      p.main.camera.prop(CamProps.zoom).staticValue = [z];
+      p.main.camera.prop(CamProps.position).staticValue = [960, 540, -z];
+      p.main.camera.prop(CamProps.poi).staticValue = [960, 540, 0];
+      final items = Evaluator.evaluate(p.main, 1);
+      expect([for (final i in items) i.layer.id], ['front']);
+      expect(items.single.crop, isNull);
+    });
+  });
 }

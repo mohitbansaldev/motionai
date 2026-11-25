@@ -103,6 +103,24 @@ class LayerView extends StatefulWidget {
 
   Widget wrap(Widget child, {bool dof = true}) {
     final l = item.layer;
+    // win-30: a layer reaching behind the camera draws only its part in view.
+    final crop = item.crop;
+    if (crop != null) {
+      child = SizedBox(
+        width: item.drawWidth,
+        height: item.drawHeight,
+        child: ClipRect(
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: l.width,
+            maxWidth: l.width,
+            minHeight: l.height,
+            maxHeight: l.height,
+            child: Transform.translate(offset: Offset(-crop[0], -crop[1]), child: child),
+          ),
+        ),
+      );
+    }
     // Depth-of-field blur is the most expensive thing in 3D: lighter in the
     // preview and skipped while playing (full quality on export). A cached
     // layer has it baked into its image instead (dof: false).
@@ -113,7 +131,8 @@ class LayerView extends StatefulWidget {
     if (item.opacity < 0.999) child = Opacity(opacity: item.opacity, child: child);
     // win-30: camera-facing 3D layers vanish from the Windows preview unless
     // the matrix has a (sub-pixel) perspective term.
-    Widget out = Transform(transform: draft && l.is3D ? Realism.previewSafe(item.matrix) : item.matrix, child: child);
+    final m = item.drawMatrix;
+    Widget out = Transform(transform: draft && l.is3D ? Realism.previewSafe(m) : m, child: child);
     // V3-C >>> no semantics under perspective: a steep 3D plane (tilted calendar
     // text) makes the inverse-mapped semantics clip non-finite (debug assert)
     if (l.is3D) out = ExcludeSemantics(child: out);
@@ -860,7 +879,7 @@ class _LayerViewState extends State<LayerView> {
     int? decode;
     var ratio = 1.0;
     if (scale != null) {
-      final s = LayerSig.screenScale(w.item.matrix, l.width, l.height) * scale;
+      final s = LayerSig.screenScale(w.item.drawMatrix, w.item.drawWidth, w.item.drawHeight) * scale;
       ratio = s;
       if (l.type == LayerType.image) {
         _decodeW = LayerSig.decodeWidth(l.width * s, _decodeW, cap: math.min(l.width.round(), LayerView.draftImageSize));
@@ -876,7 +895,7 @@ class _LayerViewState extends State<LayerView> {
       _stable = 0;
     }
     _sig = sig;
-    final raster = scale != null && sig != null && _stable >= 1 && l.is3D && !w.asMatte && LayerSig.worthRaster(l);
+    final raster = scale != null && sig != null && _stable >= 1 && l.is3D && !w.asMatte && w.item.crop == null && LayerSig.worthRaster(l);
     // Cache the layer's pixels: when only its 3D/camera transform changes,
     // the GPU re-composites the cached picture (or image) instead of repainting it.
     // In the editor the depth blur is applied by LayerRaster too (baked into

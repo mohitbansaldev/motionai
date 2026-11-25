@@ -31,6 +31,12 @@ class RenderItem {
   final RenderItem? matte;
   final bool matteInverse;
 
+  /// win-30: only this part of the layer is drawn ([x0, y0, x1, y1] in
+  /// layer-local px) — set when the layer reaches behind the camera (a big
+  /// background or floor during a pass-by / orbit). The part in view is
+  /// drawn instead of culling the whole layer (which gave black frames).
+  final List<double>? crop;
+
   RenderItem({
     required this.layer,
     required this.matrix,
@@ -41,6 +47,7 @@ class RenderItem {
     this.vy = 0,
     this.matte,
     this.matteInverse = false,
+    this.crop,
   });
 
   RenderItem withExtras({double? vx, double? vy, RenderItem? matte, bool? matteInverse}) => RenderItem(
@@ -49,6 +56,7 @@ class RenderItem {
         opacity: opacity,
         depth: depth,
         dofBlur: dofBlur,
+        crop: crop,
         vx: vx ?? this.vx,
         vy: vy ?? this.vy,
         matte: matte ?? this.matte,
@@ -61,13 +69,27 @@ class RenderItem {
   /// Projects a layer-local point to composition pixels.
   Vector2 project(double x, double y) => projectPoint(matrix, x, y);
 
-  /// The four corners of the layer on screen (TL, TR, BR, BL).
-  List<Vector2> corners() => [
-        project(0, 0),
-        project(layer.width, 0),
-        project(layer.width, layer.height),
-        project(0, layer.height),
-      ];
+  /// The four corners of the layer (its drawn [crop] if any) on screen (TL, TR, BR, BL).
+  List<Vector2> corners() {
+    final c = crop;
+    if (c != null) return [project(c[0], c[1]), project(c[2], c[1]), project(c[2], c[3]), project(c[0], c[3])];
+    return [
+      project(0, 0),
+      project(layer.width, 0),
+      project(layer.width, layer.height),
+      project(0, layer.height),
+    ];
+  }
+
+  /// Matrix for drawing: maps the [crop] box (0..drawWidth, 0..drawHeight) to the screen.
+  Matrix4 get drawMatrix {
+    final c = crop;
+    if (c == null) return matrix;
+    return matrix.multiplied(Matrix4.translationValues(c[0], c[1], 0));
+  }
+
+  double get drawWidth => crop == null ? layer.width : crop![2] - crop![0];
+  double get drawHeight => crop == null ? layer.height : crop![3] - crop![1];
 
   bool containsPoint(double x, double y) => pointInQuad(Vector2(x, y), corners());
 }
@@ -262,6 +284,68 @@ class Evaluator {
     return a2 < kNearPlane || w + a2 < kNearPlane || w + h + a2 < kNearPlane || h + a2 < kNearPlane;
   }
 
+  /// The part of a layer that crosses the near plane worth drawing:
+  /// layer rect ∩ (depth ≥ 2 × near plane) ∩ view frustum (+10% margin),
+  /// as a box [x0, y0, x1, y1] in layer px — or null when nothing is in view
+  /// or the box would still reach behind the camera. [m] maps layer-local
+  /// points to the screen with w = depth; [d] gives depth = d0·x + d1·y + d2.
+  static List<double>? nearCrop(Matrix4 m, (double, double, double) d, double lw, double lh, double cw, double ch) {
+    final s = m.storage;
+    final (a0, a1, a2) = d;
+    final mx = cw * 0.1, my = ch * 0.1;
+    // Half-planes a·x + b·y + c ≥ 0 in layer-local coordinates.
+    final planes = <List<double>>[
+      [a0, a1, a2 - kNearPlane * 2],
+      [s[0] + mx * a0, s[4] + mx * a1, s[12] + mx * a2], // screen x ≥ −mx
+      [(cw + mx) * a0 - s[0], (cw + mx) * a1 - s[4], (cw + mx) * a2 - s[12]], // x ≤ cw + mx
+      [s[1] + my * a0, s[5] + my * a1, s[13] + my * a2], // y ≥ −my
+      [(ch + my) * a0 - s[1], (ch + my) * a1 - s[5], (ch + my) * a2 - s[13]], // y ≤ ch + my
+    ];
+    var poly = <List<double>>[
+      [0, 0],
+      [lw, 0],
+      [lw, lh],
+      [0, lh],
+    ];
+    for (final pl in planes) {
+      double side(List<double> p) => pl[0] * p[0] + pl[1] * p[1] + pl[2];
+      final out = <List<double>>[];
+      for (int i = 0; i < poly.length; i++) {
+        final p = poly[i], q = poly[(i + 1) % poly.length];
+        final sp = side(p), sq = side(q);
+        if (sp >= 0) out.add(p);
+        if ((sp >= 0) != (sq >= 0)) {
+          final k = sp / (sp - sq);
+          out.add([p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k]);
+        }
+      }
+      poly = out;
+      if (poly.length < 3) return null;
+    }
+    double x0 = double.infinity, y0 = double.infinity, x1 = -double.infinity, y1 = -double.infinity;
+    for (final p in poly) {
+      x0 = math.min(x0, p[0]);
+      y0 = math.min(y0, p[1]);
+      x1 = math.max(x1, p[0]);
+      y1 = math.max(y1, p[1]);
+    }
+    x0 = x0.clamp(0.0, lw);
+    y0 = y0.clamp(0.0, lh);
+    x1 = x1.clamp(0.0, lw);
+    y1 = y1.clamp(0.0, lh);
+    if (x1 - x0 < 1 || y1 - y0 < 1) return null;
+    // The box corners must all be in front of the near plane too.
+    for (final p in [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+    ]) {
+      if (a0 * p[0] + a1 * p[1] + a2 < kNearPlane) return null;
+    }
+    return [x0, y0, x1, y1];
+  }
+
   static RenderItem? _item(_Frame f, Layer layer) {
     final t = f.t;
     final opacity = (layer.prop(Props.opacity).scalarAt(t) / 100).clamp(0.0, 1.0);
@@ -269,10 +353,16 @@ class Evaluator {
     final world = worldMatrix(f.comp, layer, t, f.worldCache);
 
     if (layer.is3D) {
-      // Cull layers crossing behind the camera.
       final d = f.depthCoefs(world);
-      if (_crossesNearPlane(d, layer)) return null;
-      final depth = d.$1 * layer.width / 2 + d.$2 * layer.height / 2 + d.$3;
+      List<double>? crop;
+      if (_crossesNearPlane(d, layer)) {
+        // Draw only the part in view (in front of the camera); cull when none.
+        crop = nearCrop(f.camProj.multiplied(world), d, layer.width, layer.height, f.comp.width, f.comp.height);
+        if (crop == null) return null;
+      }
+      final cx = crop == null ? layer.width / 2 : (crop[0] + crop[2]) / 2;
+      final cy = crop == null ? layer.height / 2 : (crop[1] + crop[3]) / 2;
+      final depth = d.$1 * cx + d.$2 * cy + d.$3;
       double blur = 0;
       if (f.comp.camera.mode == CameraMode.threeD && f.cam.aperture > 0) {
         blur = f.cam.aperture * 0.4 * (depth - f.cam.focus).abs() / math.max(depth, 1.0);
@@ -288,6 +378,7 @@ class Evaluator {
         opacity: opacity,
         depth: depth,
         dofBlur: blur,
+        crop: crop,
       );
     }
     return RenderItem(
