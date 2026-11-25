@@ -6,7 +6,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main, feat/windows]
+    branches: [main, feat/windows, integ/v1]
   workflow_dispatch:
 
 permissions:

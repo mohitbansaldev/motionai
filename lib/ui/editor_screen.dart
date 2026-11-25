@@ -25,6 +25,10 @@ import 'panels/layer_panel.dart';
 import 'preview/composition_view.dart';
 import 'theme.dart';
 import 'timeline/timeline_view.dart';
+import 'library/library_sheet.dart';
+import 'library/save_template_dialog.dart';
+import 'library/template_gallery.dart';
+import 'director_screen.dart';
 
 class EditorScreen extends StatefulWidget {
   final Project project;
@@ -172,6 +176,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
         item('vis', l.visible ? Icons.visibility_off_outlined : Icons.visibility_outlined, l.visible ? 'Hide' : 'Show'),
         item('lock', l.locked ? Icons.lock_open : Icons.lock_outline, l.locked ? 'Unlock' : 'Lock'),
         item('rename', Icons.edit_outlined, 'Rename layer'),
+        item('template', Icons.bookmark_add_outlined, 'Save as template…'),
         const PopupMenuDivider(),
         item('delete', Icons.delete_outline, 'Delete', 'Del', Colors.redAccent),
       ],
@@ -205,6 +210,8 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
           ),
         );
         if (name != null && name.trim().isNotEmpty) err = c.tryRun({'op': 'update_layer', 'layer': l.id, 'name': name.trim()});
+      case 'template':
+        await SaveTemplateDialog.open(context, c, layers: {l.id});
       case 'delete':
         err = c.tryRun({'op': 'remove_layer', 'layer': l.id});
     }
@@ -495,9 +502,15 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
               if (v == 'rename') _rename();
               if (v == 'keys') _showShortcuts();
               if (v == 'import') _importDialog();
+              if (v == 'library') LibrarySheet.open(context, c);
+              if (v == 'templates') TemplateGallery.open(context, c);
+              if (v == 'director') DirectorScreen.open(context, c);
             },
             itemBuilder: (_) => [
               if (_desktopOs) const PopupMenuItem(value: 'import', child: Text('Import files…  (Ctrl+I)')),
+              const PopupMenuItem(value: 'director', child: Text('Director (AI makes the video)')),
+              const PopupMenuItem(value: 'templates', child: Text('Templates')),
+              const PopupMenuItem(value: 'library', child: Text('Asset library')),
               const PopupMenuItem(value: 'rename', child: Text('Rename project')),
               const PopupMenuItem(value: 'captions', child: Text('Auto captions')),
               const PopupMenuItem(value: 'console', child: Text('Edit commands (developer)')),
