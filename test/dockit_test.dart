@@ -398,7 +398,8 @@ void main() {
       expect(comp.layerById('dq_1_lb_g'), isNotNull);
       expect(comp.layerById('dq_2_a0_img'), isNotNull);
       expect(comp.layerById('dq_6_wipe_wipe'), isNotNull);
-      expect(comp.layers.any((l) => l.id.startsWith('dq_10')), isFalse); // not available on this build → skipped
+      // route_follow comes with the scene branch: built when available, skipped otherwise.
+      expect(comp.layers.any((l) => l.id.startsWith('dq_10')), Components.types.contains('route_follow'));
       // Without the 3D scene ops, 3D moves fall back to a 2D push.
       if (!StoryBuilder.has3d) expect(comp.requireLayer('dq_6_m').prop(Props.scale).isAnimated, isTrue);
     });

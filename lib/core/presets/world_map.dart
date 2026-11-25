@@ -41,11 +41,27 @@ class WorldMap {
     for (final c in countries) {
       if (c.a3.toLowerCase() == s || c.a2.toLowerCase() == s || c.name.toLowerCase() == s) return c;
     }
+    // Common long / old / informal names ("United States of America", "UK").
+    final alias = _aliases[s];
+    if (alias != null) return find(alias);
     for (final c in countries) {
       if (c.name.toLowerCase().contains(s)) return c;
     }
-    return null;
+    // A longer name that contains a country name ("Republic of India").
+    Country? best;
+    for (final c in countries) {
+      final n = c.name.toLowerCase();
+      if (n.length >= 4 && s.contains(n) && (best == null || n.length > best.name.length)) best = c;
+    }
+    return best;
   }
+
+  static const _aliases = {
+    'united states of america': 'USA', 'america': 'USA', 'us': 'USA', 'the united states': 'USA',
+    'uk': 'GBR', 'britain': 'GBR', 'great britain': 'GBR', 'england': 'GBR', 'scotland': 'GBR', 'wales': 'GBR',
+    'holland': 'NLD', 'burma': 'MMR', 'persia': 'IRN', 'ceylon': 'LKA', 'siam': 'THA', 'russia': 'RUS',
+    'south korea': 'KOR', 'north korea': 'PRK', 'czech republic': 'CZE', 'ivory coast': 'CIV', 'uae': 'ARE',
+  };
 
   /// Rings projected into map pixels, optionally relative to an origin.
   static List<List<double>> projectRings(Country c) => [

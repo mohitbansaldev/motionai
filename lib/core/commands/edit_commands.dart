@@ -10,6 +10,7 @@ import '../model/project.dart';
 import '../presets/camera_presets.dart';
 import '../presets/components.dart';
 import '../presets/motion_presets.dart';
+import '../presets/scene3d.dart'; // SCENE (Agent D)
 import 'fx_commands.dart'; // FX (Agent B)
 import '../../audio/sound_commands.dart'; // Sound (Agent K)
 import '../../fonts/font_commands.dart'; // FONTS (Agent I)
@@ -49,6 +50,12 @@ class ProjectSnapshot {
       ..clear()
       ..addAll(r.media);
     p.main = r.main;
+    p.recipes // SCENE (Agent D)
+      ..clear()
+      ..addAll(r.recipes);
+    p.shots // SCENE (Agent D)
+      ..clear()
+      ..addAll(r.shots);
     // PRECOMP (Agent L): nested comps are part of every snapshot.
     p.comps
       ..clear()
@@ -73,6 +80,8 @@ class EditCommands {
     'set_camera_mode', 'camera_move', 'parallax_rig', 'set_comp', 'batch',
     'animate_in', 'animate_out', 'apply_style', 'add_mask', 'update_mask', 'remove_mask',
     'add_component', 'replace_media',
+    // SCENE (Agent D)
+    'make_3d', 'camera_shot', 'save_shot', 'load_shot', 'save_recipe', 'apply_recipe', 'delete_recipe',
     ...SoundCommands.ops, // Sound (Agent K): add_sfx, beat_sync, auto_mix
     ...PrecompCommands.ops, // PRECOMP (Agent L)
     ...BulkCommands.ops, // BULK (Agent N): for_layers, select, align, group_layers, paste_layers…
@@ -428,6 +437,64 @@ class EditCommands {
         PrecompCommands.afterSetComp(project, comp); // PRECOMP (Agent L): comp layers follow the size
         break;
 
+      // ===== scene ops (Agent D) =====
+      case 'make_3d':
+        final ids = (c['layers'] as List?)?.map((e) => '$e').toList();
+        final bands = c['bands'] is Map
+            ? {for (final e in (c['bands'] as Map).entries) '${e.key}': '${e.value}'}
+            : const <String, String>{};
+        Scene3D.make3D(comp, layerIds: ids, bands: bands, start: _optNum(c, 'start') ?? now, log: r.log);
+        break;
+
+      case 'camera_shot':
+        final start = _optNum(c, 'start') ?? now;
+        final dur = _optNum(c, 'duration') ?? 3;
+        var inten = _optNum(c, 'intensity') ?? _optNum(c, 'amount') ?? 0.5;
+        if (inten > 1) inten /= 100;
+        r.createdIds.addAll(Scene3D.cameraShot(
+          comp,
+          move: '${c['move'] ?? 'drift'}',
+          target: c['target'] == null ? null : '${c['target']}',
+          point: c['point'] == null ? null : _values(c['point']),
+          start: start,
+          duration: dur,
+          ease: _ease(c['ease']),
+          cutTo: c['cut_to'] == null ? null : '${c['cut_to']}',
+          intensity: inten,
+          direction: '${c['direction'] ?? 'right'}',
+          log: r.log,
+        ));
+        _extendComp(comp, start + dur);
+        break;
+
+      case 'save_shot':
+        SceneStore.saveShot(project, '${c['name'] ?? ''}', from: _optNum(c, 'from'), to: _optNum(c, 'to'));
+        break;
+
+      case 'load_shot':
+        final lmap = c['layers'] is Map
+            ? {for (final e in (c['layers'] as Map).entries) '${e.key}': '${e.value}'}
+            : const <String, String>{};
+        SceneStore.loadShot(project, '${c['name'] ?? ''}', start: _optNum(c, 'start') ?? now, map: lmap, log: r.log);
+        break;
+
+      case 'save_recipe':
+        SceneStore.saveRecipe(project, '${c['name'] ?? ''}', _layer(comp, c['layer']));
+        break;
+
+      case 'apply_recipe':
+        SceneStore.applyRecipe(project, '${c['name'] ?? ''}', _layer(comp, c['layer']), start: _optNum(c, 'start'));
+        break;
+
+      case 'delete_recipe':
+        if (!SceneStore.deleteRecipe(project, '${c['name'] ?? ''}')) r.log.add('No recipe "${c['name']}" in this project');
+        break;
+
+      case 'scene_counter_scale': // internal: pins keep their screen size on a zooming map
+        Scene3D.counterScale(comp, _layer(comp, c['layer']), _layer(comp, c['of']), _optNum(c, 'start') ?? now,
+            _optNum(c, 'end') ?? comp.duration);
+        break;
+      // ===== end scene ops =====
       // ---- Sound (Agent K): add_sfx / beat_sync / auto_mix → lib/audio/sound_commands.dart
       case 'add_sfx':
       case 'beat_sync':
