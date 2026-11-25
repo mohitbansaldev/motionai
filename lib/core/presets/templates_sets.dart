@@ -111,6 +111,57 @@ List<SceneTemplate> setTemplates() => const [
         ],
         builder: _roomSet,
       ),
+      SceneTemplate(
+        id: 'set_street', name: 'Street set (real 3D)', category: '3D sets',
+        subtitle: 'Two building fronts, a road and the end of the street as separate planes; people at depth; the camera walks down the street',
+        duration: 8, previewTime: 4,
+        slots: [
+          TemplateSlot('end', 'End of the street / sky (straight-on)', kind: 'media', media: 'image'),
+          TemplateSlot('left', 'Left building front (straight-on)', kind: 'media', media: 'image'),
+          TemplateSlot('right', 'Right building front (straight-on)', kind: 'media', media: 'image'),
+          TemplateSlot('road', 'Road (top-down)', kind: 'media', media: 'image'),
+          TemplateSlot('people', 'People / vehicles (cut-outs, 1–5)', kind: 'medias', media: 'image', max: 5),
+          TemplateSlot('duration', 'Duration (s)', initial: '8'),
+        ],
+        builder: _streetSet,
+      ),
+      SceneTemplate(
+        id: 'set_push_through', name: 'Push through a frame', category: 'Transitions',
+        subtitle: 'The camera flies through a window / door / frame into the next picture behind it',
+        duration: 4, previewTime: 2.4,
+        slots: [
+          TemplateSlot('frame', 'Frame with a see-through opening (cut-out PNG, optional)', kind: 'media', media: 'image'),
+          TemplateSlot('outside', 'Picture around the opening (when there is no frame cut-out)', kind: 'media', media: 'image'),
+          TemplateSlot('inside', 'Picture seen through the opening', kind: 'media', media: 'image'),
+          TemplateSlot('duration', 'Duration (s)', initial: '4'),
+        ],
+        builder: _pushThrough,
+      ),
+      SceneTemplate(
+        id: 'set_character_intro', name: 'Character intro', category: 'Explainers',
+        subtitle: 'A person on a textured backdrop at real depth; name slams in, role types on; slow sideways push',
+        duration: 5, previewTime: 2.6,
+        slots: [
+          TemplateSlot('person', 'Person (cut-out)', kind: 'media', media: 'image'),
+          TemplateSlot('background', 'Backdrop (photo / texture)', kind: 'media', media: 'image'),
+          TemplateSlot('name', 'Name', initial: 'KIM IL SUNG'),
+          TemplateSlot('role', 'Role / one line', initial: 'FOUNDER OF NORTH KOREA'),
+          TemplateSlot('accent', 'Accent colour', kind: 'color', initial: '#D0202A'),
+          TemplateSlot('duration', 'Duration (s)', initial: '5'),
+        ],
+        builder: _characterIntro,
+      ),
+      SceneTemplate(
+        id: 'set_article_desk', name: 'Article on a desk', category: 'Evidence',
+        subtitle: 'A news cut-out lies tilted on a desk; the table straightens while the camera glides in close (add marks with the article component)',
+        duration: 6, previewTime: 4,
+        slots: [
+          TemplateSlot('article', 'Article screenshot', kind: 'media', media: 'image'),
+          TemplateSlot('desk', 'Desk / paper texture', kind: 'media', media: 'image'),
+          TemplateSlot('duration', 'Duration (s)', initial: '6'),
+        ],
+        builder: _articleDesk,
+      ),
     ];
 
 // ------------------------------------------------------------ room set
@@ -466,5 +517,197 @@ List<Map<String, dynamic>> _pinnedPortraits(TemplateCtx c) {
     ]);
   }
   cmds.addAll(_finish(c, id, du, vignette: 40, grain: 14));
+  return cmds;
+}
+
+// ------------------------------------------------------------ street set
+
+List<Map<String, dynamic>> _streetSet(TemplateCtx c) {
+  const id = 'street';
+  final w = c.w, h = c.h, k = w / 1920;
+  final z0 = w * 1.38889;
+  final du = c.n('duration', 8).clamp(4.0, 30.0).toDouble();
+  final cmds = _comp(c, id, 'Street set', du, bg: '#0A0C10');
+  final people = c.medias('people');
+  final n = people.length;
+  cmds.add(_in(id, {
+    'op': 'add_component', 'type': 'room', 'id': 'st', 'start': 0, 'duration': du,
+    'width': w * 1.5, 'depth': z0 * 3.2, 'height': h * 2.4, 'color': '#5A5148',
+    if (c.media('end') != null) 'back': c.media('end')!.id,
+    if (c.media('left') != null) 'left': c.media('left')!.id,
+    if (c.media('right') != null) 'right': c.media('right')!.id,
+    if (c.media('road') != null) 'floor': c.media('road')!.id,
+    'items': [
+      for (var i = 0; i < n; i++)
+        {'media': people[i].id, 'x': n == 1 ? 0.5 : 0.22 + 0.56 * i / (n - 1), 'z': 0.35 + 0.5 * ((i * 37) % 10) / 10},
+    ],
+  }));
+  // Walk down the street: forward with a gentle sideways sway and a slight rise.
+  final zs = -z0 * 1.1 * 1.0, ze = -z0 * 0.15;
+  cmds.addAll([
+    _k(id, 'camera', 'position', 0, [w / 2 - 120 * k, h / 2 + 40 * k, zs], 'easy_ease'),
+    _k(id, 'camera', 'position', du, [w / 2 + 120 * k, h / 2 - 10 * k, ze], 'easy_ease'),
+    _k(id, 'camera', 'poi', 0, [w / 2 - 40 * k, h / 2 + 40 * k, zs + z0], 'easy_ease'),
+    _k(id, 'camera', 'poi', du, [w / 2 + 40 * k, h / 2, ze + z0], 'easy_ease'),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'aperture', 'value': 10}),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'focus', 'value': z0}),
+  ]);
+  cmds.addAll(_finish(c, id, du, vignette: 55, grain: 14));
+  return cmds;
+}
+
+// ------------------------------------------------------------ push through a frame
+
+List<Map<String, dynamic>> _pushThrough(TemplateCtx c) {
+  const id = 'push';
+  final w = c.w, h = c.h, k = w / 1920;
+  final z0 = w * 1.38889;
+  final du = c.n('duration', 4).clamp(2.0, 12.0).toDouble();
+  final cmds = _comp(c, id, 'Push through', du);
+  final inside = c.media('inside'), frame = c.media('frame'), outside = c.media('outside');
+  // Inside picture far behind the opening, big enough to fill the frame at the end.
+  const zIn = 1400.0;
+  final fIn = (z0 + zIn) / z0 * 1.12;
+  if (inside != null) {
+    final s = _cover(inside, w * fIn, h * fIn);
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'image', 'media': inside.id, 'id': 'inside', 'name': 'Inside', 'is3d': true, 'fit': 'none', 'position': [w / 2, h / 2, zIn], 'scale': [s, s, 100]}));
+  } else {
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'shape', 'id': 'inside', 'name': 'Inside', 'is3d': true, 'kind': 'rect', 'width': w * fIn, 'height': h * fIn, 'fill': '#3A6EA5', 'fill2': '#0D1B2A', 'position': [w / 2, h / 2, zIn]}));
+  }
+  cmds.add(_in(id, {'op': 'add_layer', 'type': 'solid', 'id': 'sep', 'name': 'sep', 'color': '#00000000', 'width': 2, 'height': 2, 'position': [0, 0, 0]}));
+  if (frame != null) {
+    final s = _cover(frame, w * 1.02, h * 1.02);
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'image', 'media': frame.id, 'id': 'frame', 'name': 'Frame', 'is3d': true, 'fit': 'none', 'position': [w / 2, h / 2, 0], 'scale': [s, s, 100]}));
+  } else {
+    // A picture with an oval opening cut in it (or a dark wall).
+    if (outside != null) {
+      final s = _cover(outside, w * 1.02, h * 1.02);
+      cmds.add(_in(id, {'op': 'add_layer', 'type': 'image', 'media': outside.id, 'id': 'frame', 'name': 'Frame', 'is3d': true, 'fit': 'none', 'position': [w / 2, h / 2, 0], 'scale': [s, s, 100]}));
+      final sx = s / 100;
+      cmds.add(_in(id, {'op': 'add_mask', 'layer': 'frame', 'shape': 'ellipse', 'invert': true, 'center': [outside.width / 2, outside.height / 2], 'size': [w * 0.34 / sx, h * 0.5 / sx], 'feather': 6 / sx}));
+    } else {
+      cmds.add(_in(id, {'op': 'add_layer', 'type': 'shape', 'id': 'frame', 'name': 'Frame', 'is3d': true, 'kind': 'rect', 'width': w * 1.02, 'height': h * 1.02, 'fill': '#1B1712', 'fill2': '#0A0806', 'position': [w / 2, h / 2, 0]}));
+      cmds.add(_in(id, {'op': 'add_mask', 'layer': 'frame', 'shape': 'ellipse', 'invert': true, 'center': [w * 0.51, h * 0.51], 'size': [w * 0.34, h * 0.5], 'feather': 6}));
+    }
+  }
+  cmds.add(_in(id, {'op': 'add_effect', 'layer': 'frame', 'effect': 'color', 'params': {'brightness': -10, 'contrast': 6}}));
+  // Slow approach, then accelerate through the opening; the inside settles.
+  final tA = du * 0.35, tB = du * 0.78;
+  cmds.addAll([
+    _k(id, 'camera', 'position', 0, [w / 2, h / 2, -z0], 'ease_in'),
+    _k(id, 'camera', 'position', tA, [w / 2, h / 2, -z0 * 0.8], 'ease_in'),
+    _k(id, 'camera', 'position', tB, [w / 2, h / 2, 140], 'ease_out'),
+    _k(id, 'camera', 'position', du, [w / 2, h / 2, 240], 'easy_ease'),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'poi', 'value': [w / 2, h / 2, zIn]}),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'aperture', 'value': 12}),
+    _k(id, 'camera', 'focus', 0, [z0], 'easy_ease'),
+    _k(id, 'camera', 'focus', tB, [zIn - 140], 'easy_ease'),
+  ]);
+  cmds.addAll(_finish(c, id, du, vignette: 45, grain: 12));
+  return cmds;
+}
+
+// ------------------------------------------------------------ character intro
+
+List<Map<String, dynamic>> _characterIntro(TemplateCtx c) {
+  const id = 'intro';
+  final w = c.w, h = c.h, k = w / 1920;
+  final z0 = w * 1.38889;
+  final du = c.n('duration', 5).clamp(3.0, 15.0).toDouble();
+  final accent = c.s('accent', '#D0202A');
+  final cmds = _comp(c, id, 'Character intro', du, bg: '#0B0B0D');
+  final bg = c.media('background'), person = c.media('person');
+  // Backdrop far away (z 1600), made big enough for the move.
+  const zBg = 1600.0;
+  final f = (z0 + zBg) / z0 * 1.3;
+  if (bg != null) {
+    final s = _cover(bg, w * f, h * f);
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'image', 'media': bg.id, 'id': 'bg', 'name': 'Backdrop', 'is3d': true, 'fit': 'none', 'position': [w / 2, h / 2, zBg], 'scale': [s, s, 100]}));
+    cmds.add(_in(id, {'op': 'add_effect', 'layer': 'bg', 'effect': 'color', 'params': {'brightness': -28, 'saturation': -35, 'contrast': 10}}));
+  } else {
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'shape', 'id': 'bg', 'name': 'Backdrop', 'is3d': true, 'kind': 'rect', 'width': w * f, 'height': h * f, 'fill': '#2A2E35', 'fill2': '#0B0C0F', 'position': [w / 2, h / 2, zBg]}));
+  }
+  // Big ghost name far back.
+  final name = c.s('name', 'NAME').toUpperCase();
+  cmds.add(_in(id, {'op': 'add_layer', 'type': 'text', 'id': 'ghost', 'name': 'Ghost name', 'is3d': true, 'text': name, 'font': 'Anton', 'font_size': 520 * k, 'font_weight': 400, 'text_color': '#FFFFFF', 'align': 'center', 'width': 4200 * k, 'position': [w / 2, h / 2 - 40 * k, 900]}));
+  cmds.add(_in(id, {'op': 'set_property', 'target': 'ghost', 'prop': 'opacity', 'value': 9}));
+  cmds.add(_in(id, {'op': 'add_layer', 'type': 'solid', 'id': 'sep', 'name': 'sep', 'color': '#00000000', 'width': 2, 'height': 2, 'position': [0, 0, 0]}));
+  // Person at z 200, standing on the bottom edge.
+  final ph = h * 0.92 * (z0 + 200) / z0;
+  if (person != null) {
+    final s = _sh(person, ph);
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'image', 'media': person.id, 'id': 'person', 'name': 'Person', 'is3d': true, 'fit': 'none', 'position': [w * 0.36, h - ph / 2 * z0 / (z0 + 200) + 30 * k, 200], 'scale': [s, s, 100]}));
+    cmds.add(_in(id, {'op': 'add_effect', 'layer': 'person', 'effect': 'light_wrap', 'params': {'amount': 35, 'width': 14}}));
+  } else {
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'shape', 'id': 'person', 'name': 'Person', 'is3d': true, 'kind': 'ellipse', 'width': ph * 0.42, 'height': ph * 0.9, 'fill': '#1A1A1A', 'position': [w * 0.36, h * 0.62, 200]}));
+  }
+  // Name + role in front (2D, crisp): bar wipes, name slams, role types on.
+  const t0 = 0.6;
+  final x0 = w * 0.6;
+  cmds.addAll([
+    _in(id, {'op': 'add_layer', 'type': 'shape', 'id': 'bar', 'name': 'Accent bar', 'kind': 'rect', 'width': 12 * k, 'height': 210 * k, 'fill': accent, 'position': [x0 - 30 * k, h * 0.5], 'start': t0, 'duration': du - t0}),
+    _k(id, 'bar', 'scale', t0, [100, 0, 100], 'ease_out'), _k(id, 'bar', 'scale', t0 + 0.35, [100, 100, 100]),
+    _in(id, {'op': 'add_layer', 'type': 'text', 'id': 'name', 'name': 'Name', 'text': name, 'font': 'Anton', 'font_size': 118 * k, 'font_weight': 400, 'text_color': '#FFFFFF', 'align': 'left', 'width': 820 * k, 'position': [x0 + 410 * k, h * 0.5 - 40 * k], 'start': t0 + 0.2, 'duration': du - t0 - 0.2, 'shadow': true}),
+    _k(id, 'name', 'scale', t0 + 0.2, [130, 130, 100], 'ease_out'), _k(id, 'name', 'scale', t0 + 0.45, [100, 100, 100]),
+    _k(id, 'name', 'opacity', t0 + 0.2, [0], 'linear'), _k(id, 'name', 'opacity', t0 + 0.3, [100]),
+    _in(id, {'op': 'add_layer', 'type': 'text', 'id': 'role', 'name': 'Role', 'text': c.s('role', '').toUpperCase(), 'font': 'Montserrat', 'font_size': 38 * k, 'font_weight': 600, 'text_color': '#E6E6E6', 'align': 'left', 'width': 820 * k, 'position': [x0 + 410 * k, h * 0.5 + 62 * k], 'start': t0 + 0.7, 'duration': du - t0 - 0.7, 'animator': 'typewriter_soft', 'anim_duration': 0.8}),
+  ]);
+  // Slow sideways push: the backdrop, ghost name and person move at their own speeds.
+  cmds.addAll([
+    _k(id, 'camera', 'position', 0, [w / 2 - 150 * k, h / 2, -z0], 'easy_ease'),
+    _k(id, 'camera', 'position', du, [w / 2 + 90 * k, h / 2 - 10 * k, -z0 + 260 * k], 'easy_ease'),
+    _k(id, 'camera', 'poi', 0, [w / 2 - 150 * k, h / 2, 0], 'easy_ease'),
+    _k(id, 'camera', 'poi', du, [w / 2 + 90 * k, h / 2 - 10 * k, 0], 'easy_ease'),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'aperture', 'value': 14}),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'focus', 'value': z0 + 200}),
+  ]);
+  cmds.addAll(_finish(c, id, du, vignette: 62, grain: 14));
+  return cmds;
+}
+
+// ------------------------------------------------------------ article on a desk
+
+List<Map<String, dynamic>> _articleDesk(TemplateCtx c) {
+  const id = 'desk';
+  final w = c.w, h = c.h, k = w / 1920;
+  final z0 = w * 1.38889;
+  final du = c.n('duration', 6).clamp(3.0, 20.0).toDouble();
+  final cmds = _comp(c, id, 'Article on a desk', du, bg: '#0E0C0A');
+  final desk = c.media('desk'), art = c.media('article');
+  cmds.addAll([
+    _in(id, {'op': 'add_layer', 'type': 'null', 'id': 'table', 'name': 'Table', 'is3d': true, 'position': [w / 2, h / 2, 0]}),
+    _in(id, {'op': 'set_property', 'target': 'table', 'prop': 'anchor', 'value': [0, 0, 0]}),
+  ]);
+  if (desk != null) {
+    final s = _cover(desk, w * 2.6, h * 2.6);
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'image', 'media': desk.id, 'id': 'top', 'name': 'Desk', 'parent': 'table', 'is3d': true, 'fit': 'none', 'position': [0, 0, 0], 'scale': [s, s, 100]}));
+    cmds.add(_in(id, {'op': 'add_effect', 'layer': 'top', 'effect': 'color', 'params': {'brightness': -18, 'contrast': 6}}));
+  } else {
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'shape', 'id': 'top', 'name': 'Desk', 'parent': 'table', 'is3d': true, 'kind': 'rect', 'width': w * 2.6, 'height': h * 2.6, 'fill': '#4A3526', 'fill2': '#1C130D', 'position': [0, 0, 0]}));
+  }
+  cmds.add(_in(id, {'op': 'add_layer', 'type': 'solid', 'id': 'sep', 'name': 'sep', 'color': '#00000000', 'width': 2, 'height': 2, 'position': [0, 0, 0]}));
+  final aw = w * 0.62;
+  if (art != null) {
+    final s = aw / math.max(1, art.width) * 100;
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'image', 'media': art.id, 'id': 'paper', 'name': 'Article', 'parent': 'table', 'is3d': true, 'fit': 'none', 'position': [0, 0, -2], 'scale': [s, s, 100]}));
+    cmds.add(_in(id, {'op': 'add_effect', 'layer': 'paper', 'effect': 'torn_edge', 'params': {'side': 'bottom', 'amount': 55}}));
+    cmds.add(_in(id, {'op': 'add_effect', 'layer': 'paper', 'effect': 'shadow', 'params': {'distance': 18, 'angle': 120, 'blur': 26, 'opacity': 70}}));
+  } else {
+    cmds.add(_in(id, {'op': 'add_layer', 'type': 'shape', 'id': 'paper', 'name': 'Article', 'parent': 'table', 'is3d': true, 'kind': 'rect', 'width': aw, 'height': aw * 1.3, 'fill': '#F2EEE4', 'fill2': '#DCD5C4', 'position': [0, 0, -2]}));
+    cmds.add(_in(id, {'op': 'add_effect', 'layer': 'paper', 'effect': 'shadow', 'params': {'distance': 18, 'angle': 120, 'blur': 26, 'opacity': 70}}));
+  }
+  cmds.add(_in(id, {'op': 'set_property', 'target': 'paper', 'prop': 'rotation', 'value': [0, 0, -4]}));
+  // The table tilts back (looking down at it) and straightens while the camera glides in.
+  final tS = du * 0.7;
+  cmds.addAll([
+    _k(id, 'table', 'rotation', 0, [42, 0, 8]), _k(id, 'table', 'rotation', tS, [12, 0.01, 2]), _k(id, 'table', 'rotation', du, [10, 0.01, 1.5]),
+    _k(id, 'camera', 'position', 0, [w / 2 + 260 * k, h / 2 - 120 * k, -z0 * 1.1], 'easy_ease'),
+    _k(id, 'camera', 'position', tS, [w / 2, h / 2, -z0 * 0.72], 'easy_ease'),
+    _k(id, 'camera', 'position', du, [w / 2, h / 2, -z0 * 0.66], 'linear'),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'poi', 'value': [w / 2, h / 2, 0]}),
+    _in(id, {'op': 'set_property', 'target': 'camera', 'prop': 'aperture', 'value': 18}),
+    _k(id, 'camera', 'focus', 0, [z0 * 1.1], 'easy_ease'), _k(id, 'camera', 'focus', tS, [z0 * 0.72], 'easy_ease'),
+  ]);
+  cmds.addAll(_finish(c, id, du, vignette: 58, grain: 16));
   return cmds;
 }
