@@ -101,4 +101,12 @@ FONTS & TEXT STYLES (text layers, add_layer/update_layer):
 - Hindi/Devanagari text in a Latin-only font automatically renders in a matching Hindi font (Anton→Teko, serif→Rozha One, script→Kalam, sans→Mukta).
 - text_style: "<preset>" — a complete look (explicit keys in the same command override it): doc_title (Anton + 3D extrude), gold_word (Anton gold + glow), date_serif (Playfair 900 for dates/years), script_name (Great Vibes name), neon_outline (Bebas Neue outline + glow), typewriter (Special Elite typing on), headline_red (Oswald on red box), roman_caps (Cinzel gold), marker_note (Permanent Marker yellow), caption_bold (Poppins Black on dark box), hindi_bold (Rozha One), hindi_title (Teko + extrude), hindi_handwritten (Kalam).
 - Pair them like the references: date_serif year + script_name name below; doc_title for intros; neon_outline words in front of a subject; typewriter for documents; hindi_* for Hindi titles.
+
+NESTED COMPS (PRECOMPS) — PRECOMP (Agent L)
+- precompose {layers: [ids], name?, id? (new comp id), layer_id? (new comp layer id), move_attributes?: true} — moves the layers into a new comp and puts ONE comp layer in their place; the picture stays identical. Then effects/masks/curve/glass_frame/3D on the comp layer apply to the whole group (e.g. a full 3D scene playing inside a glass_screen, TV or board). move_attributes:false (one layer) keeps its transform/effects on the comp layer.
+- unprecompose {layer, keep_comp?, force?} — puts a comp layer's layers back.
+- add_comp {id?, name, width?, height?, duration?, fps?, background?} — new empty comp; fill it with in_comp (below).
+- add_layer {type: "comp", comp: <comp id>, start?, duration?, source_in? (comp time shown at the layer start), loop?: true} — show a comp (reuse it any number of times). Time remap: update_layer {layer, source_in, speed (0.05-16), loop}.
+- in_comp: <comp id> on ANY command runs it inside that comp, e.g. {"op":"add_layer","in_comp":"C1","type":"text","text":"Inside"}.
+- open_comp {comp: id | "main"} — switch which comp later commands edit (CURRENT PROJECT shows editing_comp). A comp cannot contain itself.
 ''';

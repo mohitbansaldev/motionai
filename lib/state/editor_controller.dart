@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../core/commands/edit_commands.dart';
+import '../core/engine/precomp.dart'; // PRECOMP (Agent L)
 import '../core/model/anim_prop.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
@@ -40,7 +41,8 @@ class EditorController extends ChangeNotifier {
 
   EditorController(this.project, this.storage);
 
-  Composition get comp => project.main;
+  /// The composition open in the editor: main, or a precomp opened from it.
+  Composition get comp => project.editComp; // PRECOMP (Agent L)
   double get time => timeNotifier.value;
   bool get playing => _playing;
   bool get canUndo => _undo.isNotEmpty;
@@ -48,6 +50,64 @@ class EditorController extends ChangeNotifier {
   int get undoDepth => _undo.length;
 
   Layer? get selectedLayer => selectedLayerId == null ? null : comp.layerById(selectedLayerId!);
+
+  // PRECOMP (Agent L) >>>
+  // --------------------------------------------------------- nested comps
+
+  final List<double> _compReturnTimes = [];
+
+  /// Breadcrumbs: main first, the open comp last.
+  List<Composition> get compTrail {
+    final ids = Precomp.pathTo(project, comp.id) ?? [project.main.id];
+    return [for (final id in ids) project.compById(id)].whereType<Composition>().toList();
+  }
+
+  bool get inPrecomp => comp.id != project.main.id;
+
+  /// Opens comp [id] ("main" or null = back to main) for editing.
+  void openComp(String? id, {double? atTime}) {
+    final target = id == null ? project.main : project.compById(id);
+    if (target == null || target.id == comp.id) return;
+    if (_playing) pause();
+    final trail = Precomp.pathTo(project, target.id) ?? [project.main.id, target.id];
+    final goingUp = compTrail.any((c) => c.id == target.id);
+    double t;
+    if (goingUp) {
+      // Back up the breadcrumbs: restore the time we left that comp at.
+      final levels = compTrail.length - trail.length;
+      double? back;
+      for (int i = 0; i < levels && _compReturnTimes.isNotEmpty; i++) {
+        back = _compReturnTimes.removeLast();
+      }
+      t = back ?? 0;
+    } else {
+      _compReturnTimes.add(time);
+      t = atTime ?? 0;
+    }
+    project.editCompId = target.id == project.main.id ? null : target.id;
+    if (project.editCompId == null) _compReturnTimes.clear();
+    selectedLayerId = null;
+    cameraSelected = false;
+    timeNotifier.value = t.clamp(0.0, comp.duration).toDouble();
+    videos.sync(project, time, playing: false);
+    notifyListeners();
+  }
+
+  /// Opens the comp shown by comp layer [layerId] at the matching inner time.
+  void openCompLayer(String layerId) {
+    final l = comp.layerById(layerId);
+    if (l == null) return;
+    final child = Precomp.childOf(project, l);
+    if (child == null) return;
+    openComp(child.id, atTime: Precomp.childTime(l, child, time) ?? 0);
+  }
+
+  /// One level up the breadcrumbs.
+  void closeComp() {
+    final trail = compTrail;
+    if (trail.length >= 2) openComp(trail[trail.length - 2].id);
+  }
+  // <<< PRECOMP (Agent L)
 
   // ------------------------------------------------------------- selection
 
@@ -213,6 +273,8 @@ class EditorController extends ChangeNotifier {
   }
 
   void _afterEdit() {
+    Precomp.touch(); // PRECOMP (Agent L): drop cached precomp renders
+    if (project.editCompId != null && project.comps[project.editCompId] == null) project.editCompId = null; // PRECOMP (Agent L)
     if (selectedLayerId != null && comp.layerById(selectedLayerId!) == null) selectedLayerId = null;
     if (time > comp.duration) timeNotifier.value = comp.duration;
     videos.sync(project, time, playing: _playing);
