@@ -124,7 +124,7 @@ class StoryBuilder {
   /// Builds the storyboard. With [only], just that chapter's beats (no
   /// music or captions) — see [rebuildChapter].
   static List<Map<String, dynamic>> build(Project p, List<Beat> beats, BuildOptions o, {int? only}) {
-    final comp = p.main;
+    final comp = p.editComp; // the comp edit commands go to (main unless a precomp is open)
     final w = comp.width, h = comp.height;
     final cmds = <Map<String, dynamic>>[];
     final chaptered = o.chapters.isNotEmpty;
@@ -380,7 +380,7 @@ class StoryBuilder {
   /// and presenter punch-ins go, the chapter is built again, and the
   /// captions stay on top. Run them as one batch (one Undo).
   static List<Map<String, dynamic>> rebuildChapter(Project p, List<Beat> beats, BuildOptions o, int chapter) {
-    final comp = p.main;
+    final comp = p.editComp; // the comp edit commands go to (main unless a precomp is open)
     final prefix = chapterPrefix(o.tag, chapter);
     final cmds = <Map<String, dynamic>>[
       for (final l in comp.layers)
@@ -527,7 +527,7 @@ class StoryBuilder {
   /// with an optional glowing word between them.
   static void _depthShot(List<Map<String, dynamic>> cmds, Project p, double t0, double dur, String tag, String bgMedia,
       String fgMedia, String? behindText, String trans) {
-    final comp = p.main;
+    final comp = p.editComp; // the comp edit commands go to (main unless a precomp is open)
     final w = comp.width, h = comp.height;
     final t1 = t0 + dur;
     final bg = p.media[bgMedia]!, fg = p.media[fgMedia]!;
