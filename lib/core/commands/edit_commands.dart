@@ -12,7 +12,10 @@ import '../presets/components.dart';
 import '../presets/motion_presets.dart';
 import '../presets/scene3d.dart'; // SCENE (Agent D)
 import 'fx_commands.dart'; // FX (Agent B)
+import '../../audio/sound_commands.dart'; // Sound (Agent K)
 import '../../fonts/font_commands.dart'; // FONTS (Agent I)
+import '../engine/precomp.dart'; // PRECOMP (Agent L)
+import 'precomp_commands.dart'; // PRECOMP (Agent L)
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -48,6 +51,12 @@ class ProjectSnapshot {
     p.shots // SCENE (Agent D)
       ..clear()
       ..addAll(r.shots);
+    // PRECOMP (Agent L): nested comps are part of every snapshot.
+    p.comps
+      ..clear()
+      ..addAll(r.comps);
+    if (p.editCompId != null && p.comps[p.editCompId] == null) p.editCompId = null;
+    Precomp.touch();
   }
 }
 
@@ -68,6 +77,8 @@ class EditCommands {
     'add_component', 'replace_media',
     // SCENE (Agent D)
     'make_3d', 'camera_shot', 'save_shot', 'load_shot', 'save_recipe', 'apply_recipe', 'delete_recipe',
+    ...SoundCommands.ops, // Sound (Agent K): add_sfx, beat_sync, auto_mix
+    ...PrecompCommands.ops, // PRECOMP (Agent L)
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -77,6 +88,7 @@ class EditCommands {
     try {
       final r = CommandResult();
       _run(project, cmd, now, r);
+      Precomp.touch(); // PRECOMP (Agent L)
       return r;
     } catch (e) {
       ProjectSnapshot.restore(project, snap);
@@ -101,7 +113,8 @@ class EditCommands {
   static void _run(Project project, Map<String, dynamic> c, double now, CommandResult r) {
     final op = c['op'];
     if (op is! String) throw CommandError('Missing "op". Valid ops: ${ops.join(', ')}');
-    final comp = project.main;
+    if (PrecompCommands.scoped(project, c, (c2) => _run(project, c2, now, r))) return; // PRECOMP (Agent L): in_comp
+    final comp = project.editComp; // PRECOMP (Agent L): the comp being edited (main unless a precomp is open)
     switch (op) {
       case 'batch':
         final list = c['commands'];
@@ -378,6 +391,17 @@ class EditCommands {
         }
         break;
 
+      // PRECOMP (Agent L) >>>
+      case 'add_comp':
+      case 'precompose':
+      case 'unprecompose':
+      case 'open_comp':
+      case 'set_active_comp':
+      case 'remove_comp':
+        PrecompCommands.run(project, c, now, r);
+        break;
+      // <<< PRECOMP (Agent L)
+
       case 'set_comp':
         if (c['name'] != null) comp.name = '${c['name']}';
         if (c['width'] != null) comp.width = _num(c, 'width');
@@ -386,6 +410,7 @@ class EditCommands {
         if (c['duration'] != null) comp.duration = math.max(comp.frameDuration, _num(c, 'duration'));
         if (c['background'] != null) comp.background = _color(c['background']);
         FxCommands.applyComp(comp, c); // FX (Agent B): motion_blur
+        PrecompCommands.afterSetComp(project, comp); // PRECOMP (Agent L): comp layers follow the size
         break;
 
       // ===== scene ops (Agent D) =====
@@ -446,6 +471,20 @@ class EditCommands {
             _optNum(c, 'end') ?? comp.duration);
         break;
       // ===== end scene ops =====
+      // ---- Sound (Agent K): add_sfx / beat_sync / auto_mix → lib/audio/sound_commands.dart
+      case 'add_sfx':
+      case 'beat_sync':
+      case 'auto_mix':
+        final sound = SoundCommands.build(project, c, now);
+        for (int i = 0; i < sound.length; i++) {
+          try {
+            _run(project, sound[i], now, r);
+          } on CommandError catch (e) {
+            throw CommandError('$op: ${e.message}');
+          }
+        }
+        break;
+      // ---- end Sound
 
       default:
         throw CommandError('Unknown op "$op". Valid ops: ${ops.join(', ')}');
@@ -455,12 +494,12 @@ class EditCommands {
   // ---------------------------------------------------------------- layers
 
   static void _addLayer(Project project, Map<String, dynamic> c, double now, CommandResult r) {
-    final comp = project.main;
+    final comp = project.editComp; // PRECOMP (Agent L)
     final LayerType type;
     try {
       type = layerTypeFromName('${c['type']}');
     } on FormatException catch (e) {
-      throw CommandError('${e.message}. Use video, image, text, solid or null');
+      throw CommandError('${e.message}. Use video, image, text, solid, shape, null, audio or comp');
     }
     final id = (c['id'] as String?) ?? Ids.next('L');
     _checkNewId(comp, id);
@@ -484,10 +523,15 @@ class EditCommands {
       }
     }
 
+    final child = type == LayerType.comp ? PrecompCommands.childFor(project, comp, c) : null; // PRECOMP (Agent L)
     double w, h;
     if (type == LayerType.audio) {
       w = 100;
       h = 100;
+    } else if (child != null) {
+      // PRECOMP (Agent L): a comp layer is the size of its comp.
+      w = child.width;
+      h = child.height;
     } else if (media != null) {
       w = media.width;
       h = media.height;
@@ -511,6 +555,8 @@ class EditCommands {
       duration = _num(c, 'duration');
     } else if (type == LayerType.video || type == LayerType.audio) {
       duration = math.max(comp.frameDuration, media!.duration - sourceIn);
+    } else if (child != null) {
+      duration = math.max(comp.frameDuration, child.duration - sourceIn); // PRECOMP (Agent L)
     } else {
       duration = 5;
     }
@@ -549,6 +595,7 @@ class EditCommands {
       layer.parentId = pid;
     }
     FxCommands.applyLayer(comp, layer, c); // FX (Agent B): matte, path
+    if (child != null) PrecompCommands.applyLayer(project, comp, layer, c, child: child); // PRECOMP (Agent L)
     if (c['position'] != null) {
       final p = layer.prop(Props.position);
       p.staticValue = _fitList(p, _values(c['position']));
@@ -566,7 +613,7 @@ class EditCommands {
   }
 
   static void _updateLayer(Project project, Layer l, Map<String, dynamic> c) {
-    final comp = project.main;
+    final comp = project.editComp; // PRECOMP (Agent L)
     if (c['name'] != null) l.name = '${c['name']}';
     if (c['start'] != null) l.moveTo(_num(c, 'start'));
     if (c['duration'] != null) l.duration = math.max(comp.frameDuration, _num(c, 'duration'));
@@ -607,6 +654,7 @@ class EditCommands {
     if (l.type == LayerType.text) _applyText(l, c);
     if (l.type == LayerType.shape) _applyShape(l, c, placeFromPoints: false);
     FxCommands.applyLayer(comp, l, c); // FX (Agent B): matte, path
+    PrecompCommands.applyLayer(project, comp, l, c); // PRECOMP (Agent L): loop, comp
     _extendComp(comp, l.end);
   }
 
@@ -749,6 +797,7 @@ class EditCommands {
         LayerType.nullObject => 'Null',
         LayerType.audio => 'Audio',
         LayerType.shape => 'Shape',
+        LayerType.comp => 'Comp', // PRECOMP (Agent L)
       };
 
   static void _extendComp(Composition comp, double end) {

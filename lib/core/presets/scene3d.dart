@@ -880,7 +880,7 @@ class SceneStore {
 
   static void saveShot(Project p, String name, {double? from, double? to}) {
     if (name.trim().isEmpty) throw ArgumentError('save_shot needs a "name"');
-    final comp = p.main;
+    final comp = p.editComp;
     final times = comp.camera.allKeyframeTimes();
     final t0 = from ?? (times.isEmpty ? 0.0 : times.first);
     final t1 = math.max(t0, to ?? (times.isEmpty ? t0 : times.last));
@@ -914,7 +914,7 @@ class SceneStore {
     if (s is! Map) {
       throw ArgumentError('No shot "$name". Saved shots: ${p.shots.keys.isEmpty ? '(none)' : p.shots.keys.join(', ')}');
     }
-    final comp = p.main;
+    final comp = p.editComp;
     final rig = comp.camera;
     final span = (s['span'] as num? ?? 0).toDouble();
     final mode = CameraMode.values.firstWhere((m) => m.name == s['mode'], orElse: () => CameraMode.threeD);

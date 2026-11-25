@@ -29,6 +29,7 @@ import 'library/library_sheet.dart';
 import 'library/save_template_dialog.dart';
 import 'library/template_gallery.dart';
 import 'director_screen.dart';
+import 'audio/sound_sheet.dart';
 
 class EditorScreen extends StatefulWidget {
   final Project project;
@@ -505,12 +506,14 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
               if (v == 'library') LibrarySheet.open(context, c);
               if (v == 'templates') TemplateGallery.open(context, c);
               if (v == 'director') DirectorScreen.open(context, c);
+              if (v == 'sound') SoundSheet.open(context, c);
             },
             itemBuilder: (_) => [
               if (_desktopOs) const PopupMenuItem(value: 'import', child: Text('Import files…  (Ctrl+I)')),
               const PopupMenuItem(value: 'director', child: Text('Director (AI makes the video)')),
               const PopupMenuItem(value: 'templates', child: Text('Templates')),
               const PopupMenuItem(value: 'library', child: Text('Asset library')),
+              const PopupMenuItem(value: 'sound', child: Text('Sound FX, beats & mix')),
               const PopupMenuItem(value: 'rename', child: Text('Rename project')),
               const PopupMenuItem(value: 'captions', child: Text('Auto captions')),
               const PopupMenuItem(value: 'console', child: Text('Edit commands (developer)')),

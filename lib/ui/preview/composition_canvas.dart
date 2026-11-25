@@ -7,6 +7,7 @@ import '../../core/model/project.dart';
 import '../../state/video_pool.dart';
 import 'fx/offscreen.dart';
 import 'layer_view.dart';
+import 'precomp_view.dart'; // PRECOMP (Agent L)
 
 /// Draws a whole composition at one moment, at composition pixel size.
 /// Used by the live preview and by export (with exact [videoFrames]).
@@ -28,7 +29,17 @@ class CompositionCanvas extends StatelessWidget {
     this.overlay,
     this.draft = false,
     this.playing = false,
+    this.comp, // PRECOMP (Agent L)
+    this.nested = false, // PRECOMP (Agent L)
   });
+
+  // PRECOMP (Agent L) >>>
+  /// The composition to draw (default: the project's main comp).
+  final Composition? comp;
+
+  /// Drawn inside a comp layer: no background (precomps are transparent).
+  final bool nested;
+  // <<< PRECOMP (Agent L)
 
   /// Live editor preview: decode images at screen size, cache each layer's
   /// pixels so camera moves only re-composite, and lighten depth blur.
@@ -38,9 +49,11 @@ class CompositionCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final comp = project.main;
+    final comp = this.comp ?? project.main; // PRECOMP (Agent L)
     final list = items ?? Evaluator.evaluate(comp, time);
-    final children = <Widget>[Positioned.fill(child: ColoredBox(color: Color(comp.background)))];
+    final children = <Widget>[
+      if (!nested) Positioned.fill(child: ColoredBox(color: Color(comp.background))), // PRECOMP (Agent L): precomps are transparent
+    ];
     for (int i = 0; i < list.length; i++) {
       final item = list[i];
       final matte = item.matte;
@@ -69,13 +82,14 @@ class CompositionCanvas extends StatelessWidget {
       ));
     }
     if (overlay != null) children.add(Positioned.fill(child: IgnorePointer(child: overlay!)));
-    return SizedBox(
+    final stack = PrecompScope.stackOf(context); // PRECOMP (Agent L)
+    return PrecompScope(stack: [...stack, comp.id], child: SizedBox(
       width: comp.width,
       height: comp.height,
       child: ClipRect(
         child: Stack(clipBehavior: Clip.hardEdge, children: children),
       ),
-    );
+    )); // PRECOMP (Agent L): PrecompScope
   }
 
   Widget _view(RenderItem item, Key? key, {bool asMatte = false}) => LayerView(

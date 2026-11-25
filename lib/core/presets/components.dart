@@ -66,7 +66,7 @@ class Components {
     if (!types.contains(type)) {
       throw ArgumentError('Unknown component "$type". Available: ${types.join(', ')}');
     }
-    final comp = p.main;
+    final comp = p.editComp; // PRECOMP (Agent L): the comp being edited
     final b = _B(comp.width, comp.height, c, now, '${c['id'] ?? Ids.next(type)}');
     final scene = _sceneBuild(p, c, b); // SCENE (Agent D)
     if (scene != null) return scene;
@@ -382,7 +382,7 @@ class Components {
     // Place the word just below another layer (e.g. a cut-out person) for depth.
     final behind = b.c['behind'];
     if (behind is String) {
-      final i = p.main.indexOf(behind);
+      final i = p.editComp.indexOf(behind); // PRECOMP (Agent L)
       if (i >= 0) cmds.add({'op': 'reorder_layer', 'layer': id, 'index': i + 2});
     }
     return b.finish(cmds, enter: 'zoom_out_children');

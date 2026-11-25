@@ -177,7 +177,7 @@ class _MapKit {
 
   /// Resolves (or creates) the map for a pin; returns (map id, commands, delay before the pin lands).
   static (String, List<Map<String, dynamic>>, double) _pinMap(_B b, Project p, _Place place) {
-    final existing = findMap(p.main, b);
+    final existing = findMap(p.editComp, b);
     if (existing != null) return (existing, <Map<String, dynamic>>[], b.n('delay', 0.2));
     final root = '${b.root}_map';
     final name = place.country?.name;
@@ -290,7 +290,7 @@ class _MapKit {
     final c = pl.country;
     if (c == null) return const [];
     final g = '${map}_g';
-    if (p.main.layers.any((l) => l.parentId == g && l.name == c.name)) return const [];
+    if (p.editComp.layers.any((l) => l.parentId == g && l.name == c.name)) return const [];
     final id = b.id(part);
     final du = math.max(0.2, b.end - st);
     final bb = WorldMap.bbox(c);
@@ -314,7 +314,7 @@ class _MapKit {
   static List<Map<String, dynamic>> mapFly(_B b, Project p) {
     final from = placeOf(b.c['from'], 'India'), to = placeOf(b.c['to'], 'United States of America');
     final cmds = <Map<String, dynamic>>[];
-    var map = findMap(p.main, b, auto: false);
+    var map = findMap(p.editComp, b, auto: false);
     if (map == null) {
       map = '${b.root}_map';
       cmds.addAll(newMap(b, map, style: b.str('style', 'dark'), clouds: b.flag('clouds', false), zoom: false));
@@ -348,7 +348,7 @@ class _MapKit {
   static List<Map<String, dynamic>> routeFollow(_B b, Project p) {
     final from = placeOf(b.c['from'], 'India'), to = placeOf(b.c['to'], 'United Kingdom');
     final cmds = <Map<String, dynamic>>[];
-    var map = findMap(p.main, b, auto: false);
+    var map = findMap(p.editComp, b, auto: false);
     final created = map == null;
     if (map == null) {
       map = '${b.root}_map';

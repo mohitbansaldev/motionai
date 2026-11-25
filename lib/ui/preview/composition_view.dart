@@ -6,6 +6,7 @@ import 'package:vector_math/vector_math_64.dart' show Vector2;
 import '../../core/engine/evaluator.dart';
 import '../../core/model/layer.dart';
 import '../../state/editor_controller.dart';
+import '../precomp_bar.dart'; // PRECOMP (Agent L)
 import 'composition_canvas.dart';
 
 /// Live preview of the composition. Tap a layer to select it, drag to move
@@ -30,8 +31,20 @@ class _CompositionViewState extends State<CompositionView> {
 
   EditorController get c => widget.controller;
 
+  // PRECOMP (Agent L): double-tap a comp layer to open it.
+  String? _lastTapId;
+  DateTime _lastTapAt = DateTime(0);
+
   @override
   Widget build(BuildContext context) {
+    // PRECOMP (Agent L): rebuild when another comp is opened; breadcrumbs on top.
+    return ListenableBuilder(listenable: c, builder: (context, _) => Stack(fit: StackFit.passthrough, children: [
+      _view(),
+      if (c.inPrecomp) Positioned(left: 8, top: 8, child: PrecompBreadcrumbs(c: c)),
+    ]));
+  }
+
+  Widget _view() {
     return LayoutBuilder(builder: (context, box) {
       final comp = c.comp;
       _viewScale = math.min(box.maxWidth / comp.width, box.maxHeight / comp.height);
@@ -54,6 +67,7 @@ class _CompositionViewState extends State<CompositionView> {
                 return FittedBox(
                   fit: BoxFit.contain,
                   child: CompositionCanvas(
+                    comp: comp, // PRECOMP (Agent L): the open comp
                     project: c.project,
                     time: t,
                     videos: c.videos,
@@ -85,6 +99,17 @@ class _CompositionViewState extends State<CompositionView> {
 
   void _onTap(TapUpDetails d) {
     final hit = _hit(_toComp(d.localPosition));
+    // PRECOMP (Agent L) >>>
+    final now = DateTime.now();
+    if (hit != null && hit.layer.type == LayerType.comp && hit.layer.id == _lastTapId &&
+        now.difference(_lastTapAt) < const Duration(milliseconds: 400)) {
+      _lastTapId = null;
+      c.openCompLayer(hit.layer.id);
+      return;
+    }
+    _lastTapId = hit?.layer.id;
+    _lastTapAt = now;
+    // <<< PRECOMP (Agent L)
     c.select(hit?.layer.id);
   }
 

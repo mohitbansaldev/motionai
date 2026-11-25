@@ -155,6 +155,20 @@ class Project {
   final Map<String, dynamic> recipes = {};
   final Map<String, dynamic> shots = {};
   // end SCENE
+  // PRECOMP (Agent L) >>>
+  /// Nested compositions (precomps), by id. Used by `LayerType.comp` layers.
+  final Map<String, Composition> comps;
+
+  /// The composition being edited (editor state, not saved): null = [main].
+  /// Edit commands work on [editComp]; export always renders [main].
+  String? editCompId;
+
+  /// The composition edit commands apply to.
+  Composition get editComp => (editCompId == null ? null : compById(editCompId!)) ?? main;
+
+  /// [main] (by its id or "main") or a nested comp.
+  Composition? compById(String id) => id == main.id || id == 'main' ? main : comps[id];
+  // <<< PRECOMP (Agent L)
 
   Project({
     required this.id,
@@ -162,8 +176,10 @@ class Project {
     required this.main,
     DateTime? modified,
     Map<String, MediaAsset>? media,
+    Map<String, Composition>? comps, // PRECOMP (Agent L)
   })  : modified = modified ?? DateTime.now(),
-        media = media ?? {};
+        media = media ?? {},
+        comps = comps ?? {}; // PRECOMP (Agent L)
 
   Map<String, dynamic> toJson() => {
         'schema': schemaVersion,
@@ -174,6 +190,7 @@ class Project {
         'main': main.toJson(),
         if (recipes.isNotEmpty) 'recipes': recipes, // SCENE (Agent D)
         if (shots.isNotEmpty) 'shots': shots, // SCENE (Agent D)
+        if (comps.isNotEmpty) 'comps': comps.values.map((c) => c.toJson()).toList(), // PRECOMP (Agent L)
       };
 
   static Project fromJson(Map<String, dynamic> j) {
@@ -182,7 +199,14 @@ class Project {
       final a = MediaAsset.fromJson(m as Map<String, dynamic>);
       media[a.id] = a;
     }
+    // PRECOMP (Agent L): nested comps (absent in older projects).
+    final comps = <String, Composition>{};
+    for (final c in (j['comps'] as List? ?? [])) {
+      final comp = Composition.fromJson(Map<String, dynamic>.from(c as Map));
+      comps[comp.id] = comp;
+    }
     return Project(
+      comps: comps, // PRECOMP (Agent L)
       id: j['id'] as String,
       name: j['name'] as String? ?? 'Untitled',
       modified: DateTime.tryParse(j['modified'] as String? ?? '') ?? DateTime.now(),

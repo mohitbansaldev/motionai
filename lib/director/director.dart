@@ -12,13 +12,19 @@ import '../ai/phrase_finder.dart';
 import '../core/model/layer.dart';
 import '../core/model/project.dart';
 import '../core/commands/edit_commands.dart';
+import '../core/presets/motion_presets.dart';
 import '../library/library_director.dart'; // Library (Agent G)
 import '../services/captions.dart';
 import '../services/media_bridge.dart';
 import '../services/speech.dart';
 import '../state/editor_controller.dart';
+import 'capabilities.dart';
+import 'json_repair.dart';
+import 'planner.dart';
 import 'sfx.dart';
 import 'story_builder.dart';
+import 'storyboard.dart';
+import 'variety.dart';
 
 /// Where the voice of the video comes from.
 enum Narration {
@@ -349,39 +355,95 @@ Return ONLY JSON: {"title":"...","lines":["sentence", ...]}''',
 
   static double _r(double v) => double.parse(v.toStringAsFixed(2));
 
-  static String directorPrompt({bool cutouts = true}) => '''
+  /// The shot planner's system prompt. With [caps], only visuals this build
+  /// can make are offered (scene/map ops come from another branch); with
+  /// [chapters], the long-video rules (chapter style, running memory, fast
+  /// hook, "shots") are added.
+  static String directorPrompt({bool cutouts = true, Capabilities? caps, bool chapters = false}) {
+    bool has(String t) => caps == null || caps.has(t);
+    final threeD = caps == null || caps.has3d;
+    final moves = [
+      'ken_burns', 'push_in', 'pull_out', 'pan_left', 'pan_right', 'parallax',
+      if (cutouts) 'depth',
+      if (threeD) ...StoryBuilder.moves3d,
+    ];
+    final trans = [
+      'fade', 'zoom_in', 'zoom_out', 'slide_left', 'slide_right', 'whip', 'blur', 'pop', 'shatter',
+      'iris', 'ink', 'smoke', 'flash', 'glitch_flash',
+      if (has('foreground_wipe')) 'foreground_wipe',
+    ];
+    final particles = caps == null || caps.particles;
+    final v = <String>[
+      '- {"aroll":true,"punch":<true for emphasis — a hard zoom on the presenter>}  — only if presenter_on_camera; ~25-35% of lines (opinions, jokes, questions to the viewer, transitions)',
+      '- {"media":"<media id>","move":"${moves.join('|')}","transition":"${trans.join('|')}"'
+          '${cutouts ? ',"behind_text":"<optional ONE dramatic word shown BETWEEN the subject and background>"' : ''}'
+          ',"name_tag":{"name":"<person>","role":"<who they are>"},"label":"<SHORT TAG on the subject>"}  — name_tag and label are optional overlays: name_tag ONLY when a person is first introduced, label to tag a character in the picture',
+      if (cutouts)
+        '  "depth" cuts the subject out and moves it separately from the background (3D parallax). Use it ONLY on photos whose "about" says "clear subject" — great for people introduced, hooks and dramatic moments, at most ~1 in 6 lines.',
+      if (threeD)
+        '  3D camera moves for scenic stills (the photo becomes a 3D scene${cutouts ? ', subject cut out when it has a clear subject' : ''}): "drift" slow float, "fly_to" glide towards the subject, "push_through" fast push into a door/window/the subject (a cut), "pass_by" sideways past it, "reveal" from behind, "pull_back" from an extreme close-up, "orbit" around it. At most ~1 in 5 lines.',
+      '  "ink"/"smoke"/"iris" are soft story transitions, "flash"/"glitch_flash" hard hits${has('foreground_wipe') ? ', "foreground_wipe" hides a cut behind something sweeping past the lens' : ''}.',
+      '- {"component":"source_card","source":"Source: <site>","headline":"...","body":"<the cited claim, 1-3 sentences>","highlights":["<key phrase from body>"],"circle":"<date or number from body>"}  — when a line cites a report, article, book or "according to" and you have NO screenshot of it',
+      '- {"component":"lower_third","source":"Source: <site>","text":"...","highlights":["..."],"over_aroll":true}',
+      '- {"component":"map","countries":["<English country names>"],"focus":"<country>","style":"dark|paper|blue","route":["<from country>","<to country>"],"pin":"<optional label pinned on the focus>"}  — places/countries/borders; "route" draws an arrow between two countries',
+      '- {"component":"badge","label":"<ORGANISATION / PARTY / AGENCY>","media":"<optional logo/photo media id>"}',
+      '- {"component":"counter","from":0,"to":<number>,"prefix":"\$ or ₹ or \'\'","suffix":" CRORE / % / BARRELS …"}  — when a big number is spoken',
+      '- {"component":"timeline","from":<decade start>,"to":<decade end>,"marker":<year>,"label":"<MON YYYY>"}  — when a year/date matters',
+      '- {"component":"glow_word","text":"<ONE KEY WORD>"}  — a dramatic single word',
+      '- {"component":"speech_bubble","text":"\\"<short quote>\\""}  — a quoted statement',
+      '- {"component":"photo_card","media":"<image id>","caption":"<name>"}  — a person or object introduced',
+      '- {"component":"cta","text":"<Subscribe / Comment …>","over_aroll":true}  — once, near the end',
+      if (has('title_slam'))
+        '- {"component":"title_slam","title":"<2-3 WORDS>","subtitle":"<1 WORD>"}  — ONLY as the very first line when the video opens with a punchy title (impact sound → silence → music drop)',
+      if (has('article'))
+        '- {"component":"article","media":"<screenshot/newspaper/document media id>","marks":[{"phrase":"<exact words visible in that screenshot>","style":"highlight|circle|underline|redact"}],"coming_up":false}  — when a line quotes or cites an article, post or document you HAVE as media; 1-2 marks; the app finds each phrase in the screenshot; "redact" hides a word (add "word" to reveal it)',
+      if (has('name_tag'))
+        '- {"component":"name_tag","name":"<person>","role":"<role>","over_aroll":true}  — introduce the presenter or someone on screen (first appearance only)',
+      if (has('date_title'))
+        '- {"component":"date_title","text":"<YEAR or DATE>","subtitle":"<optional place/name>"}  — a dramatic jump in time',
+      if (has('number_tiles'))
+        '- {"component":"number_tiles","text":"<short number/year like 200 or 1996>","word":"<optional word after, e.g. YEARS AGO>"}  — a striking number or year',
+      if (has('icon_stream'))
+        '- {"component":"icon_stream","icons":["<media ids of logos/flags/items or short emoji>"]}  — money/data/goods/people flowing from one place to another',
+      if (has('scanner'))
+        '- {"component":"scanner","logo":"<logo media id>","targets":[{"media":"<face/photo id>","label":"<NAME>"}]}  — "who is involved": an agency/company watching, searching or choosing people',
+      if (has('silhouette_crowd'))
+        '- {"component":"silhouette_crowd","media":["<person photo ids>"],"labels":["<SHORT LABELS>"],"highlight":<index of the one to keep in colour, or -1>}  — groups, victims, workers, "millions of people"',
+      if (has('glass_screen'))
+        '- {"component":"glass_screen","media":["<footage/photo ids>"]}  — a montage: websites, apps, news footage shown on a curved glass screen (3-5 media in one shot)',
+      if (has('plaque'))
+        '- {"component":"plaque","name":"<NAME>","dates":"<YYYY – YYYY>","text":"<short epitaph>"}  — a death or memorial',
+      if (has('poster'))
+        '- {"component":"poster","title":"<WANTED / JOBS …>","subtitle":"...","media":"<optional image id>"}  — old adverts, recruitment, propaganda',
+      if (has('route_follow'))
+        '- {"component":"route_follow","from":"<country>","to":"<country>","avatar":"<optional face media id>"}  — a journey, migration, trade or escape route',
+      if (has('map_fly'))
+        '- {"component":"map_fly","from":"<country>","to":"<country>"}  — the story moves from one country to another',
+      if (has('needle_pin'))
+        '- {"component":"needle_pin","country":"<country>","label":"<place>"}  — pin one place on a map',
+    ];
+    final opt = [
+      '"sfx":"whoosh|hit|riser|pop|tick|none" (defaults are chosen for you; use "riser" before the big reveal of the hook, "none" to keep a moment quiet)',
+      if (particles) '"atmosphere":"rain|confetti|dust|leaves|snow|smoke|bokeh|none" (particles over the shot; chapters already get one from their mood)',
+    ];
+    final long = chapters
+        ? '''
+
+LONG VIDEO (chapter mode)
+- The message gives "chapter" (title, kind, mood, look, recurring_media, places, date, idea) and the running memory: "media_used_so_far", "last_visuals", "people_already_introduced", "components_used_so_far". Plan ONLY the given lines.
+- Keep the chapter's style: reuse its recurring_media, use its places for map moments${has('map_fly') || has('route_follow') ? ' (map_fly/route_follow/needle_pin)' : ' (map with route/pin)'}, match its mood.
+- Pacing: in a "hook" chapter cut every 1-2 s — give a line several shots: {"i":k,"shots":[{visual},{visual}]} instead of "visual". Later lines get one 3-5 s shot each; a long line may use "shots" too.
+- Never repeat anything in last_visuals; no component type on more than 1 in 4 shots; never a name_tag for people_already_introduced.
+- The app adds chapter title cards and pattern interrupts (flash inserts, punch-ins) itself — do not add title cards at the chapter start.
+- If "editor_note" is given, it is the channel owner's feedback on this chapter: follow it.'''
+        : '';
+    return '''
 You are the DIRECTOR and EDITOR of a Hindi/English documentary explainer channel. You turn narration lines into a storyboard: one visual per line, timed to the words.
 Return ONLY JSON: {"look":"cinematic_doc|retro_film|noir|warm_travel|clean_minimal|shorts_punch","beats":[{"i":<line index>,"visual":{...}}]}
 
 VISUALS (pick ONE per line):
-- {"aroll":true,"punch":<true for emphasis — a hard zoom on the presenter>}  — only if presenter_on_camera; ~25-35% of lines (opinions, jokes, questions to the viewer, transitions)
-- {"media":"<media id>","move":"ken_burns|push_in|pull_out|pan_left|pan_right|parallax${cutouts ? '|depth' : ''}|drift|fly_to|push_through|pass_by|reveal|pull_back|orbit","transition":"fade|zoom_in|zoom_out|slide_left|slide_right|whip|blur|pop|shatter|iris|ink|smoke|flash|glitch_flash|foreground_wipe"${cutouts ? ',"behind_text":"<optional ONE dramatic word shown BETWEEN the subject and background>"' : ''},"name_tag":{"name":"<person>","role":"<who they are>"},"label":"<SHORT TAG on the subject>"}  — name_tag and label are optional overlays: name_tag when a person is first introduced, label to tag a character in the picture
-${cutouts ? '  "depth" cuts the subject out and moves it separately from the background (3D parallax). Use it ONLY on photos whose "about" says "clear subject" — great for people introduced, hooks and dramatic moments, at most ~1 in 6 lines.\n' : ''}  3D camera moves (the photo becomes a 3D scene${cutouts ? ', subject cut out when it has a clear subject' : ''}): "drift" slow float, "fly_to" glide towards the subject, "push_through" fast push into a door/window/the subject (a cut), "pass_by" sideways past it, "reveal" from behind, "pull_back" from an extreme close-up, "orbit" around it. At most ~1 in 5 lines. "ink"/"smoke"/"iris" are soft story transitions, "flash"/"glitch_flash" hard hits, "foreground_wipe" hides a cut behind something sweeping past the lens.
-- {"component":"source_card","source":"Source: <site>","headline":"...","body":"<the cited claim, 1-3 sentences>","highlights":["<key phrase from body>"],"circle":"<date or number from body>"}  — when a line cites a report, article, book or "according to"
-- {"component":"lower_third","source":"Source: <site>","text":"...","highlights":["..."],"over_aroll":true}
-- {"component":"map","countries":["<English country names>"],"focus":"<country>","style":"dark|paper|blue"}  — places/countries/borders
-- {"component":"badge","label":"<ORGANISATION / PARTY / AGENCY>","media":"<optional logo/photo media id>"}
-- {"component":"counter","from":0,"to":<number>,"prefix":"\$ or ₹ or ''","suffix":" CRORE / % / BARRELS …"}  — when a big number is spoken
-- {"component":"timeline","from":<decade start>,"to":<decade end>,"marker":<year>,"label":"<MON YYYY>"}  — when a year/date matters
-- {"component":"glow_word","text":"<ONE KEY WORD>"}  — a dramatic single word
-- {"component":"speech_bubble","text":"\\"<short quote>\\""}  — a quoted statement
-- {"component":"photo_card","media":"<image id>","caption":"<name>"}  — a person or object introduced
-- {"component":"cta","text":"<Subscribe / Comment …>","over_aroll":true}  — once, near the end
-- {"component":"title_slam","title":"<2-3 WORDS>","subtitle":"<1 WORD>"}  — ONLY as the very first line when the video opens with a punchy title (impact sound → silence → music drop)
-- {"component":"article","media":"<screenshot/newspaper/document media id>","marks":[{"phrase":"<exact words visible in that screenshot>","style":"highlight|circle|underline|redact"}],"coming_up":false}  — when a line quotes an article, post or document you HAVE as media; 1-2 marks; "redact" hides a word (add "word" to reveal it)
-- {"component":"name_tag","name":"<person>","role":"<role>","over_aroll":true}  — introduce the presenter or someone on screen
-- {"component":"date_title","text":"<YEAR or DATE>","subtitle":"<optional place/name>"}  — a dramatic jump in time
-- {"component":"number_tiles","text":"<short number/year like 200 or 1996>","word":"<optional word after, e.g. YEARS AGO>"}  — a striking number or year
-- {"component":"icon_stream","icons":["<media ids of logos/flags/items or short emoji>"]}  — money/data/goods flowing from one place to another
-- {"component":"scanner","logo":"<logo media id>","targets":[{"media":"<face/photo id>","label":"<NAME>"}]}  — an agency/company watching, searching or choosing people
-- {"component":"silhouette_crowd","media":["<person photo ids>"],"labels":["<SHORT LABELS>"],"highlight":<index of the one to keep in colour, or -1>}  — groups, victims, workers, "millions of people"
-- {"component":"glass_screen","media":["<footage/photo ids>"]}  — showing websites, apps, news footage or a montage on a screen
-- {"component":"plaque","name":"<NAME>","dates":"<YYYY – YYYY>","text":"<short epitaph>"}  — a death or memorial
-- {"component":"poster","title":"<WANTED / JOBS …>","subtitle":"...","media":"<optional image id>"}  — old adverts, recruitment, propaganda
-- {"component":"route_follow","from":"<country>","to":"<country>","avatar":"<optional face media id>"}  — a journey, migration, trade or escape route
-- {"component":"map_fly","from":"<country>","to":"<country>"}  — the story moves from one country to another
-- {"component":"needle_pin","country":"<country>","label":"<place>"}  — pin one place on a map
-Optional on any visual: "sfx":"whoosh|hit|riser|pop|tick|none" (defaults are chosen for you; use "riser" before the big reveal of the hook, "none" to keep a moment quiet).
+${v.join('\n')}
+Optional on any visual: ${opt.join('; ')}.
 
 DIRECTING RULES
 - Plan from "about" (what is IN each picture), not the file name. A visual must match what the line says. Never invent media ids.
@@ -389,9 +451,302 @@ DIRECTING RULES
 - Keep the eye moving: never the same component type or same media on two lines in a row; use each media at most twice (see media_used_so_far).
 - Text on screen must be short, factual and ONLY from the narration line — never add facts.
 - Use transitions with intent: "fade" by default, "whip"/"slide" for change of place or time, "zoom_in" into details, "shatter" at most once for a dramatic break.
-- Prefer the specific documentary visuals above when they fit the line (article for quotes you have screenshots of, name_tag for introductions, route_follow/map_fly for movement between places, number_tiles/date_title for big numbers and years); never invent screenshots or faces.
+- Prefer the specific documentary visuals above when they fit the line (article for quotes you have screenshots of, name_tag for introductions, maps for movement between places, number_tiles/date_title for big numbers and years, icon_stream for flows, scanner for who is involved, silhouette_crowd for groups, glass_screen for montages); never invent screenshots or faces.
 - If there's no presenter, every line needs a real visual.
-- Follow style_notes from the channel owner when given; they override these defaults.''';
+- Follow style_notes from the channel owner when given; they override these defaults.$long''';
+  }
+
+  // ------------------------------------------------------------ 3b. Director v2 (long videos)
+
+  /// Variety score of the last planned (or re-planned) storyboard.
+  VarietyReport? variety;
+
+  Future<Storyboard?> loadStoryboard() async {
+    try {
+      return await StoryboardStore.load(await c.storage.mediaDir(), p.id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveStoryboard(Storyboard sb) async {
+    try {
+      await StoryboardStore.save(await c.storage.mediaDir(), sb);
+    } catch (_) {
+      // Saving is best-effort; planning goes on.
+    }
+  }
+
+  Future<void> discardStoryboard() async {
+    try {
+      await StoryboardStore.clear(await c.storage.mediaDir(), p.id);
+    } catch (_) {}
+  }
+
+  static Map<String, dynamic> inputJson(DirectorInput o) => {
+        'brief': o.brief,
+        'script': o.script,
+        'narration': o.narration.name,
+        if (o.arollMedia != null) 'aroll': o.arollMedia,
+        if (o.voiceMedia != null) 'voice': o.voiceMedia,
+        if (o.musicMedia != null) 'music': o.musicMedia,
+        'language': o.language,
+        'roman': o.roman,
+        'captions': o.captions,
+        'sfx': o.sfx,
+        'depth': o.depth,
+        'review': o.review,
+        'look': o.look,
+      };
+
+  /// Restores the form of a saved storyboard (for Resume / Rebuild).
+  static void applyInput(DirectorInput o, Map<String, dynamic> j) {
+    String str(String k, String d) => j[k] is String ? '${j[k]}' : d;
+    bool flag(String k, bool d) => j[k] is bool ? j[k] as bool : d;
+    o
+      ..brief = str('brief', o.brief)
+      ..script = str('script', o.script)
+      ..narration = Narration.values.firstWhere((n) => n.name == j['narration'], orElse: () => o.narration)
+      ..arollMedia = j['aroll'] as String? ?? o.arollMedia
+      ..voiceMedia = j['voice'] as String? ?? o.voiceMedia
+      ..musicMedia = j['music'] as String? ?? o.musicMedia
+      ..language = str('language', o.language)
+      ..roman = flag('roman', o.roman)
+      ..captions = flag('captions', o.captions)
+      ..sfx = flag('sfx', o.sfx)
+      ..depth = flag('depth', o.depth)
+      ..review = flag('review', o.review)
+      ..look = str('look', o.look);
+  }
+
+  /// The narration of a saved storyboard, re-placing the presenter or the
+  /// voice-over when its layer was removed (same media → same timings).
+  Future<NarrationResult> resumeNarration(Storyboard sb, DirectorInput o) async {
+    var aroll = sb.arollLayer;
+    if (aroll != null && c.comp.layerById(aroll) == null) {
+      final m = p.media[o.arollMedia];
+      if (m == null) throw AiException('The presenter video of this storyboard is gone. Start again.');
+      aroll = await _placeNarration(m, true);
+      sb.arollLayer = aroll;
+    }
+    if (o.narration == Narration.voiceover) {
+      final m = p.media[o.voiceMedia];
+      if (m != null && !c.comp.layers.any((l) => l.mediaId == m.id)) await _placeNarration(m, false);
+    }
+    if (o.narration == Narration.phoneVoice && !c.comp.layers.any((l) => l.type == LayerType.audio && l.name.startsWith('Voice '))) {
+      throw AiException('The AI voice clips of this storyboard were removed. Start again.');
+    }
+    return NarrationResult(sb.lines, sb.words, aroll);
+  }
+
+  Map<String, dynamic> _basePayload(DirectorInput o, bool presenter, String styleNotes) => {
+        'frame': [c.comp.width, c.comp.height],
+        'presenter_on_camera': presenter,
+        'brief': o.brief,
+        if (styleNotes.isNotEmpty) 'style_notes': styleNotes,
+        'media': _mediaList(),
+      };
+
+  /// Photos the depth step will try to cut out.
+  Set<String> _cutoutCandidates(DirectorInput o) => o.depth
+      ? {for (final m in p.media.values) if (m.type == MediaType.image && m.description.contains('clear subject')) m.id}
+      : <String>{};
+
+  StoryPlanner _planner(AiSettings s, CancelToken? cancel) => StoryPlanner(
+        (system, user) => AiClient.complete(s: s, system: system, messages: [AiMessage('user', user)]),
+        status: status,
+        cancel: cancel,
+      );
+
+  VarietyReport _finishPlan(Storyboard sb, DirectorInput o, Capabilities caps, {int? only}) {
+    if (!MotionPresets.styles.contains(sb.look)) sb.look = MotionPresets.styles.contains(o.look) ? o.look : 'cinematic_doc';
+    for (final ch in sb.chapters) {
+      if (ch.look.isNotEmpty && !MotionPresets.styles.contains(ch.look)) ch.look = '';
+    }
+    return variety = StoryPlanner.finish(p, sb, caps: caps, presenter: sb.arollLayer != null, cutouts: _cutoutCandidates(o), only: only);
+  }
+
+  /// Plans a long video: chapters first, then shots chapter by chapter with
+  /// a running memory, saving after every chapter. Pass a saved storyboard
+  /// as [resume] to continue where it stopped.
+  Future<Storyboard> planStoryboard(DirectorInput o, NarrationResult n,
+      {Storyboard? resume, CancelToken? cancel, void Function(Storyboard)? onProgress}) async {
+    final s = await AiSettings.load();
+    await LibraryDirector.warmUp(); // Library (Agent G): "lib:<id>" assets in the media list
+    final caps = Capabilities();
+    final sb = resume ??
+        Storyboard(projectId: p.id, look: o.look, lines: n.lines, words: n.words, arollLayer: n.arollLayer, input: inputJson(o));
+    sb.arollLayer = n.arollLayer;
+    final planner = _planner(s, cancel);
+    if (!sb.outlined) {
+      await planner.outline(sb, brief: o.brief, styleNotes: s.styleNotes, media: _mediaList(), looks: MotionPresets.styles);
+      await saveStoryboard(sb);
+      onProgress?.call(sb);
+    }
+    final system = directorPrompt(cutouts: o.depth, caps: caps, chapters: true);
+    final base = _basePayload(o, n.arollLayer != null, s.styleNotes);
+    for (final ch in sb.chapters) {
+      if (ch.planned) continue;
+      cancel?.check();
+      ch.status = 'planning';
+      onProgress?.call(sb);
+      try {
+        final beats = await planner.planChapter(sb, ch.index, system: system, base: base);
+        sb.replaceChapter(ch.index, beats);
+      } on DirectorCancelled {
+        ch.status = 'pending';
+        await saveStoryboard(sb);
+        rethrow;
+      } catch (e) {
+        ch.status = 'failed';
+        ch.error = '$e';
+        await saveStoryboard(sb);
+        onProgress?.call(sb);
+        rethrow;
+      }
+      sb.stage = 'planning';
+      await saveStoryboard(sb);
+      onProgress?.call(sb);
+    }
+    _finishPlan(sb, o, caps);
+    sb.stage = 'planned';
+    await saveStoryboard(sb);
+    onProgress?.call(sb);
+    return sb;
+  }
+
+  /// Cut-outs, sound effects and the build of a planned storyboard.
+  Future<int> buildStoryboard(Storyboard sb, DirectorInput o, NarrationResult n) async {
+    final opts = await prepare(sb.beats, o, n, MotionPresets.styles.contains(sb.look) ? sb.look : 'cinematic_doc');
+    opts
+      ..tag = sb.tag
+      ..chapters = sb.chapters
+      ..caps = Capabilities();
+    status('Building ${sb.chapters.length} chapters…');
+    final dropped = build(sb.beats, opts);
+    for (final ch in sb.chapters) {
+      ch.status = 'built';
+    }
+    sb.stage = 'built';
+    await saveStoryboard(sb);
+    return dropped;
+  }
+
+  /// Re-plans (unless [replan] is false) and rebuilds one chapter; the rest
+  /// of the edit is untouched. One Undo removes the change.
+  Future<int> rebuildChapter(Storyboard sb, int chapter, DirectorInput o, {String note = '', bool replan = true, CancelToken? cancel}) async {
+    final s = await AiSettings.load();
+    final caps = Capabilities();
+    final ch = sb.chapters.firstWhere((x) => x.index == chapter);
+    if (replan) {
+      final beats = await _planner(s, cancel).planChapter(
+        sb,
+        chapter,
+        system: directorPrompt(cutouts: o.depth, caps: caps, chapters: true),
+        base: _basePayload(o, sb.arollLayer != null, s.styleNotes),
+        note: note,
+      );
+      sb.replaceChapter(chapter, beats);
+      _finishPlan(sb, o, caps, only: chapter);
+      await saveStoryboard(sb);
+    }
+    cancel?.check();
+    final n = NarrationResult(sb.lines, sb.words, sb.arollLayer);
+    final opts = await prepare(sb.beatsOf(chapter), o, n, MotionPresets.styles.contains(sb.look) ? sb.look : 'cinematic_doc');
+    opts
+      ..tag = sb.tag
+      ..chapters = sb.chapters
+      ..caps = caps;
+    status('Rebuilding chapter ${chapter + 1}: ${ch.title}…');
+    var dropped = 0;
+    var err = c.tryRun({'op': 'batch', 'commands': StoryBuilder.rebuildChapter(p, sb.beats, opts, chapter)});
+    if (err != null) {
+      dropped = _dropFailing(sb.beatsOf(chapter), opts);
+      err = c.tryRun({'op': 'batch', 'commands': StoryBuilder.rebuildChapter(p, sb.beats, opts, chapter)});
+      if (err != null) throw AiException('Could not rebuild chapter ${chapter + 1}: $err');
+    }
+    ch.status = 'built';
+    await saveStoryboard(sb);
+    return dropped;
+  }
+
+  /// Review, chapter by chapter: a few rendered frames of each chapter and
+  /// only that chapter's layers go to the AI, which fixes what looks wrong.
+  Future<String> reviewChapters(Storyboard sb, Future<List<(double, Uint8List)>> Function(List<double> times) render,
+      {int perChapter = 3, CancelToken? cancel, void Function(int chapter)? onChapter, Set<int>? only}) async {
+    final s = await AiSettings.load();
+    final notes = <String>[];
+    for (final ch in sb.chapters) {
+      if (only != null && !only.contains(ch.index)) continue;
+      cancel?.check();
+      onChapter?.call(ch.index);
+      final kept = sb.beatsOf(ch.index).where((b) => b.keep).toList()..sort((a, b) => a.start.compareTo(b.start));
+      final pick = samplePick(kept, perChapter);
+      if (pick.isEmpty) continue;
+      status('Watching chapter ${ch.index + 1}/${sb.chapters.length}: ${ch.title}…');
+      final frames = await render([for (final b in pick) b.start + math.min(1.2, (b.end - b.start) * 0.6)]);
+      if (frames.isEmpty) continue;
+      cancel?.check();
+      final (t0, t1) = sb.rangeOf(ch.index);
+      final state = jsonEncode(chapterSummary(EditAgent.projectSummary(c), t0, t1));
+      final convo = [
+        AiMessage(
+          'user',
+          'DIRECTOR REVIEW of chapter ${ch.index + 1} "${ch.title}" (${_r(t0)}–${_r(t1)} s, mood ${ch.mood}). The attached images are rendered frames at '
+          '${frames.map((f) => f.$1.toStringAsFixed(1)).join(', ')} s. Narration at those times: '
+          '${jsonEncode([for (final b in pick) {'t': _r(b.start), 'line': b.line}])}.\n'
+          'Check each frame like a senior editor: text cut off or outside the frame, text overlapping captions or other text, '
+          'unreadable text (too small, low contrast), black or empty frames, a picture that obviously does not match its line, '
+          'a subject\'s face covered by graphics, the same picture or graphic repeated. Fix only real problems in THIS chapter with edit commands '
+          '(move/resize/recolor/retime layers, swap media with replace_media). If everything is fine return "commands": []. '
+          'Put a 1-sentence verdict in "reply".\n\nTHIS CHAPTER\'S LAYERS (JSON):\n$state',
+          images: [for (final f in frames) f.$2],
+        ),
+      ];
+      var note = '';
+      for (int attempt = 0; attempt < 2; attempt++) {
+        final raw = await AiClient.complete(s: s, system: commandSpec, messages: convo);
+        final j = _json(raw);
+        note = '${j['reply'] ?? ''}'.trim();
+        final cmds = (j['commands'] as List?) ?? const [];
+        if (cmds.isEmpty) break;
+        final err = c.tryRun({'op': 'batch', 'commands': cmds}, record: false);
+        if (err == null) break;
+        convo
+          ..add(AiMessage('assistant', raw))
+          ..add(AiMessage('user', 'Rejected, nothing changed: $err\nReturn the corrected JSON.'));
+      }
+      if (note.isNotEmpty) notes.add('${ch.index + 1}. ${ch.title}: $note');
+    }
+    return notes.join('\n');
+  }
+
+  /// Up to [n] beats spread evenly over [beats].
+  static List<Beat> samplePick(List<Beat> beats, int n) {
+    if (beats.length <= n) return [...beats];
+    final out = <Beat>[];
+    for (int i = 0; i < n; i++) {
+      final b = beats[(i * beats.length / n).floor()];
+      if (!out.contains(b)) out.add(b);
+    }
+    return out;
+  }
+
+  /// The project summary cut down to the layers active in [t0, t1].
+  static Map<String, dynamic> chapterSummary(Map<String, dynamic> full, double t0, double t1) {
+    double toD(dynamic v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+    final layers = [
+      for (final l in (full['layers_top_to_bottom'] as List? ?? const []))
+        if (l is Map && toD(l['end']) > t0 && toD(l['start']) < t1) l,
+    ];
+    final used = {for (final l in layers) l['media']};
+    return {
+      ...full,
+      'chapter_range': [t0, t1],
+      'media': [for (final m in (full['media'] as List? ?? const [])) if (m is Map && used.contains(m['id'])) m],
+      'layers_top_to_bottom': layers,
+    };
+  }
 
   // ------------------------------------------------------------ 4. tools
 
@@ -493,15 +848,26 @@ DIRECTING RULES
   /// Applies the storyboard. Beats whose commands fail are dropped instead
   /// of failing the whole video. Returns the number of dropped beats.
   int build(List<Beat> beats, BuildOptions o) {
-    final full = StoryBuilder.build(p, beats, o);
-    if (c.tryRun({'op': 'batch', 'commands': full}, record: false) == null) return 0;
-    // Find the beats that fail, one by one, on a snapshot.
+    if (c.tryRun({'op': 'batch', 'commands': StoryBuilder.build(p, beats, o)}, record: false) == null) return 0;
     status('Fixing a few shots that didn\'t fit…');
+    final dropped = _dropFailing(beats, o);
+    var err = c.tryRun({'op': 'batch', 'commands': StoryBuilder.build(p, beats, o)}, record: false);
+    if (err != null && o.chapters.isNotEmpty && o.caps?.particles != false) {
+      // Last resort: without the atmosphere particles.
+      o.caps = Capabilities(particles: false);
+      err = c.tryRun({'op': 'batch', 'commands': StoryBuilder.build(p, beats, o)}, record: false);
+    }
+    if (err != null) throw AiException('Build failed: $err');
+    return dropped;
+  }
+
+  /// Finds the beats that fail on their own (on a snapshot) and unticks them.
+  int _dropFailing(List<Beat> beats, BuildOptions o) {
     final snap = ProjectSnapshot.take(p);
     final bad = <Beat>{};
     var k = 0;
     for (final b in beats.where((b) => b.keep)) {
-      final one = StoryBuilder.build(p, [b], BuildOptions(arollLayer: o.arollLayer, cutouts: o.cutouts, tag: '${o.tag}t${k++}'));
+      final one = StoryBuilder.build(p, [b], BuildOptions(arollLayer: o.arollLayer, cutouts: o.cutouts, caps: o.caps, tag: '${o.tag}t${k++}'));
       try {
         EditCommands.runAtomic(p, {'op': 'batch', 'commands': one});
       } on CommandError {
@@ -512,8 +878,6 @@ DIRECTING RULES
     for (final b in bad) {
       b.keep = false;
     }
-    final err = c.tryRun({'op': 'batch', 'commands': StoryBuilder.build(p, beats, o)}, record: false);
-    if (err != null) throw AiException('Build failed: $err');
     return bad.length;
   }
 
@@ -570,12 +934,8 @@ DIRECTING RULES
   }
 
   static Map<String, dynamic> _json(String raw) {
-    final a = raw.indexOf('{'), b = raw.lastIndexOf('}');
-    if (a < 0 || b <= a) throw AiException('The AI answered without JSON. Try again.');
-    try {
-      return jsonDecode(raw.substring(a, b + 1)) as Map<String, dynamic>;
-    } catch (_) {
-      throw AiException('The AI\'s answer was cut off or malformed. Try again.');
-    }
+    final j = JsonRepair.tryDecode(raw);
+    if (j != null) return j;
+    throw AiException(raw.contains('{') ? 'The AI\'s answer was cut off or malformed. Try again.' : 'The AI answered without JSON. Try again.');
   }
 }
