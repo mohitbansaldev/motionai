@@ -14,7 +14,7 @@ import 'edit_commands.dart';
 /// V2-C: the `transition` op (documentary transitions between two shots).
 ///
 ///   transition {from, to (or layers: [from, to]), type, duration?, at? (cut, default to.start),
-///               sound?: true|false|"<sfx kind>"|[kinds], snap_to_beat?: false, beats?: [s],
+///               sound?: true|false|"sfx_kind"|[kinds], snap_to_beat?: false, beats?: [s],
 ///               beat_tolerance?: 0.25, params?: {...}}
 ///   list_transitions {} — the catalog as JSON in the log.
 ///
