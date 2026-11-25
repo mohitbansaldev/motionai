@@ -199,7 +199,11 @@ class _ScenePanelState extends State<_ScenePanel> {
   }
 
   void _make3d(List<String> ids) {
-    final bands = {for (final id in ids) if ((_bands[id] ?? 'auto') != 'auto') id: _bands[id]!};
+    final bands = <String, String>{};
+    for (final id in ids) {
+      final b = _bands[id];
+      if (b != null && b != 'auto') bands[id] = b;
+    }
     _run({'op': 'make_3d', 'layers': ids, 'bands': bands, 'start': c.time}, 'Scene is 3D now: the first frame looks the same, try a camera move.');
   }
 
