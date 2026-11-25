@@ -16,6 +16,7 @@ import 'fx/fx_painters.dart';
 import 'fx/offscreen.dart';
 import 'fx/particles.dart';
 import 'fx/text_fx.dart';
+import 'precomp_view.dart'; // PRECOMP (Agent L)
 import 'shape_painter.dart';
 
 /// Draws one evaluated layer: content → effects → masks → depth blur → opacity → transform.
@@ -139,6 +140,9 @@ class LayerView extends StatelessWidget {
       case LayerType.nullObject:
       case LayerType.audio:
         return const SizedBox.shrink();
+      case LayerType.comp: // PRECOMP (Agent L): nested composition as one sub-canvas
+        return PrecompView(
+            layer: l, project: project, time: time, videos: videos, videoFrames: videoFrames, draft: draft, playing: playing);
     }
   }
 

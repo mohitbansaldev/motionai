@@ -150,14 +150,31 @@ class Project {
   final Map<String, MediaAsset> media;
   Composition main;
 
+  // PRECOMP (Agent L) >>>
+  /// Nested compositions (precomps), by id. Used by `LayerType.comp` layers.
+  final Map<String, Composition> comps;
+
+  /// The composition being edited (editor state, not saved): null = [main].
+  /// Edit commands work on [editComp]; export always renders [main].
+  String? editCompId;
+
+  /// The composition edit commands apply to.
+  Composition get editComp => (editCompId == null ? null : compById(editCompId!)) ?? main;
+
+  /// [main] (by its id or "main") or a nested comp.
+  Composition? compById(String id) => id == main.id || id == 'main' ? main : comps[id];
+  // <<< PRECOMP (Agent L)
+
   Project({
     required this.id,
     required this.name,
     required this.main,
     DateTime? modified,
     Map<String, MediaAsset>? media,
+    Map<String, Composition>? comps, // PRECOMP (Agent L)
   })  : modified = modified ?? DateTime.now(),
-        media = media ?? {};
+        media = media ?? {},
+        comps = comps ?? {}; // PRECOMP (Agent L)
 
   Map<String, dynamic> toJson() => {
         'schema': schemaVersion,
@@ -166,6 +183,7 @@ class Project {
         'modified': modified.toIso8601String(),
         'media': media.values.map((m) => m.toJson()).toList(),
         'main': main.toJson(),
+        if (comps.isNotEmpty) 'comps': comps.values.map((c) => c.toJson()).toList(), // PRECOMP (Agent L)
       };
 
   static Project fromJson(Map<String, dynamic> j) {
@@ -174,7 +192,14 @@ class Project {
       final a = MediaAsset.fromJson(m as Map<String, dynamic>);
       media[a.id] = a;
     }
+    // PRECOMP (Agent L): nested comps (absent in older projects).
+    final comps = <String, Composition>{};
+    for (final c in (j['comps'] as List? ?? [])) {
+      final comp = Composition.fromJson(Map<String, dynamic>.from(c as Map));
+      comps[comp.id] = comp;
+    }
     return Project(
+      comps: comps, // PRECOMP (Agent L)
       id: j['id'] as String,
       name: j['name'] as String? ?? 'Untitled',
       modified: DateTime.tryParse(j['modified'] as String? ?? '') ?? DateTime.now(),

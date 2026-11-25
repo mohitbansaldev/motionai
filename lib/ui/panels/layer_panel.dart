@@ -5,6 +5,7 @@ import '../../core/presets/motion_presets.dart';
 import '../../state/editor_controller.dart';
 import '../ai_tools.dart';
 import '../common.dart';
+import '../precomp_bar.dart'; // PRECOMP (Agent L)
 import 'prop_row.dart';
 
 /// Transform, text and layer options for the selected layer.
@@ -141,6 +142,10 @@ class LayerPanel extends StatelessWidget {
                 onPressed: () => c.tryRun({'op': 'remove_layer', 'layer': l.id}),
               ),
             ]),
+            // PRECOMP (Agent L) >>>
+            const SectionTitle('Composition'),
+            PrecompActions(c: c, layer: l),
+            // <<< PRECOMP (Agent L)
             const SizedBox(height: 24),
           ],
         );
