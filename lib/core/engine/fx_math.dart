@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'text_clusters.dart'; // V2-F: Devanagari-safe letters
+
 /// Pure, deterministic maths behind the motion FX (no Flutter imports), so
 /// export frames match the preview exactly and everything is unit-testable.
 
@@ -231,36 +233,50 @@ class TextFx {
   static double scrambleSettle(int i, int n, double duration) =>
       n <= 0 ? 0 : duration * (0.25 + 0.75 * (i + 1) / n);
 
-  /// The code point shown for letter [i] (original [rune]) at [local] seconds
-  /// into a scramble: random glyphs of the same class until it settles
-  /// (left → right), then the real letter. Spaces never scramble.
-  static int scrambleRune(int rune, int i, int n, double local, double duration, int seed) {
-    if (local >= scrambleSettle(i, n, duration)) return rune;
-    final ch = String.fromCharCode(rune);
-    if (ch.trim().isEmpty) return rune;
+  // V2-F >>> scramble works on whole letters (grapheme / conjunct clusters)
+  static const _devaLetters = [
+    'क', 'ख', 'ग', 'घ', 'च', 'छ', 'ज', 'झ', 'ट', 'ठ', 'ड', 'ढ', 'त', 'थ', 'द', 'ध', 'न', 'प', 'फ', 'ब', 'भ', 'म', 'य', 'र', 'ल', 'व', 'श', 'ष',
+    'स', 'ह', 'अ', 'इ', 'उ', 'ए', 'ओ',
+  ];
+  static const _devaDigits = ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९'];
+
+  /// The letter shown for cluster [i] of [n] (original [cluster], one
+  /// user-perceived letter, see TextClusters) at [local] seconds into a
+  /// scramble: random letters of the same script/class until it settles
+  /// (left → right), then exactly the original cluster. Spaces never
+  /// scramble; Devanagari scrambles through Devanagari letters.
+  static String scrambleCluster(String cluster, int i, int n, double local, double duration, int seed) {
+    if (local >= scrambleSettle(i, n, duration)) return cluster;
+    final cls = TextClusters.classOf(cluster);
+    if (cls == ClusterClass.space) return cluster;
     final step = (math.max(0.0, local) * 24).floor();
     final h = hash01(seed + i * 97, step);
-    String set;
-    if (_digits.contains(ch)) {
-      set = _digits;
-    } else if (_lower.contains(ch)) {
-      set = _lower;
-    } else if (_upper.contains(ch)) {
-      set = _upper;
-    } else {
-      set = '$_upper$_symbols';
-    }
-    return set.codeUnitAt((h * set.length).floor().clamp(0, set.length - 1));
+    String pick(String set) => set[(h * set.length).floor().clamp(0, set.length - 1)];
+    String pickL(List<String> set) => set[(h * set.length).floor().clamp(0, set.length - 1)];
+    return switch (cls) {
+      ClusterClass.digit => pick(_digits),
+      ClusterClass.lower => pick(_lower),
+      ClusterClass.upper => pick(_upper),
+      ClusterClass.devanagari => pickL(_devaLetters),
+      ClusterClass.devanagariDigit => pickL(_devaDigits),
+      _ => pick('$_upper$_symbols'),
+    };
   }
 
-  /// The whole scrambled string at [local] seconds.
+  /// Code-point version of [scrambleCluster] (single-code-point letters only).
+  static int scrambleRune(int rune, int i, int n, double local, double duration, int seed) =>
+      scrambleCluster(String.fromCharCode(rune), i, n, local, duration, seed).runes.first;
+
+  /// The whole scrambled string at [local] seconds (letter = cluster).
   static String scrambleText(String text, double local, double duration, {int seed = 0}) {
-    final runes = text.runes.toList();
-    final n = runes.length;
-    return String.fromCharCodes([
-      for (int i = 0; i < n; i++) scrambleRune(runes[i], i, n, local, duration, seed),
-    ]);
+    final letters = TextClusters.split(text);
+    final n = letters.length;
+    return [for (int i = 0; i < n; i++) scrambleCluster(letters[i], i, n, local, duration, seed)].join();
   }
+
+  /// True once every letter of a [duration] s scramble / random pop has settled.
+  static bool lettersSettled(double local, double duration) => duration <= 0 || local >= duration;
+  // <<< V2-F
 
   static final Map<int, List<int>> _orders = {};
 
