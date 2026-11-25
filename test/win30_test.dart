@@ -143,11 +143,6 @@ void main() {
       expect((await r.close()).statusCode, 403);
     });
   });
-}
-
-class _NoBackend implements McpBackend {
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
   group('layers reaching behind the camera', () {
     test('a big background seen at an angle is cropped to its part in view, not culled', () {
@@ -228,4 +223,10 @@ class _NoBackend implements McpBackend {
       expect([for (final i in Evaluator.evaluate(p.main, 1)) i.layer.id], ['far', 'near']);
     });
   });
+}
+
+class _NoBackend implements McpBackend {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
 }
