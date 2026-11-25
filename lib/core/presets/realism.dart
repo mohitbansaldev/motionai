@@ -47,6 +47,16 @@ class Realism {
     for (int i = 0; i < 16; i++) {
       s[i] *= k;
     }
+    avoidFrontal(m);
+  }
+
+  /// A 3D layer facing the camera exactly (no X/Y tilt) gets a perspective
+  /// row of (0, 0, z, w). The Windows compositor drops such layers from the
+  /// live preview (export draws them). A perspective term far below one
+  /// pixel keeps them on the regular perspective path: invisible change.
+  static void avoidFrontal(Matrix4 m) {
+    final s = m.storage;
+    if (s[3] == 0 && s[7] == 0) s[3] = 3e-8; // ≈ the 0.01° Y tilt that was verified on Windows
   }
 
   /// Scale a compositor reads from [m] when it ignores perspective (max
