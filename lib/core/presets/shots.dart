@@ -108,8 +108,8 @@ class ShotRoles {
   /// Default horizontal centre (fraction of the frame width) of the [k]-th
   /// cut-out of [role]: spread so far layers are not right behind mid ones.
   static double defaultX(String role, int k) {
-    const far = [0.2, 0.8, 0.38, 0.62, 0.08, 0.92];
-    const mid = [0.55, 0.3, 0.76, 0.14, 0.88];
+    const far = [0.12, 0.88, 0.3, 0.7, 0.45, 0.6];
+    const mid = [0.55, 0.32, 0.76, 0.16, 0.9];
     const near = [0.24, 0.76, 0.5];
     const front = [0.84, 0.16, 0.5];
     List<double> l;
@@ -396,9 +396,10 @@ class ShotGeometry {
   }
 
   /// Keeps far layers from disappearing behind mid layers during the move:
-  /// a far layer whose top drops below the top of a mid layer in front of
-  /// it is grown about its bottom (up to ×1.6, so it stays on the ground),
-  /// then lifted if that is not enough. Returns how many layers changed.
+  /// a far layer whose top sinks below the top of a mid layer in front of
+  /// it (more than in the first frame, which is the composition) is grown
+  /// about its bottom (up to ×1.6, so it stays on the ground), then lifted
+  /// if that is not enough. Returns how many layers changed.
   static int keepFarVisible(Composition comp, List<Layer> far, List<Layer> mid, double dur, {List<String>? log}) {
     if (far.isEmpty || mid.isEmpty) return 0;
     final margin = comp.height * 0.03;
@@ -406,6 +407,7 @@ class ShotGeometry {
     var changed = 0;
     for (final f in far) {
       var touched = false;
+      double? base; // how far it already sits below the mid tops at the first frame (the composition)
       for (int pass = 0; pass < 3; pass++) {
         double worst = 0, hWorst = 1, tWorst = 0;
         for (final t in times) {
@@ -421,7 +423,9 @@ class ShotGeometry {
             midTop = midTop == null ? mb[1] : math.min(midTop, mb[1]);
           }
           if (midTop == null) continue;
-          final need = fb[1] - (midTop - margin);
+          final v = fb[1] - (midTop - margin);
+          if (pass == 0 && t == times.first) base = math.max(0.0, v);
+          final need = v - (base ?? 0.0);
           if (need > worst) {
             worst = need;
             hWorst = fb[3] - fb[1];
