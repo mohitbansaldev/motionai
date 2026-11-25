@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, ProcessInfo;
 import 'dart:ui' show FramePhase, FrameTiming;
 
 import 'package:flutter/material.dart';
@@ -142,7 +142,8 @@ class PreviewHud extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(color: const Color(0xAA000000), borderRadius: BorderRadius.circular(8)),
               child: Text(
-                '${q.fps.toStringAsFixed(0)} fps · build ${q.buildMs.toStringAsFixed(1)} · raster ${q.rasterMs.toStringAsFixed(1)} ms',
+                '${q.fps.toStringAsFixed(0)} fps · build ${q.buildMs.toStringAsFixed(1)} · raster ${q.rasterMs.toStringAsFixed(1)} ms'
+                ' · RAM ${(ProcessInfo.currentRss / 1048576).round()} MB', // win-30
                 style: style.copyWith(color: q.fps > 0 && q.fps < 45 ? const Color(0xFFFFB74D) : Colors.white),
               ),
             ),

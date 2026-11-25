@@ -151,6 +151,14 @@ final List<Map<String, dynamic>> kMcpTools = [
           'returns complete layer JSON. Does not change what the user is looking at (no open_comp needed).',
       _obj({'comp': _s('Composition id ("main" = main)'), 'full': _b('Complete layer JSON (default false)')}),
       readOnly: true),
+  _tool('get_logs', 'App log',
+      'Recent app errors and events (Flutter errors, async errors, export/encoder failures), newest last. Use it when '
+          'something looks wrong in the editor or an export fails.',
+      _obj({
+        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 300, 'description': 'How many (default 50)'},
+        'level': _e(['error', 'warning', 'info'], 'Only this level and worse (default info = all)'),
+        'clear': _b('Clear the log after reading'),
+      })),
   _tool('editor_screenshot', 'Screenshot of the editor preview',
       'PNG of the live editor preview exactly as the user sees it (same draw path as the editor, unlike render_frame / '
           'preview_shot which use the export renderer). Use it to confirm that what you built shows correctly for the user.',

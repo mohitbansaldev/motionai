@@ -1,9 +1,10 @@
-import 'dart:ui' show PointerDeviceKind;
+import 'dart:ui' show PlatformDispatcher, PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/presets/world_map.dart';
+import 'services/app_log.dart'; // win-30
 import 'remote/remote_control.dart'; // MCP (Agent P)
 import 'remote/remote_ui.dart'; // MCP (Agent P)
 import 'ui/depth_tools.dart'; // V2-E
@@ -15,6 +16,16 @@ import 'ui/preview/fx/map_texture.dart'; // V3-A
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // win-30: keep errors for MCP get_logs (and still show them as before).
+  final previous = FlutterError.onError;
+  FlutterError.onError = (details) {
+    AppLog.error('flutter', '${details.exceptionAsString()}\n${details.stack.toString().split('\n').take(8).join('\n')}');
+    previous?.call(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppLog.error('async', '$error\n${stack.toString().split('\n').take(8).join('\n')}');
+    return false; // keep the default handling
+  };
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: MA.bg,

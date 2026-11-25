@@ -18,6 +18,7 @@ import '../platform/win_gpu.dart'; // win-30
 import '../platform/win_media.dart';
 import '../platform/win_tools.dart';
 import '../remote/remote_export.dart'; // MCP (Agent P)
+import '../services/app_log.dart'; // win-30
 import '../services/media_bridge.dart';
 import 'common.dart';
 import 'preview/composition_canvas.dart';
@@ -339,10 +340,12 @@ class _ExportScreenState extends State<ExportScreen> {
       }
       setState(() => _phase = _Phase.done);
     } on _Cancelled {
+      AppLog.warning('export', 'Export cancelled at frame ${_frame + 1}/$_frames by ${_cancelSource ?? 'unknown (screen closed?)'}'); // win-30
       await MediaBridge.encoderCancel();
       await MediaBridge.readerReleaseAll();
       if (mounted) setState(() => _phase = _Phase.setup);
     } catch (e) {
+      AppLog.error('export', 'Export failed at frame ${_frame + 1}/$_frames: $e'); // win-30
       await MediaBridge.encoderCancel().catchError((_) {});
       await MediaBridge.readerReleaseAll().catchError((_) {});
       if (mounted) {

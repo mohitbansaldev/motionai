@@ -24,6 +24,7 @@ import '../director/planner.dart';
 import '../library/asset_library.dart';
 import '../library/library_ops.dart'; // V2-lead
 import '../core/commands/pattern_commands.dart'; // V3-E
+import '../services/app_log.dart'; // win-30
 import '../services/captions.dart';
 import '../services/project_storage.dart';
 import '../state/editor_controller.dart';
@@ -262,6 +263,12 @@ class RemoteTools implements McpBackend {
                     },
           ],
         });
+      case 'get_logs': // win-30: app errors / events for debugging
+        final limit = (_num(a, 'limit') ?? 50).round().clamp(1, AppLog.capacity);
+        final level = _str(a, 'level');
+        final entries = AppLog.recent(limit: limit, level: level);
+        if (_bool(a, 'clear') == true) AppLog.clear();
+        return McpToolResult.json({'count': entries.length, 'entries': [for (final e in entries) e.toJson()]});
       case 'editor_screenshot': // win-30: the real editor preview, exactly what the user sees
         final Object h = host;
         if (h is! RemoteEditorView) throw _Fail('This app version cannot capture the editor preview.');
@@ -440,7 +447,16 @@ class RemoteTools implements McpBackend {
   // ------------------------------------------------------------ state
 
   Future<Map<String, dynamic>> state() async {
-    final out = <String, dynamic>{'app': 'MotionAI', 'screen': host.screen};
+    final out = <String, dynamic>{
+      'app': 'MotionAI',
+      'screen': host.screen,
+      // win-30: memory and recent errors at a glance.
+      'perf': {
+        'ram_mb': (ProcessInfo.currentRss / 1048576).round(),
+        'peak_ram_mb': (ProcessInfo.maxRss / 1048576).round(),
+        'errors_logged': AppLog.recent(limit: AppLog.capacity, level: 'error').length,
+      },
+    };
     final running = [for (final j in jobs.all) if (j.running) j.toJson()];
     if (running.isNotEmpty) out['jobs'] = running;
     final c = host.editor;
