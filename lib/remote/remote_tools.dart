@@ -1162,7 +1162,9 @@ class RemoteTools implements McpBackend {
     final c = _editor();
     final id = _need(a, 'id');
     final t = (await _templates(null)).where((x) => x.id == id).firstOrNull ?? (throw _Fail('No template "$id" (see list_templates).'));
-    final raw = a['slots'] is Map ? Map<String, dynamic>.from(a['slots'] as Map) : <String, dynamic>{};
+    // win-30: "values" is a common name for the slots (it was ignored silently).
+    final slotsArg = a['slots'] ?? a['values'];
+    final raw = slotsArg is Map ? Map<String, dynamic>.from(slotsArg) : <String, dynamic>{};
     final start = _num(a, 'start') ?? c.time;
     c.beginGesture(); // library imports + every layer = one undo step
     try {
