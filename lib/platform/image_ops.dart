@@ -115,7 +115,9 @@ class ImageOps {
         for (var x = 0; x < w; x++) {
           final i = y * w + x;
           if (hole[i] == 0) continue;
-          final j = math.min(y ~/ 2, h2 - 1) * w2 + math.min(x ~/ 2, w2 - 1);
+          final int yy = y ~/ 2 < h2 - 1 ? y ~/ 2 : h2 - 1;
+          final int xx = x ~/ 2 < w2 - 1 ? x ~/ 2 : w2 - 1;
+          final j = yy * w2 + xx;
           r[i] = r2[j];
           g[i] = g2[j];
           b[i] = b2[j];

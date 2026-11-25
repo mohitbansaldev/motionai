@@ -71,7 +71,6 @@ typedef _DimsD = _St Function(Pointer<Void>, Pointer<Int64>, int);
 /// One loaded model. Not thread-safe; use it from a single isolate.
 class OrtModel {
   final Pointer<Pointer<Void>> _api;
-  late final _GetErrN _getErr;
   late final _ReleaseD _releaseStatus, _releaseEnv, _releaseSession, _releaseOptions, _releaseMem, _releaseValue, _releaseShape;
   Pointer<Void> _env = nullptr, _session = nullptr, _mem = nullptr;
   late final String inputName, outputName;
