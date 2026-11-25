@@ -97,7 +97,7 @@ class RealismCommands {
     final region = regionBehind(comp, cut, plate, t);
     final ps = Realism.statsOfLayer(project, plate, region: region);
     if (ps == null) throw CommandError('match_colour: cannot read the pixels of "${plate.id}"');
-    final amount = (_num(c, 'amount') ?? 100).clamp(0.0, 100.0).toDouble();
+    final amount = (_num(c, 'amount') ?? 60).clamp(0.0, 100.0).toDouble();
     final params = Realism.matchParams(cs, ps, amount: amount);
     final id = '${cut.id}_match';
     final old = cut.effectById(id);

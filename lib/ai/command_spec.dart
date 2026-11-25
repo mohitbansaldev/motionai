@@ -190,7 +190,7 @@ PHOTO → 3D (2.5D parallax from ONE flat photo, like After Effects documentary 
 // ---- V2-D REALISM: make flat cut-outs look photographed ----
 REALISM (2.5D scenes from cut-outs + background plates):
 - make_3d {..., haze?: 0-100 (default 25, 0 = off), contact_shadows?: true} — far/sky layers get atmospheric haze toward the sky colour; near/mid image cut-outs standing in the lower frame get a contact_shadow under their feet automatically.
-- match_colour {layer: cut-out id, to?: plate layer id | "below" (default), amount?: 0-100, light_wrap?: true} — matches the cut-out's exposure, white balance, saturation and contrast to the plate region behind it (adds a "grade" effect). Run it for every pasted person/building/prop.
+- match_colour {layer: cut-out id, to?: plate layer id | "below" (default), amount?: 0-100 (default 60; exposure change is capped at 75–140%), light_wrap?: true} — matches the cut-out's exposure, white balance, saturation and contrast to the plate region behind it (adds a "grade" effect). Run it for every pasted person/building/prop.
 - camera_shake {start, duration?, amount?: 0-100 (40), style: handheld|walk|impact|earthquake} — smooth camera shake (impact: short hit; works with 3D and 2D cameras).
 - set_dof {focus: "target" (follows the camera_shot target) | layer id | px | "off", aperture? (default 20; 10 subtle, 40 strong)} — depth of field (also set_comp {dof: {focus, aperture}}).
 - Adjustment layer: add_layer {type: "solid", adjustment: true, color: "#00000000"} — its effects apply to everything BELOW it (global grade, vignette, letterbox, bloom, lens effects). Opacity mixes it.

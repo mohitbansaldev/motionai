@@ -166,7 +166,9 @@ class Realism {
   /// saturation, contrast (spread) and black level.
   static Map<String, List<double>> matchParams(ImageStats cut, ImageStats plate, {double amount = 100}) {
     final lc = math.max(cut.luma, 0.02), lp = math.max(plate.luma, 0.02);
-    final expo = math.pow(lp / lc, 0.8).clamp(0.55, 1.7).toDouble();
+    // Gentle: a compositor nudges exposure, it doesn't relight the cut-out
+    // (0.8 / 0.55 floor crushed bright cut-outs to ~50% gain).
+    final expo = math.pow(lp / lc, 0.5).clamp(0.75, 1.4).toDouble();
     List<double> norm(ImageStats s) {
       final l = math.max(s.luma, 0.02);
       return [s.r / l, s.g / l, s.b / l];
