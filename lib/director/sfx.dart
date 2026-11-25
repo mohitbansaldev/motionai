@@ -23,10 +23,15 @@ class Sfx {
     'swoosh_short', 'swoosh_long', 'swoosh_reverse', 'whoosh_silence', 'reverse_cymbal',
     'braam', 'sub_drop', 'glitch', 'shutter', 'typewriter', 'paper', 'pin_drop', 'heartbeat',
     'ui_click', 'ding',
+    ...v3dKinds, // V3-D: thunder, powder_whoosh, ice_crash, puff, marker, radio_crackle
     ...beds,
   ];
 
   static const rate = 44100;
+
+  // V3-D >>> documentary FX sounds (transitions, mood & character FX)
+  static const v3dKinds = ['thunder', 'powder_whoosh', 'ice_crash', 'puff', 'marker', 'radio_crackle'];
+  // <<< V3-D
 
   static bool isBed(String kind) => beds.contains(kind);
 
@@ -50,6 +55,14 @@ class Sfx {
         'paper' => 0.8,
         'pin_drop' => 0.9,
         'heartbeat' => 1.6,
+        // V3-D >>>
+        'thunder' => 3.5,
+        'powder_whoosh' => 0.9,
+        'ice_crash' => 1.6,
+        'puff' => 0.35,
+        'marker' => 0.9,
+        'radio_crackle' => 0.8,
+        // <<< V3-D
         'ui_click' => 0.08,
         'ding' => 1.8,
         'clock_tick' => 4.0,
@@ -70,6 +83,14 @@ class Sfx {
         'paper' => 0.12,
         'pin_drop' => 0.18, // the pin lands
         'heartbeat' => 0.05,
+        // V3-D >>>
+        'thunder' => 0.06,
+        'powder_whoosh' => 0.38,
+        'ice_crash' => 0.02,
+        'puff' => 0.03,
+        'marker' => 0.1,
+        'radio_crackle' => 0.03,
+        // <<< V3-D
         _ => 0.0,
       };
 
@@ -96,6 +117,14 @@ class Sfx {
         'paper' => ('Paper rustle', 'Foley', 'documents, articles, posters'),
         'pin_drop' => ('Map pin drop', 'Foley', 'pin falls and lands on the map'),
         'heartbeat' => ('Heartbeat', 'Foley', 'tension, two lub-dubs'),
+        // V3-D >>>
+        'thunder' => ('Thunder', 'Impacts', 'lightning crack and rolling rumble'),
+        'powder_whoosh' => ('Powder whoosh', 'Transitions', 'soft airy burst for powder / snow / dust bursts'),
+        'ice_crash' => ('Ice crash', 'Impacts', 'ice / glass shattering with tinkling shards (debris burst, shatter)'),
+        'puff' => ('Puff', 'UI & text', 'cartoon cloud puff (bubble exits)'),
+        'marker' => ('Marker squeak', 'Foley', 'felt marker writing / circling on paper'),
+        'radio_crackle' => ('Radio crackle', 'Foley', 'radio squelch and static for radio bubbles and rings'),
+        // <<< V3-D
         'crowd_bed' => ('Crowd murmur', 'Beds', 'loopable crowd / market / protest bed'),
         'wind_bed' => ('Wind', 'Beds', 'loopable wind for deserts, mountains, empty places'),
         'room_tone' => ('Room tone', 'Beds', 'loopable quiet room / office ambience'),
@@ -319,6 +348,16 @@ class Sfx {
           }
         }
         break;
+      // V3-D >>>
+      case 'thunder':
+      case 'powder_whoosh':
+      case 'ice_crash':
+      case 'puff':
+      case 'marker':
+      case 'radio_crackle':
+        _v3d(kind, l, r, rnd);
+        break;
+      // <<< V3-D
       case 'clock_tick':
         for (int k = 0; k < 4; k++) {
           final tock = k.isOdd;
@@ -337,6 +376,62 @@ class Sfx {
     _normalize(outL, outR, isBed(kind) ? 0.6 : 0.85);
     return (outL, outR);
   }
+
+  // V3-D >>> documentary FX sounds
+  static void _v3d(String kind, Float32List l, Float32List r, math.Random rnd) {
+    final total = l.length / rate;
+    switch (kind) {
+      case 'thunder':
+        // Crack: a bright broadband snap, then a long low rumble with rolls.
+        _noise(l, r, rnd, at: 0.05, dur: 0.18, gain: 1.4, highHz: 900, env: (t) => _ad(t, 0.004, 0.035));
+        _noise(l, r, rnd, at: 0.05, dur: 0.3, gain: 1.0, bandHz: 2200, q: 0.4, pan: 0.3, env: (t) => _ad(t, 0.003, 0.05));
+        _noise(l, r, rnd, at: 0.08, dur: total - 0.1, gain: 2.2, lowHz: 140,
+            env: (t) => (t < 0.25 ? t / 0.25 : math.exp(-(t - 0.25) / 1.1)) * (0.75 + 0.25 * math.sin(t * 5.3) * math.sin(t * 2.1)));
+        _tone(l, r, at: 0.06, dur: 1.5, f0: 48, f1: 30, gain: 0.35, env: (t) => _ad(t, 0.05, 0.5));
+        break;
+      case 'powder_whoosh':
+        _noise(l, r, rnd, at: 0, dur: total, bandHz: 280, bandHz1: 2600, q: 0.55, pan: -0.2, gain: 1.0, env: (t) => _bell(t, 0.38, total));
+        _noise(l, r, rnd, at: 0.2, dur: 0.6, lowHz: 700, gain: 1.6, pan: 0.2, env: (t) => _bell(t, 0.18, 0.6));
+        break;
+      case 'ice_crash':
+        _noise(l, r, rnd, at: 0.0, dur: 0.25, gain: 1.3, highHz: 1500, env: (t) => _ad(t, 0.002, 0.05));
+        _tone(l, r, at: 0.0, dur: 0.4, f0: 110, f1: 55, gain: 0.6, env: (t) => _ad(t, 0.003, 0.08));
+        for (int k = 0; k < 70; k++) {
+          final u = rnd.nextDouble();
+          final at = 0.01 + u * u * 1.2;
+          final hz = 2600 + rnd.nextDouble() * 6000;
+          final g = (0.12 + rnd.nextDouble() * 0.3) * math.exp(-at / 0.5);
+          final pan = rnd.nextDouble() * 1.6 - 0.8, tau = 0.02 + rnd.nextDouble() * 0.03;
+          _tone(l, r, at: at, dur: 0.12, f0: hz, gain: g, pan: pan, env: (t) => _ad(t, 0.0008, tau));
+        }
+        _reverb(l, r, 0.18);
+        break;
+      case 'puff':
+        _noise(l, r, rnd, at: 0.0, dur: 0.3, lowHz: 900, gain: 2.4, env: (t) => _ad(t, 0.012, 0.06));
+        _tone(l, r, at: 0.0, dur: 0.2, f0: 180, f1: 90, gain: 0.35, env: (t) => _ad(t, 0.01, 0.04));
+        break;
+      case 'marker':
+        // Two squeaky strokes: felt tip on paper with a slight vibrato.
+        for (final (at, d, g) in [(0.02, 0.3, 1.0), (0.42, 0.38, 0.65)]) {
+          final ph = rnd.nextDouble() * 6.28;
+          _noise(l, r, rnd, at: at, dur: d, bandHz: 3200, q: 0.35, gain: g * 0.9, env: (t) => _bell(t, 0.08, d));
+          _tone(l, r, at: at, dur: d, f0: 1900 + rnd.nextDouble() * 400, f1: 2300, gain: g * 0.25,
+              env: (t) => _bell(t, 0.08, d) * (0.7 + 0.3 * math.sin(t * 60 + ph)));
+        }
+        break;
+      case 'radio_crackle':
+        _noise(l, r, rnd, at: 0.0, dur: 0.06, bandHz: 2000, q: 0.3, gain: 1.6, env: (t) => _ad(t, 0.002, 0.02));
+        _tone(l, r, at: 0.0, dur: 0.08, f0: 1400, gain: 0.3, env: (t) => _ad(t, 0.003, 0.03));
+        _noise(l, r, rnd, at: 0.03, dur: total - 0.05, bandHz: 1800, q: 0.6, gain: 0.35, env: (t) => math.exp(-t / 0.5));
+        for (int k = 0; k < 40; k++) {
+          final at = 0.05 + rnd.nextDouble() * (total - 0.12);
+          _noise(l, r, rnd, at: at, dur: 0.003, bandHz: 1200 + rnd.nextDouble() * 3000, q: 0.3,
+              gain: (0.2 + rnd.nextDouble() * 0.5) * math.exp(-at / 0.45), env: (t) => _ad(t, 0.0002, 0.001));
+        }
+        break;
+    }
+  }
+  // <<< V3-D
 
   // -------------------------------------------------------------- envelopes
 

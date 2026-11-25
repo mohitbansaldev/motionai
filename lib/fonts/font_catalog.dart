@@ -118,6 +118,11 @@ class FontCatalog {
     FontInfo('Permanent Marker', FontCategory.display,
         dir: 'permanentmarker', files: ['PermanentMarker-Regular.ttf'], license: 'Apache-2.0', devanagariMatch: 'Kalam',
         use: 'Marker scribbles, hand-written callouts on photos'),
+    // V3-D >>>
+    FontInfo('Comic Neue', FontCategory.display,
+        dir: 'comicneue', files: ['ComicNeue-Regular.ttf', 'ComicNeue-Bold.ttf'], maxWeight: 700, devanagariMatch: 'Baloo 2',
+        use: 'Comic speech bubbles for dialogue, playful captions'),
+    // <<< V3-D
     // ---- mono / typewriter
     FontInfo('Special Elite', FontCategory.mono,
         dir: 'specialelite', files: ['SpecialElite-Regular.ttf'], license: 'Apache-2.0', devanagariMatch: 'Noto Sans Devanagari',
@@ -174,6 +179,7 @@ class FontCatalog {
     'cursive': 'Dancing Script',
     'handwriting': 'Dancing Script',
     'marker': 'Permanent Marker',
+    'comic': 'Comic Neue', // V3-D
     'condensed': 'Anton',
     'display': 'Anton',
     'title': 'Anton',

@@ -25,6 +25,7 @@ import '../../core/presets/realism.dart'; // V2-D
 import 'fx/text_fx.dart';
 import 'fx/transition_painters.dart'; // V2-C
 import 'fx/map_texture.dart'; // V3-A
+import 'fx/v3_fx_painters.dart'; // V3-D
 import 'precomp_view.dart'; // PRECOMP (Agent L)
 import 'shape_painter.dart';
 
@@ -651,6 +652,21 @@ class LayerView extends StatefulWidget {
           shaderCallback: (_) => RevealMask.shader(kind, prog / 100, soft, cx, cy, seed, size, draft: draft),
           child: child,
         );
+      // V3-D >>> transition, mood & character FX (fx/v3_fx_painters.dart)
+      case 'burst':
+      case 'radial_blur':
+      case 'holes':
+      case 'frost':
+      case 'cracks':
+      case 'threshold':
+      case 'red_paint':
+      case 'lightning':
+      case 'slices':
+      case 'slant_wipe':
+      case 'slide_mount':
+      case 'puff':
+        return v3dEffect(e, child, l, time, draft: draft, playing: playing) ?? child;
+      // <<< V3-D
       case 'motion_blur':
         return child; // applied in screen space in build()
       case 'chroma_key': // CHROMA (Agent M): video/image keyed in _content

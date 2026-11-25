@@ -47,6 +47,7 @@ const int kParticleStride = 7;
 /// Particle kind indices, same order as `kParticleKinds` in effects_catalog.
 class PKind {
   static const confetti = 0, leaves = 1, stars = 2, rain = 3, snow = 4, smoke = 5, dust = 6, bokeh = 7, streaks = 8, birds = 9, clouds = 10;
+  static const debris = 11, snowSpray = 12, ice = 13; // V3-D
 }
 
 class ParticleSim {
@@ -54,7 +55,7 @@ class ParticleSim {
   static const _leaves = [0xFF6B8E23, 0xFF9ACD32, 0xFFD2691E, 0xFFCD853F, 0xFF8B4513, 0xFFB8860B, 0xFF556B2F];
 
   /// Particles at 100% amount, per kind.
-  static const _base = [160, 60, 150, 380, 240, 34, 200, 36, 12, 14, 7];
+  static const _base = [160, 60, 150, 380, 240, 34, 200, 36, 12, 14, 7, 70, 260, 90]; // V3-D: + debris, snow_spray, ice
 
   static int countFor(int kind, double amount) {
     final k = kind.clamp(0, _base.length - 1);
@@ -197,6 +198,41 @@ class ParticleSim {
           if (isWhite) col = 0xFF1E1E1E;
           rot = dir;
           break;
+        // V3-D >>> debris (grit tumbling down-wind), snow_spray (wind-blown powder), ice (glinting crystals)
+        case PKind.debris:
+          vy = h * (0.35 + 0.35 * r(2));
+          vx = w * (0.08 + 0.12 * r(9));
+          size = ms * (0.004 + 0.012 * r(7) * r(7));
+          sprite = r(6) < 0.7 ? Sprite.rect : Sprite.soft;
+          alpha = 0.55 + 0.45 * r(3);
+          if (isWhite) col = [0xFF3A332C, 0xFF5A5046, 0xFF7A6E60, 0xFF26211C][math.min(3, (r(8) * 4).floor())];
+          final tt = t * speed;
+          x = _wrap(w * r(0) + (vx * cd - vy * sd) * tt, -mx, w + 2 * mx);
+          y = _wrap(h * r(1) + (vx * sd + vy * cd) * tt, -my, h + 2 * my);
+          rot = r(5) * 6.28 + tt * (3 + 9 * r(4));
+          break;
+        case PKind.snowSpray:
+          vx = w * (0.45 + 0.5 * r(2));
+          vy = h * (0.03 + 0.06 * r(3));
+          size = ms * (0.002 + 0.006 * r(7));
+          alpha = (0.35 + 0.55 * r(5)) * (0.6 + 0.4 * math.sin(t * speed * (2 + 3 * r(4)) + r(6) * 6.28));
+          final tt = t * speed;
+          final gust = math.sin(tt * (0.9 + r(4)) + r(5) * 6.28) * ms * 0.03;
+          x = _wrap(w * r(0) + (vx * cd - vy * sd) * tt, -mx, w + 2 * mx);
+          y = _wrap(h * r(1) + (vx * sd + vy * cd) * tt + gust, -my, h + 2 * my);
+          break;
+        case PKind.ice:
+          vy = h * (0.02 + 0.04 * r(2));
+          sprite = r(6) < 0.5 ? Sprite.star : Sprite.soft;
+          size = ms * (sprite == Sprite.star ? 0.01 + 0.018 * r(7) : 0.003 + 0.005 * r(7));
+          alpha = 0.25 + 0.75 * math.pow(0.5 + 0.5 * math.sin(t * speed * (1.5 + 3 * r(3)) + r(4) * 6.28), 3).toDouble();
+          if (isWhite) col = 0xFFD6F0FF;
+          final tt = t * speed;
+          x = _wrap(w * r(0) - vy * sd * tt + math.sin(tt * 0.6 + r(5) * 6) * ms * 0.01, -mx, w + 2 * mx);
+          y = _wrap(h * r(1) + vy * cd * tt, -my, h + 2 * my);
+          rot = r(5) * 6.28 + tt * (r(9) - 0.5);
+          break;
+        // <<< V3-D
         default: // clouds
           final v = ms * (0.008 + 0.012 * r(2));
           final tt = t * speed;

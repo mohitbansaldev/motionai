@@ -40,6 +40,17 @@ class TransitionCommands {
       fromId ??= '${ls[0]}';
       toId ??= '${ls[1]}';
     }
+    // V3-D >>> ink_bleed {incoming: "duotone_of_outgoing"} without "to": the outgoing is split at the cut
+    final inc = c['incoming'] ?? (c['params'] is Map ? (c['params'] as Map)['incoming'] : null);
+    if (toId == null && fromId != null && inc == 'duotone_of_outgoing') {
+      final src = comp.layerById(fromId);
+      if (src != null) {
+        final at = c['at'] is num ? (c['at'] as num).toDouble() : src.start + src.duration / 2;
+        toId = '${fromId}_duo';
+        exec({'op': 'split_layer', 'layer': fromId, 'time': at, 'new_id': toId});
+      }
+    }
+    // <<< V3-D
     if (fromId == null || toId == null) throw CommandError('transition needs "from" (outgoing layer id) and "to" (incoming layer id)');
     Layer find(String id) {
       final l = comp.layerById(id);

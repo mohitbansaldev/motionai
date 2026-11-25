@@ -236,4 +236,40 @@ MAPS & GEO (V3 documentary map grammar; each op = one undo step; geo ops are als
 - sketch_map {items: [{icon: mountain|camp|crash|x|river|dot, x, y (0..1 on the paper), label, arrow?: up|down|left|right, at?}], compass?: {x, y, size, heading: [{at, deg}]} | false, directions: [{label, side: left|right|up|down, at, reveal?: photo id}], paper?, duration? (7)} — torn parchment ink sketch, chrome compass rolls in, red block arrows, parchment slides aside to reveal a photo per direction while the needle re-aims. WHEN TO USE: directions, "which way", planning a route on foot.
 Grammar: reveals land 0.1-0.3 s after the keyword (use "at"); one new map element every 1-2.5 s; maps stay dark satellite; red only for rings/marks/danger.
 // ---- <<< V3-A MAPS & GEO ----
+
+// ---- V3-D TRANSITIONS, MOOD & CHARACTER FX ----
+V3 DOCUMENTARY TRANSITIONS (transition {from, to, type, params?}; also usable as sequence transition types) — WHEN TO USE:
+  powder_burst {direction: right|left|center|top|bottom, kind: snow|dust|sand|ash, color, density 80, linger 0.3} — SIGNATURE cut for snowy/desert stories and in/out of the presenter: white powder blasts across, full cover 2-3 frames at the cut, flakes linger (sound powder_whoosh).
+  debris_burst {kind: ice|snow|cloud|glass|dust|leaves, from: center|right|left|top|bottom|top_left|top_right|bottom_left|bottom_right, pre_roll 1.2 (s of sparse shards before), peak_cover 100, tail 0.5, tone: cold|warm|neutral} — the MOST frequent scene change: debris bursts toward the lens, clears over the next shot (ice_crash).
+  frost_shatter {corner} — cold/ice stories: frost crystals grow from a corner, then the shot shatters with a radial blur.
+  zoom_blur {zoom 2.5, flash: false, grain: false, cx, cy} — evidence → reenactment/landscape, macro → presenter, leaving an archive photo on a pause.
+  eye_reflection {point: [x,y] pupil in the incoming eye close-up, size px (15% w), opacity 70, linger 0.8} — event → witness reaction (the event seen in the pupil, eye pulls back 5× → 1×, braam).
+  holes {count 45, size 10, rim "#603212"} — harsh exit from a gruesome still to the presenter (burnt holes eat the shot).
+  shatter {tone: glass|ice|gold, lead_in 1.0, shard_color ("#BFE6FF" for ice), cx, cy} — impact moments: cracks spread for lead_in s, then the shot breaks.
+  slice {bands 4, stagger 30} — fast topic changes: bands slide in from alternating sides.
+  slant_wipe {direction (side it enters from), angle 10, edge 60} — a ~10° panel slides in while the old shot (map) compresses aside.
+  shrink_to_card {size 0.45, bg: grunge_red|none, tilt -4, hold 1.5, border} — the footage becomes a bordered evidence card over the next shot.
+  emerge {target: layer | point [x,y], from 0.05} — the next card/photo grows out of a point or layer (inverse of zoom_into_photo).
+  zoom_out_of_photo {layer: photo inside the incoming article/book (e.g. <article>_embed) | photo_box [x0,y0,x1,y1] | point+size} — proving a claim: pull back from the full-frame photo to reveal it embedded in the page.
+  slide_film {size 0.55, pink 30} — reconstruction → real archive photo: 35 mm slide mount, carousel advance, next slide grows.
+  exposure_in {from 3.0, color} — sun-glare entry (bloom + rays fading). punch_in — presenter return: enters 150% blurred → 100% in 0.25 s.
+  cut_to_black {silence: true} (duration = black hold) — crash → black + silence; never right after another black.
+  ink_bleed {incoming: "duotone_of_outgoing"} — turning point: the incoming is a navy duotone (#0A1630/#6C86B0) of the same image; leave out "to" and the outgoing is split at "at".
+MOOD & CHARACTER FX (edit ops, one undo step each):
+- mood_flood {at, duration 0.9 (ink spread), hold 2.5, color "#E0283A", dark "#5A0A10", from: bottom_left|top_left|top_right|bottom_right|left|right|top|bottom|center, keep: [layer ids that stay in colour], sfx: "braam"|false} — WHEN dread/despair/negative twist, starting on the pause; everything turns red monochrome from a corner, then ends hard (cut to the next shot there).
+- tint_wipe {at, color "#D0101A", amount 70, from: left|right|top|bottom, duration 0.6, hold 2} — WHEN a colour mood should sweep across (danger, alert).
+- grade_swap {to: hope|warm|cold|dread|archive|normal, at, duration 0 (snap) | s (fade), until?} — WHEN the story turns: hope = snap to saturated green/warm, cold = teal desaturated b-roll, dread = red mono, normal ends a running grade.
+- spotlight_subject {keep: [subject ids], layers? | shot: shot id (layers inside the shot), others: {mono 100, dim 15, blur 0}, tint?: {color "#D0101A", amount 70}, start, duration 3, attack 0.25, release 0.5} — WHEN pointing at one person among many, injury/danger (red pain tint on the subject).
+- pulse {layer, effect?: "tint" (default, red) | prop?: opacity|scale|…, param?, from, to, period 1.0, start, duration 3, sync: [ids], sfx?: "heartbeat"} — WHEN something throbs: red pain pulse at 1 Hz, blinking warning, heartbeat.
+- cut_to_black {at, hold 1.5, silence: true, sfx: "impact"|false} — WHEN a crash/death beat needs silence before the next line.
+- lightning {at: s | [s, s+0.15], bolt: true, x: 0.62 (share of width), color "#DDE6FF", sfx: "thunder"} — WHEN storms, a shock reveal, a dramatic flash.
+- montage {media: [ids], start, every 0.35, looks: [threshold, duotone_green, red_paint, magenta, grunge, crop], zoom 8, sound: true} — WHEN a one-breath recap / flashback right before the presenter.
+- swap_layer {layer, with: layer id | media id, at, transition: pop|cut|fade|flash, duration 0.2, sfx} — WHEN an object/photo/icon changes in place (before → after).
+- set_dof {keys: [{t, focus: px | 3D layer id}], aperture?} — keyframed rack focus between subjects.
+- animate_in/out presets punch_in (presenter punch), swing_in {rotation 20, scale_from 2.5, background: layer id blurred → sharp}, exposure_in {from 3.0} — WHEN a character/card enters with energy.
+- speech_bubble {text | messages: [{text, at}], style: comic|clean|radio, tail_to: [x,y] | layer id, attach: layer id (follows it), cps 30 (typewriter letters/s), type_delay 0.15, exit: pop|puff|fade|none, blink: period s, auto_fade: true, sound: true (pop/radio crackle + typing)} — WHEN a character speaks/quotes (dialogue = comic bubbles in Comic Neue black caps); radio for calls/radios.
+- particles kinds also: debris, snow_spray, ice. Effects: burst, radial_blur{amount, cx, cy}, holes, frost, cracks, threshold{level, softness}, red_paint{amount, color}, lightning, slices, slant_wipe{progress, angle, side}, slide_mount, puff.
+- Sounds: thunder, powder_whoosh, ice_crash, puff, marker (handwriting), radio_crackle (bubbles, rings) + braam, heartbeat, clock_tick, pop, ui_click, paper.
+- Font: Comic Neue (comic dialogue).
+// ---- end V3-D ----
 ''';

@@ -63,6 +63,7 @@ flutter:
     - assets/fonts/rozhaone/OFL.txt
     - assets/fonts/yatraone/OFL.txt
     - assets/fonts/kalam/OFL.txt
+    - assets/fonts/comicneue/OFL.txt
   # FONTS (Agent I): bundled OFL/Apache fonts from github.com/google/fonts (see lib/fonts/font_catalog.dart)
   fonts:
     - family: Anton
@@ -154,4 +155,11 @@ flutter:
         - asset: assets/fonts/kalam/Kalam-Regular.ttf
           weight: 400
         - asset: assets/fonts/kalam/Kalam-Bold.ttf
+          weight: 700
+    # V3-D: Comic Neue (OFL) for comic speech bubbles
+    - family: Comic Neue
+      fonts:
+        - asset: assets/fonts/comicneue/ComicNeue-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/comicneue/ComicNeue-Bold.ttf
           weight: 700

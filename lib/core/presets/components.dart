@@ -11,6 +11,7 @@ part 'components_doc.dart';
 part 'components_article.dart';
 part 'map_kit.dart'; // SCENE (Agent D): maps + 3D room/board
 part 'map_geo.dart'; // V3-A: maps & geo patterns
+part 'components_fx.dart'; // V3-D: speech_bubble upgrade (messages, typing, tail_to/attach, styles, puff exit)
 
 /// Documentary kit: ready-made, fully editable groups of layers built from
 /// ordinary edit commands. Every component is a null "group" layer (anchor at
@@ -90,7 +91,7 @@ class Components {
       case 'route_arrow':
         return _route(b, null);
       case 'speech_bubble':
-        return _bubble(b);
+        return c['style'] == 'classic' ? _bubble(b) : _bubbleV3(b, p, comp); // V3-D
       case 'cta':
         return _cta(b);
       case 'timeline':

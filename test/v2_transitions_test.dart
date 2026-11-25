@@ -69,8 +69,8 @@ void main() {
         'paper_tear', 'burn_edge', 'page_turn', 'focus_pull', 'dolly_zoom', 'film_burn', 'light_leak_wipe', 'ink_bleed',
         'smoke_reveal', 'bw_to_colour', 'glitch_cut', 'flash_cut', 'dip_to_black',
       ];
-      expect(DocTransitions.types.toSet(), want.toSet());
-      expect(DocTransitions.types.length, want.length);
+      expect(DocTransitions.types.toSet(), containsAll(want)); // V3-D: more types (test/v3_fxtrans_test.dart)
+      expect(DocTransitions.types.toSet().length, DocTransitions.types.length);
       for (final d in DocTransitions.catalog) {
         expect(commandSpec, contains(d.id), reason: d.id);
         expect(d.duration, greaterThan(0));
