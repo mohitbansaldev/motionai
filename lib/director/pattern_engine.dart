@@ -206,11 +206,12 @@ class PatternRuntime {
           }
           done = PatternCaps.label(alt);
           break;
-        } on CommandError catch (e) {
+        } catch (e) {
+          // CommandError, or a component rejecting a field it reads with another type
           ProjectSnapshot.restore(p, snap);
           r.createdIds.removeRange(nCreated, r.createdIds.length);
           r.log.removeRange(nLog, r.log.length);
-          lastError = e.message;
+          lastError = e is CommandError ? e.message : '$e';
         }
       }
       if (done == null) {
