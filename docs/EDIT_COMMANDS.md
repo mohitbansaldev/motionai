@@ -234,3 +234,41 @@ Transitions come from `TransitionRegistry` (lib/core/presets/transition_registry
   {"plate": "vault", "style": "slow_push_detail", "duration": 5, "layers": [{"media": "gold", "role": "front"}, {"media": "bulb", "role": "mid", "hero": true}]}
 ]}
 ```
+
+<!-- V3-B >>> -->
+## V3-B: evidence kit — articles, books, cards, notes
+
+All are `add_component` types (group `<id>_g`, parts `<id>_<part>`, one undo step) built in
+`lib/core/presets/components_evidence.dart`. Paper, newsprint, grunge, crumples, splatters, stains, torn and
+ragged edges are drawn procedurally (shape rings + texture effects); book covers are generated from
+title/author/colours — never real covers. `sfx: true` adds the matching synthesised sound (paper, whoosh, pop,
+tick, shutter). Older `article` / `photo_card` / `character_label` / `arrow_callout` commands without V3 keys
+build exactly as before.
+
+| component | fields (defaults) | when to use |
+|---|---|---|
+| `article` (V3 extras) | `fullbleed`; `enter: "slide_up_over"` (0.3 s expo-out; backdrop null `<id>_bgn` slides too); `exit: "slide_left"\|"slide_right"` or an animate_out preset; `tilt3d: true \| {from [22,0,-2], to [0,0,-1], duration 0.5, at}` and `perspective {rx, ry}` (page group precomposed into `<id>_pc`, shown by 3D comp layer `<id>_3d`); `drift` (5); `theme: "dark"` (+ `text_tint` #E8F07A: duotone + glow + chromatic aberration); `backdrop`: `newsprint_wall`, `newspaper_collage`, `clean`, `grunge_red`, `grunge_navy`, `paper_grey`, `stars`, `dust`, `plain`, `none`; `lines: sequential\|overlap\|together`; `blend: "multiply"`; `highlight_color`; `pen_color` (#E0201B); `ellipse_style: pen\|loop`; `focus: [{mark (index or id), zoom 1.9, duration 0.35, at}]`; `scroll_whip: {to_mark, duration 0.25} \| true`; `embed: {media, after_mark \| box, width 0.8, at}` → `<id>_embed` | any quoted document / web page / newspaper |
+| article marks | `style`: highlight, brush, text_color, underline, circle, pen_circle, box, redact; `at_word` (caption word timing + 0.15 s), `at` (comp s), `delay`, `done` (already drawn), `id`, `zoom`, `blend`, `lines`, `ellipse_style`, `duration`, `color` | |
+| `circle_mark` | `x`, `y`, `width`, `height` (0.22 h), `attach` + `at`, `color` #F01818, `stroke` 0.012 (×h), `glow`, `draw` 0.5, `hold` 0.9, `undraw` true | critical detail in a photo |
+| `inset_circle` | `media`, `x`, `y`, `from`, `size` 0.3 (×h), `ring {color, width 6}`, `label`, `label_style` yellow_outline\|white, `enter` grow_from_point, `exit` shrink_to_point | object/place a character mentions |
+| `book` | `title`, `author`, `colors [cover, title, author]`, `cover` (media), `pages [{text}\|{media}]`, `marks [{phrase\|box, style, delay}]`, `bg` (grunge_red), `enter` rise\|side_popin, `open_at` 1.6, `flips` 1, `zoom_to` page\|none, `tilt` 4, `height` 0.3 | a book is named |
+| `note_card` | `text`, `paper` notebook\|sticky\|torn, `text_color` #B3121E, `font` Permanent Marker, `x`, `y`, `width` 0.32, `tilt` −6, `glide` 0.15, `glide_from`, `animator` write_on | abstract key concept |
+| `list_card` | `items [text\|{text, at, color}]`, `title`, `paper` (or a media id), `font` Kalam, `ink`, `item_interval` 0.4, `write_cps` 16, `pop_scale` 1.6, `exit` drop | inventory / list / plan |
+| `handwrite_card` | `text`, `font` Kalam, `paper`, `write_cps` 8, `x`, `y`, `width` 0.42, `pen` (cut-out media), `pen_tip [fx, fy]` | handwritten note / letter |
+| `quote_hole` | `plate`, `source`, `body`, `highlights`, `hole {w .55, h .4, x .5, y .42, roughness 60}`, `card_color` #1F2B45, `source_color` #DDF06A, `mark_color` #C8323A | softer second source (podcast / show) |
+| `source_tag` | `text`, `color` #F2A6A6, `text_color` #5A1414, `font` Playfair Display, `x`, `y` \| `attach` | under a photo/page from a source |
+| `photo_card` (V3 extras) | `frame` polaroid\|white_border\|torn_white\|curl_corner, `backdrop`, `mono`, `title`, `key_phrase`, `key_color` #2EE6E6, `reveal_prop` (media), `push` 5 | group/organisation with an archive photo |
+| `object_reveal` | `media`, `reveals [layer ids]`, `path` roll_lr\|roll_rl\|slide_lr\|slide_rl, `y`, `size` 0.22, `duration` 1.4 | playful title reveal |
+| `photo_wall` | `photos`, `bg` paper_grey, `splatter` true, `dwell` 2.5, `move` pan\|whip, `tilt_range` 8, `color_last` true, `size` 0.56 | archive montage |
+| `stain` | `x`, `y`, `size` 0.45, `color` #D00010, `tones` 2, `grow` 0.5, `roughness` 70 | technique on a top-down plate |
+| `doodle` | `paths [[[x,y]..] \| {points, arrow, closed, color, width}]`, `color`, `width` 4, `draw` 2.0, `jitter`, `stamp {text, x, y, size, color}` | technique / trick explanation |
+| `character_label` (V3) | `style` plain\|print, `text`/`name`, `role`, `x`, `y` \| `attach`, `on` (parent layer) | names on a surface |
+| `arrow_callout` (V3) | `circle: false`, `from`, `to`, `role`, `name`, `bend`, `sweep` 180, `flatten` 0.7 | naming without a ring |
+
+Text animator `write_on`: every word is wiped on left→right with a soft edge, in order over `anim_duration` in
+proportion to word length (or at the layer's caption word timings).
+
+Multiply / recolour marks on screenshots are drawn as a copy of the page (same media, in the page's pixels)
+with a `duotone` (dark → black, light → the ink colour for multiply; dark → the colour for text_color) revealed by
+an animated rect mask (brush: a jagged shape used as a track matte), so the text stays crisp and dark under the ink.
+<!-- <<< V3-B -->

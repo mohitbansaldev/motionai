@@ -76,7 +76,10 @@ class WordTiming {
 
 /// Text animators: how text appears when the layer starts.
 class TextAnimators {
-  static const all = ['none', 'typewriter', 'word_pop', 'fade_up', 'slide_up', 'karaoke', 'random_pop', 'scramble'];
+  static const all = [
+    'none', 'typewriter', 'word_pop', 'fade_up', 'slide_up', 'karaoke', 'random_pop', 'scramble',
+    'write_on', // V3-B: soft left→right wipe per word, like handwriting
+  ];
   static String label(String a) => const {
         'none': 'None',
         'typewriter': 'Typewriter',
@@ -86,6 +89,7 @@ class TextAnimators {
         'karaoke': 'Word Highlight',
         'random_pop': 'Random Pop',
         'scramble': 'Scramble',
+        'write_on': 'Write On', // V3-B
       }[a] ??
       a;
 }

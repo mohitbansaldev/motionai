@@ -6,10 +6,12 @@ import '../model/easing.dart'; // SCENE (Agent D)
 import '../model/layer.dart';
 import '../model/project.dart';
 import 'world_map.dart';
+import 'motion_presets.dart'; // V3-B
 
 part 'components_doc.dart';
 part 'components_article.dart';
 part 'map_kit.dart'; // SCENE (Agent D): maps + 3D room/board
+part 'components_evidence.dart'; // V3-B: evidence kit (articles, books, cards, notes)
 
 /// Documentary kit: ready-made, fully editable groups of layers built from
 /// ordinary edit commands. Every component is a null "group" layer (anchor at
@@ -24,6 +26,7 @@ class Components {
     'title_slam', 'foreground_wipe', 'icon_stream', 'icon_badge', 'scanner', 'silhouette_crowd',
     'number_tiles', 'date_title', 'article',
     ..._sceneTypes, // SCENE (Agent D)
+    ..._evTypes, // V3-B
   ];
 
   static String label(String t) => const {
@@ -60,6 +63,7 @@ class Components {
         'article': 'Article Highlight',
       }[t] ??
       _sceneLabels[t] ?? // SCENE (Agent D)
+      _evLabels[t] ?? // V3-B
       t;
 
   static List<Map<String, dynamic>> build(Project p, Map<String, dynamic> c, double now) {
@@ -71,6 +75,8 @@ class Components {
     final b = _B(comp.width, comp.height, c, now, '${c['id'] ?? Ids.next(type)}');
     final scene = _sceneBuild(p, c, b); // SCENE (Agent D)
     if (scene != null) return scene;
+    final ev = _evBuild(p, c, b); // V3-B
+    if (ev != null) return ev;
     switch (type) {
       case 'source_card':
         return _sourceCard(b);
