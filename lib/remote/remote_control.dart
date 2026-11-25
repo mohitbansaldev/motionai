@@ -12,6 +12,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/model/project.dart';
 import '../platform/win_window.dart';
@@ -49,7 +50,20 @@ class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHos
   final ProjectStorage _storage = ProjectStorage();
   late final RemoteTools tools = RemoteTools(this)..onAction = _onAction;
   late final McpDispatcher _dispatcher = McpDispatcher(tools, onRequest: _onRequest);
-  late final McpHttpServer _server = McpHttpServer(_dispatcher, token: () => token);
+  late final McpHttpServer _server = McpHttpServer(_dispatcher, token: () => token)..onUpload = _saveUpload;
+
+  /// win-30: images sent from a Google Flow page (POST /api/upload) go to
+  /// Documents\MotionAI_Flow\<folder>\<name>; then library_import_folder on
+  /// that folder keys green screens and removes the Flow mark.
+  static Future<String> _saveUpload(String folder, String name, List<int> bytes) async {
+    final docs = await getApplicationDocumentsDirectory();
+    final sep = Platform.pathSeparator;
+    final dir = Directory('${docs.path}${sep}MotionAI_Flow$sep$folder');
+    await dir.create(recursive: true);
+    final f = File('${dir.path}$sep$name');
+    await f.writeAsBytes(bytes, flush: true);
+    return f.path;
+  }
   late final RemoteRenderer _renderer = RemoteRenderer(navigatorKey);
 
   bool loaded = false;

@@ -168,6 +168,14 @@ class McpHttpServer {
   final int maxBody;
   HttpServer? _server;
 
+  /// win-30: POST /api/upload saves one image sent from a Google Flow page
+  /// (no browser download / save prompt). Set by the app; returns the saved
+  /// file path. The only route a non-loopback page may call, and only from
+  /// [uploadOrigins], with the bearer token.
+  Future<String> Function(String folder, String name, List<int> bytes)? onUpload;
+
+  static const uploadOrigins = {'https://labs.google', 'https://flow.google.com'};
+
   McpHttpServer(this.dispatcher, {required this.token, this.maxBody = 64 << 20});
 
   int? get port => _server?.port;
@@ -225,6 +233,11 @@ class McpHttpServer {
   }
 
   Future<void> _handle(HttpRequest req) async {
+    // win-30: Flow page → /api/upload (CORS + Private Network Access).
+    if (req.uri.path == '/api/upload' && isLoopbackHost(req.headers.value(HttpHeaders.hostHeader))) {
+      await _upload(req);
+      return;
+    }
     // DNS rebinding / browser guard: loopback Host, no foreign Origin.
     if (!isLoopbackHost(req.headers.value(HttpHeaders.hostHeader)) || !isAllowedOrigin(req.headers.value('origin'))) {
       await _send(req, HttpStatus.forbidden, json: JsonRpc.error(null, JsonRpc.invalidRequest, 'Forbidden origin'));
@@ -312,6 +325,78 @@ class McpHttpServer {
     }
     await _send(req, HttpStatus.notFound, json: {'error': 'Not found. MCP endpoint: POST /mcp'});
   }
+
+  // win-30 >>> image upload from a Google Flow page
+  Future<void> _upload(HttpRequest req) async {
+    final origin = req.headers.value('origin');
+    final okOrigin = origin == null || origin.isEmpty || uploadOrigins.contains(origin) || isAllowedOrigin(origin);
+    if (!okOrigin) {
+      await _send(req, HttpStatus.forbidden, json: {'error': 'Forbidden origin'});
+      return;
+    }
+    final cors = <String, String>{
+      if (origin != null && origin.isNotEmpty) 'Access-Control-Allow-Origin': origin,
+      'Vary': 'Origin',
+    };
+    if (req.method == 'OPTIONS') {
+      await _send(req, HttpStatus.noContent, headers: {
+        ...cors,
+        'Access-Control-Allow-Methods': 'POST',
+        'Access-Control-Allow-Headers': 'authorization, content-type',
+        'Access-Control-Allow-Private-Network': 'true',
+        'Access-Control-Max-Age': '600',
+      });
+      return;
+    }
+    if (req.method != 'POST') {
+      await _send(req, HttpStatus.methodNotAllowed, headers: {...cors, 'Allow': 'POST, OPTIONS'});
+      return;
+    }
+    if (!_authorized(req)) {
+      await _send(req, HttpStatus.unauthorized, json: {'error': 'Unauthorized'}, headers: cors);
+      return;
+    }
+    final hook = onUpload;
+    if (hook == null) {
+      await _send(req, HttpStatus.serviceUnavailable, json: {'error': 'Upload not available'}, headers: cors);
+      return;
+    }
+    String clean(String? v, String fallback) {
+      final n = (v ?? '').split(RegExp(r'[\\/]')).last.trim().replaceAll(RegExp(r'[^A-Za-z0-9._ -]'), '_');
+      return n.isEmpty || n.startsWith('.') ? fallback : n;
+    }
+    final folder = clean(req.uri.queryParameters['folder'], 'inbox');
+    final name = clean(req.uri.queryParameters['name'], 'image_${DateTime.now().millisecondsSinceEpoch}.png');
+    const exts = ['.png', '.jpg', '.jpeg', '.webp'];
+    if (!exts.any(name.toLowerCase().endsWith)) {
+      await _send(req, HttpStatus.badRequest, json: {'error': 'name must end in ${exts.join(', ')}'}, headers: cors);
+      return;
+    }
+    final len = req.contentLength;
+    if (len > maxBody) {
+      await _send(req, HttpStatus.requestEntityTooLarge, json: {'error': 'Too large'}, headers: cors);
+      return;
+    }
+    final bytes = <int>[];
+    await for (final c in req) {
+      bytes.addAll(c);
+      if (bytes.length > maxBody) {
+        await _send(req, HttpStatus.requestEntityTooLarge, json: {'error': 'Too large'}, headers: cors);
+        return;
+      }
+    }
+    if (bytes.length < 64) {
+      await _send(req, HttpStatus.badRequest, json: {'error': 'Empty image'}, headers: cors);
+      return;
+    }
+    try {
+      final path = await hook(folder, name, bytes);
+      await _send(req, 200, json: {'ok': true, 'path': path, 'bytes': bytes.length}, headers: cors);
+    } catch (e) {
+      await _send(req, HttpStatus.internalServerError, json: {'error': '$e'}, headers: cors);
+    }
+  }
+  // <<< win-30
 
   /// A tools/call with a progressToken from a client that accepts SSE gets a
   /// `text/event-stream` answer: progress notifications, then the response.

@@ -157,7 +157,7 @@ void main() {
         expect(kMcpToolNames, contains(n));
         expect(kMcpInstructions, contains(n));
       }
-      expect(kMcpTools.length, 39); // V3-E: + suggest_patterns
+      expect(kMcpTools.length, 41); // V3-E: + suggest_patterns; win-30: + get_layers, editor_screenshot
       expect(kMcpEditTools.contains('batch'), isFalse, reason: 'inner calls are checked one by one');
       for (final t in kMcpTools) {
         expect((t['description'] as String).length, lessThan(800), reason: '${t['name']}');
