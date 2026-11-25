@@ -234,3 +234,21 @@ Transitions come from `TransitionRegistry` (lib/core/presets/transition_registry
   {"plate": "vault", "style": "slow_push_detail", "duration": 5, "layers": [{"media": "gold", "role": "front"}, {"media": "bulb", "role": "mid", "hero": true}]}
 ]}
 ```
+
+<!-- V3-E >>> -->
+## Story grammar: documentary patterns (V3-E)
+
+`lib/director/patterns.dart` is a registry of every pattern of the Nitish-Rajput reference clips (PATTERN_LIBRARY_SPEC 1–65) plus the MotionAI features they use (presenter, reenactment_shot, crane_down_reveal, push_through, map_drop, flash_cut, censor_bar, crash_to_black…): id, label, category, cue triggers, keyword lexicon (English / Hindi / Hinglish), default hold, enter/exit, precede/follow, sfx and a builder. Builders call the V3 components/transitions by name (`route_follow`, `unit_chart`, `clock_stamp`, `powder_burst`, `mood_flood`…); per step the first alternative available on this build is used and a failing one is rolled back, so every pattern works before and after the V3 branches merge (last alternative = plain layers).
+
+`lib/director/cue_classifier.dart` — `CueClassifier.classify(line, start?, end?)` → cues (number, people_count, total_breakdown, survivors, stat_change, comparison, gauge, date, time, day_count, duration, place, route, terrain, direction, search, book, article, second_source, quote, dialogue, handwritten, archive, list, object, radio, broadcast, concept, organisation, person, device, technique, dread, hope, pain, witness, recap, crash, lightning, snow, desert, turning_point, emphasis, question, presenter, cta, sunrise), each with the matched words, a value and an estimated time.
+
+`lib/director/pattern_engine.dart` — `PatternEngine.suggest(lines, context)` applies the grammar (ASL ~3.4 s, element every 1–2.5 s, presenter 25–30 % back every 12–25 s, one ~7 s stint per ~40 s with social_cta, reveal 0.2 s after the keyword, evidence → reenactment, never the same pattern twice, grades, transitions, SFX). `PatternRuntime.apply` builds a plan.
+
+| op | fields |
+|---|---|
+| `suggest_patterns` | `lines: [{text, start?, end?}]` or one string (a line per row), `style?: "nr_doc"`, `tone?: auto\|snow\|desert\|neutral`, `presenter?`, `asl?`, `presenter_min_gap?`, `presenter_max_gap?`, `cta_every?`, `handle?` — info op: the plan JSON in the log |
+| `apply_patterns` | `plan`, `assets?: {presenter, broll: [ids], beats: {"<i>": {slot: value}}}`, `tone?`, `sfx?: true`, `prefix?` — builds the plan as one undo step |
+| `list_patterns` | `category?` — the registry JSON in the log |
+
+MCP tool `suggest_patterns {lines, style?, tone?, presenter?, asl?}` (read-only) returns the same plan. Director: `Capabilities.enablePatterns = true` adds per-line `pattern_hints` to the chapter planner payload and a STORY PATTERNS section to its prompt. Template gallery category **Doc patterns**: one template per pattern (`pattern_<id>`).
+<!-- <<< V3-E -->

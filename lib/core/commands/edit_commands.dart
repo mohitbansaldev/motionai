@@ -21,6 +21,7 @@ import 'transition_commands.dart'; // V2-C
 import 'depth_commands.dart'; // V2-E (depth from photo)
 import 'realism_commands.dart'; // V2-D
 import 'shot_commands.dart'; // V2-B
+import 'pattern_commands.dart'; // V3-E
 
 /// Thrown when a command is invalid. The message is written so an AI agent
 /// can read it and correct its next command.
@@ -98,6 +99,7 @@ class EditCommands {
     ...DepthCommands.ops, // V2-E: photo_to_3d, depth_map
     ...RealismCommands.ops, // V2-D: match_colour, camera_shake, set_dof
     ...ShotCommands.ops, // V2-B: add_shot, update_shot, remove_shot, sequence
+    ...PatternCommands.ops, // V3-E: suggest_patterns, apply_patterns, list_patterns
   ];
 
   /// Runs one command (or a batch). If anything fails the project is
@@ -181,6 +183,13 @@ class EditCommands {
         ShotCommands.run(project, c, r, (c2) => _run(project, c2, now, r));
         break;
       // <<< V2-B
+      // V3-E >>> story-grammar patterns → pattern_commands.dart
+      case 'suggest_patterns':
+      case 'apply_patterns':
+      case 'list_patterns':
+        PatternCommands.run(project, c, now, r, (c2) => _run(project, c2, now, r));
+        break;
+      // <<< V3-E
 
       case 'add_layer':
         _addLayer(project, c, now, r);

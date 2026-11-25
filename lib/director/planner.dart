@@ -6,6 +6,7 @@ import '../core/model/project.dart';
 import 'capabilities.dart';
 import 'chapters.dart';
 import 'json_repair.dart';
+import 'pattern_engine.dart'; // V3-E
 import 'pacing.dart';
 import 'story_builder.dart';
 import 'storyboard.dart';
@@ -145,6 +146,9 @@ class StoryPlanner {
         'lines': [
           for (final i in part) {'i': i, 'start': _r(sb.lines[i].$1), 'end': _r(sb.lines[i].$2), 'text': sb.lines[i].$3},
         ],
+        // V3-E >>> pattern hints (opt-in capability)
+        if (Capabilities().patterns) 'pattern_hints': PatternEngine.hints([for (final i in part) sb.lines[i]], first: part.first),
+        // <<< V3-E
       };
       final Map<String, dynamic> j;
       try {

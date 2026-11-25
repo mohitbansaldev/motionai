@@ -16,6 +16,12 @@ class Capabilities {
         particles = particles ?? EffectsCatalog.byType('particles') != null;
 
   bool get has3d => ops.contains('make_3d') && ops.contains('camera_shot');
+
+  // V3-E >>> story-grammar patterns (lib/director/patterns.dart) as an opt-in
+  // planner layer: per-line pattern hints in the payload + a prompt section.
+  static bool enablePatterns = false;
+  bool get patterns => enablePatterns && ops.contains('apply_patterns');
+  // <<< V3-E
   bool has(String component) => components.contains(component);
 
   static const particleKinds = ['confetti', 'leaves', 'stars', 'rain', 'snow', 'smoke', 'dust', 'bokeh', 'streaks', 'birds', 'clouds'];

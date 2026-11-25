@@ -216,4 +216,109 @@ SHOTS (one command = a whole parallax documentary shot; prefer these over hand-b
 - remove_shot {shot, ripple?: true (closes the gap)}.
 CURRENT PROJECT "shots" lists them (id, start, end, style, layers by role, hero, camera).
 // ---- end V2-B ----
+
+// ---- V3-E STORY GRAMMAR: documentary patterns (lib/director/patterns.dart) ----
+PATTERNS (Nitish-Rajput documentary grammar; every pattern uses the V3 component/transition when this build has it, else a plain-layer fallback):
+- suggest_patterns {lines: [{text, start?, end?}] | "one line per row", style?: "nr_doc", tone?: auto|snow|desert|neutral, presenter?: true, asl? (3.4), presenter_min_gap? (12), presenter_max_gap? (25), cta_every? (40), handle? ("Mohitflix")} — info op (nothing changes): the plan as JSON in the log: beats [{pattern, role, start, end, reveal_at, slots, transition_in, grade, overlays, sfx, events}], resolved (what each pattern uses on this build), stats (asl, presenter_share, max_presenter_gap, same_pattern_repeats, max_element_gap). Hindi (Devanagari), Hinglish and English lines all work. Also the MCP tool suggest_patterns.
+- apply_patterns {plan (from suggest_patterns, or {beats:[{pattern, start, end, slots?, transition_in?, overlays?, reveal_at?}]}), assets?: {presenter: video id (A-roll, synced: source_in = beat start), broll: [media ids] (cycled under b-roll beats), beats: {"<i>": {media, places, quote, …slot: value}}}, tone?, sfx?: true, prefix?} — builds every beat: plate (media / presenter / dark backdrop, graded: presenter warm, b-roll cold in snow stories), transition_in, the pattern, its overlays and SFX on the reveal. One undo step. The log names what each beat used.
+- list_patterns {category?} — the registry (ids, cues, keywords, hold, enter/exit, precede/follow, sfx, slots) as JSON in the log.
+GRAMMAR: shot every ~3.4 s, a new element every 1-2.5 s; presenter 25-30% of the time, back every 12-25 s, one ~7 s stint per ~40 s carrying social_cta, never right after the crash/black, always before a climax; reveals land 0.1-0.3 s after the keyword; evidence (article/book/note) is ALWAYS followed by a reenactment; never the same pattern twice in a row; ~60% hard cuts in/out of the presenter, powder_burst in snow/desert stories; mood_flood on death/despair then a hard cut, grade_swap on hope.
+WHEN TO USE (pattern id — trigger):
+ [maps]
+  satellite_country_map — a country or city is named
+  route_arrow_follow — "went/flew from X to Y", "X se Y tak"
+  map_zoom_punch — emphasis or a twist while on a map (0.45 s ×2.6 punch-in)
+  map_tilt_3d — mountains, rivers, borders, ranges
+  giant_ghost_country — a country is the subject of a long map beat (huge 60% word behind)
+  route_duration_label — a journey and how long it took ("11 MINS" on the arc)
+  signal_rings — radio calls, signals, SOS from a place or vehicle
+  status_ring — tracking one vehicle on a map (red dashed ring spinning)
+  geo_label — naming a spot on terrain ("CRASH SITE" with a hooked pointer)
+  search_sweep — "a search began over X" (searchlight over the ground, place name on the snow)
+  sketch_map — directions / "which way?" decisions
+  map_labels_typed — several countries named in one breath (labels typed in, staggered)
+ [evidence]
+  doc_highlight_circle — any article/news/web source is quoted — ALWAYS followed by a reenactment of the fact
+  book_reveal_open — a book is named (6–10 s beat: cover rises, opens, highlights)
+  zoom_out_to_source — proving a claim just shown: pull back from the photo to the article it is in
+  source_tag — under any photo or page that needs its source
+  grunge_photo_title — introducing a group / organisation with an archive photo
+  note_card — an abstract key concept: PLAN, PACT, RULE, PROMISE
+  photo_wall — an archive montage of who they were
+  handwrite_card — a handwritten note/letter/diary is quoted
+  emblem_badge — an organisation tied to a place (our own crest, glitch entrance)
+  montage — a one-breath recap / flashback before the presenter
+  article_focus — a web page / dark-theme article: slide up over the shot and punch into the mark
+  circle_mark — a critical detail in a photo (red circle draws clockwise from 12)
+  inset_circle — an object/place a character mentions (round inset grows from a point)
+  quote_hole — a softer second source (podcast, show, interview)
+  list_card — an inventory, list or plan written item by item
+  stain_doodle — explaining a technique / trick on a top-down plate
+ [data]
+  unit_chart — a total and its breakdown ("45 PASSENGERS: 19 players…")
+  people_grid_tally — survivor / casualty tallies (alive glow red, dead fade grey)
+  stat_figure — a value changes over time (weight, money, fuel, temperature)
+  comparison_split — two clashing numbers side by side
+  gauge_hud — altitude / speed / depth changing during action
+  clock_stamp — an exact date / time / day count is spoken (typed bottom-left, digital font)
+  stat_behind_silhouettes — a striking number over a scene (yellow letters drop behind the people)
+  ui_toggle — a device or system starts or stops
+  audio_wave_flag — a broadcast / announcement (waveform card + round flag)
+  calendar_flip — a duration in days/weeks or "kitne din?" (tear-off calendar counting)
+  clock_overlay — time passing / hours of waiting (30% clock face, hands spinning)
+  stat_title — a big number with one line of context (number line 1.6×)
+ [overlay]
+  icon_sticker — the presenter lists items on camera (yellow disc, icons swap on each noun)
+  icon_drop — a one-word idea (STOP, deal, yes/no, warning) dropping in
+  kinetic_text — an emotional line to read on screen (newest letters red)
+ [presenter]
+  social_cta — 2–3 s into a presenter stint > 5 s, once per ~40 s, platforms rotate
+  presenter_stats — numbers said on camera (typed white lines in the right third)
+  presenter_punch_in — back to the presenter on emphasis (150% blurred → 100% in 0.25 s)
+  social_bug — the channel bug on a long presenter stint (exits in pixels)
+  presenter — every 12–25 s, before a climax, questions to the viewer (warm grade)
+ [character]
+  surface_labels — naming a person in the picture (small red role over a big name, no box)
+  speech_bubble_comic — dialogue / a character speaks (white comic bubble, typed caps)
+  swing_in — a card or cut-out swings in big (background blur → sharp)
+  swap_layer — one cut-out swapped for another in place
+  rack_focus — shifting attention between two subjects
+  spotlight_subject — pointing at one person among many, injury or danger (others mono, red tint)
+  speech_bubble_puff — a short shout that vanishes in a cartoon puff
+  censor_bar — ALWAYS over AI likenesses of real people
+ [transition]
+  zoom_blur — evidence → reenactment, macro → presenter, leaving an archive photo
+  debris_burst — the default scene change (ice/snow/dust shards burst at the lens)
+  slide_film — reconstruction → the real archive photo
+  slice — energetic change between two related shots
+  slant_wipe — a panel slides in at 10° (map compresses aside)
+  shrink_to_card — footage becomes a card on a grunge backdrop
+  emerge — the next card grows out of a point/layer
+  ink_bleed_duotone — turning points (navy duotone of the same image bleeds in)
+  eye_zoom_through — into a memory through the eye
+  powder_burst — in/out of the presenter in snowy or desert stories, any scene change (signature)
+  eye_reflection — event → a witness reacting
+  holes — harsh exit from a gruesome still to the presenter
+  shatter_ice — a frozen image breaking apart
+  push_through — flying through a door/window into the next scene
+  foreground_wipe — hiding a cut behind something passing the lens
+  map_drop — from a map down through clouds to the place
+  flash_cut — impact cut on a beat / light flash into the presenter
+  light_leak_wipe — warm, soft cut into the presenter
+ [mood]
+  mood_flood — death, despair or a negative twist (on the pause; then hard cut)
+  grade_swap — hope / rescue: snap to saturated warm colour
+  cut_to_black — right after the crash / the worst moment (never followed by a presenter joke)
+  lightning — storms, lightning, thunder
+  pulse — pain or a scream (red pulse 1 Hz + heartbeat)
+  sun_glare_entry — a new morning / sunlight (overexposed bloom fading in)
+  crash_to_black — the crash itself: impact shake, then hard cut to black and silence
+ [shot]
+  reenactment_shot — right after evidence: reconstruct the fact (add_shot with mannequins / cut-outs)
+  crane_down_reveal — opening a location: tilt down from sky to the scene
+  push_between_subjects — moving through a group of people
+  rack_focus_encounter — two people meet / one notices the other
+  fog_tracking — a plane/vehicle moving through fog, altitude falling
+  human_detail_insert — hands, eyes, objects: a tight insert between wide shots
+// ---- end V3-E ----
 ''';
