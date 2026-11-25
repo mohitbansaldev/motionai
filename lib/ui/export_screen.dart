@@ -316,7 +316,7 @@ class _ExportScreenState extends State<ExportScreen> {
         image.dispose();
         if (iw != w || ih != h) throw StateError('Rendered ${iw}x$ih, expected ${w}x$h');
         await pendingWrite;
-        pendingWrite = MediaBridge.encoderFrame(data!.buffer.asUint8List(), w, h);
+        pendingWrite = MediaBridge.encoderFrame(data!.buffer.asUint8List(), w, h)..ignore(); // errors surface at the next await
       }
       await pendingWrite;
       setState(() => _phase = _Phase.finishing);
