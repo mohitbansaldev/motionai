@@ -83,7 +83,7 @@ class Depth {
   static Uint8List _inpaint(Uint8List rgba, int w, int h, Uint8List hole) => Inpaint.fill(Rgba(w, h, rgba), hole).data;
 
   /// photo_to_3d files (call inside an isolate): PNG layers
-  /// "<outPrefix>_<i>.png", far first. [mediaWidth] is the photo's width
+  /// `<outPrefix>_<i>.png`, far first. [mediaWidth] is the photo's width
   /// in the project (layer offsets are returned in those pixels).
   /// Returns {model, note?, width, height, layers: [{path, w, h, x, y, k, depth}]}.
   static Map<String, dynamic> photoTo3dFile({

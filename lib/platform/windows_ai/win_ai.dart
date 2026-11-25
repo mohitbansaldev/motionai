@@ -84,7 +84,7 @@ class WinAi {
     }
   }
 
-  /// Splits a photo into depth layers (PNG files "<outPrefix>_<i>.png");
+  /// Splits a photo into depth layers (PNG files `<outPrefix>_<i>.png`);
   /// see [Depth.photoTo3dFile] for the result map.
   static Future<Map<String, dynamic>> photoTo3d(String path, String outPrefix,
       {required double mediaWidth, int layers = 4, double pad = 0, String model = 'auto', void Function(String status)? onStatus}) async {

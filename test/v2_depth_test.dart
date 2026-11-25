@@ -325,7 +325,7 @@ void main() {
       expect(req!.command['start'], 0);
       expect(p.main.layers.length, 1, reason: 'nothing changes until the job is done');
 
-      EditCommands.runAtomic(p, {'op': 'update_layer', 'layer': 'P', 'scale': [50, 50, 100]});
+      EditCommands.runAtomic(p, {'op': 'set_property', 'target': 'P', 'prop': 'scale', 'value': [50, 50, 100]});
       EditCommands.runAtomic(p, {'op': 'photo_to_3d', 'layer': 'P'});
       expect(req!.pad, 0, reason: 'a smaller photo gets no margin');
 
