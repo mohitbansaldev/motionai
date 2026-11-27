@@ -328,7 +328,7 @@ void main() {
       final s = await d.handle(_req(2, 'resources/read', {'uri': kResourceSpec})) as Map;
       expect((((s['result'] as Map)['contents'] as List).first as Map)['text'], contains('add_layer'));
       final list = await d.handle(_req(3, 'resources/list')) as Map;
-      expect(((list['result'] as Map)['resources'] as List).length, 2);
+      expect(((list['result'] as Map)['resources'] as List).length, 3); // win-42: + motionai://manual
     });
 
     test('actions are logged', () async {

@@ -8,6 +8,8 @@
 
 import 'dart:convert';
 
+import 'manual.dart'; // win-42: the control manual (pure Dart)
+
 /// Newest MCP revision we speak, and the older ones we accept.
 const String kMcpProtocolVersion = '2025-06-18';
 const List<String> kMcpSupportedVersions = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -19,7 +21,7 @@ const int kMcpDefaultPort = 7820;
 const String kMcpServerName = 'motionai';
 
 /// Version answered by the server (bumped when the tools change).
-const String kMcpServerVersion = '2.0.0';
+const String kMcpServerVersion = '2.1.0'; // win-42: + get_manual, motionai://manual
 
 /// The version to answer for a client's requested one: the same if we
 /// support it, otherwise our newest (the client then decides).
@@ -62,6 +64,7 @@ Map<String, dynamic> initializeResult(Object? requestedVersion) => {
 
 const String kMcpInstructions = '''
 MotionAI is a motion-graphics video editor (After Effects / Alight Motion style) running on the user's PC. These tools drive the running app live: every edit appears on the user's screen and is undoable (undo tool or Ctrl+Z).
+READ THE MANUAL FIRST: get_manual {"section":"toc"} lists every chapter; then read at least section "0" (the user's rules) and the chapters you need (connecting, tools, commands, camera/3D, components, maps, transitions, sound, Flow images, export, quirks and workarounds, recipes, quality checklist). Same text: resource motionai://manual.
 Flow: get_state → (list_projects + open_project, or new_project) → get_command_spec once → run_commands → look → fix → save_project / export_video.
 Workflow hint: use batch + preview_shot + check_scene. batch runs several tool calls in one request (e.g. run_commands then preview_shot then check_scene). preview_shot shows a whole time range as ONE labelled contact sheet (instead of many render_frame calls); check_scene lists problems (black gaps, layers ending early, empty edges in 3D moves, floating cut-outs, text overlap/off-frame, broken effects, missing media) with ready fix commands. Build shots with add_shot / sequence if get_command_spec lists them.
 - All edits are JSON edit commands (get_command_spec / resource motionai://spec). One run_commands call = one atomic batch = one undo step; if any command fails nothing changes.
@@ -118,6 +121,18 @@ const Map<String, List<double>> kProjectFormats = {
 
 /// Every tool the server offers, as MCP tool definitions.
 final List<Map<String, dynamic>> kMcpTools = [
+  // win-42 >>> the complete control manual (lib/remote/manual.dart)
+  _tool('get_manual', 'Read the MotionAI manual (start here)',
+      'The complete manual for controlling MotionAI: the user\'s rules, connecting, every tool and edit command, camera/3D, '
+          'components, maps, transitions, sound, captions, Google Flow images, export, known quirks with workarounds, '
+          'worked recipes and the quality checklist. Read it at the start of every new chat: section "toc" first, then the '
+          'chapters you need. Works with no project open.',
+      _obj({
+        'section': _s('"toc" (contents), a chapter number ("0" rules, "2" connecting, "16" quirks, "7.3"), words of a heading '
+            '("camera", "maps", "recipes"), "spec" (the raw command reference) or "all" (default: all)'),
+      }),
+      readOnly: true),
+  // <<< win-42
   _tool('get_state', 'Get editor state',
       'Snapshot of the app: screen, open project (id, name, comp size/fps/duration, playhead, selection, undo/redo), precomps, '
           'media ids, every layer top-to-bottom (id, type, start/end, transform values or keyframes, effects, masks) and running jobs. '
@@ -466,8 +481,16 @@ const Set<String> kMcpEditTools = {
 
 const String kResourceSpec = 'motionai://spec';
 const String kResourceProject = 'motionai://project';
+const String kResourceManual = 'motionai://manual'; // win-42
 
 final List<Map<String, dynamic>> kMcpResources = [
+  {
+    'uri': kResourceManual,
+    'name': 'manual',
+    'title': 'MotionAI control manual (read first)',
+    'description': 'The complete manual for controlling MotionAI: rules, tools, commands, recipes, quirks.',
+    'mimeType': 'text/markdown',
+  },
   {
     'uri': kResourceSpec,
     'name': 'command-spec',
@@ -753,6 +776,31 @@ class BridgeFraming {
         return JsonRpc.result(id, {'resourceTemplates': []});
       case 'prompts/list':
         return JsonRpc.result(id, {'prompts': []});
+    }
+    return null;
+  }
+
+  /// win-42: the manual is embedded in the bridge too, so get_manual (except "spec", which is the app's
+  /// command reference) and motionai://manual are answered here, even while MotionAI is closed.
+  static Map<String, dynamic>? manualAnswer(Map m) {
+    final id = m['id'];
+    final params = m['params'] is Map ? m['params'] as Map : const {};
+    if (m['method'] == 'resources/read' && params['uri'] == kResourceManual) {
+      return JsonRpc.result(id, {
+        'contents': [
+          {'uri': kResourceManual, 'mimeType': 'text/markdown', 'text': kManual},
+        ],
+      });
+    }
+    if (m['method'] == 'tools/call' && params['name'] == 'get_manual') {
+      final args = params['arguments'] is Map ? params['arguments'] as Map : const {};
+      final q = args['section'] is String ? args['section'] as String : null;
+      if (q != null && q.trim().toLowerCase() == 'spec') return null; // needs the app
+      final text = Manual.section(q);
+      final r = text == null
+          ? McpToolResult.error('No manual section "$q".\n\n${Manual.toc()}')
+          : McpToolResult.text(text);
+      return JsonRpc.result(id, r.toJson());
     }
     return null;
   }

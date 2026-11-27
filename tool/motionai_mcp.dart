@@ -82,6 +82,9 @@ Future<Object?> _answer(Object? m) async {
   final method = m['method'];
   // Answer the handshake here, so starting Claude does not start MotionAI.
   if (method == 'initialize' || method == 'ping') return BridgeFraming.localAnswer(m);
+  // win-42: the manual is embedded here too (works while MotionAI is closed).
+  final manual = BridgeFraming.manualAnswer(m);
+  if (manual != null) return manual;
   if (BridgeFraming.offline.contains(method)) {
     final info = await _reachable();
     if (info == null) return BridgeFraming.localAnswer(m);

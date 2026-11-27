@@ -29,6 +29,7 @@ import '../services/captions.dart';
 import '../services/project_storage.dart';
 import '../state/editor_controller.dart';
 import 'contact_sheet.dart';
+import 'manual.dart'; // win-42
 import 'mcp_protocol.dart';
 import 'mcp_server.dart';
 import 'remote_export.dart';
@@ -243,6 +244,12 @@ class RemoteTools implements McpBackend {
         return _batch(a, progress);
       case 'get_state':
         return McpToolResult.json(await state());
+      case 'get_manual': // win-42: the complete control manual
+        final q = a['section'] is String ? a['section'] as String : null;
+        if (q != null && q.trim().toLowerCase() == 'spec') return McpToolResult.text(commandSpec);
+        final text = Manual.section(q);
+        if (text == null) throw _Fail('No manual section "$q".\n\n${Manual.toc()}');
+        return McpToolResult.text(text);
       case 'get_command_spec':
         return McpToolResult.text('NOTE (MCP): you are connected through tools. Pass the "commands" array to run_commands '
             'and talk to the user normally; the "reply"/JSON output format below is for the in-app assistant only. '
@@ -470,6 +477,7 @@ class RemoteTools implements McpBackend {
   @override
   Future<(String, String)> readResource(String uri) async {
     if (uri == kResourceSpec) return ('text/plain', commandSpec);
+    if (uri == kResourceManual) return ('text/markdown', kManual); // win-42
     if (uri == kResourceProject) {
       final c = host.editor;
       if (c == null) return ('application/json', jsonEncode({'error': 'No project is open'}));
@@ -483,6 +491,8 @@ class RemoteTools implements McpBackend {
   Future<Map<String, dynamic>> state() async {
     final out = <String, dynamic>{
       'app': 'MotionAI',
+      // win-42: every new chat should read the manual before editing.
+      'manual': 'New chat? Read get_manual {"section":"toc"} first (rules, tools, commands, quirks, recipes).',
       'screen': host.screen,
       // win-30: memory and recent errors at a glance.
       'perf': {
