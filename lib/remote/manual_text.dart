@@ -917,6 +917,9 @@ redact|box, delay, duration, color, word (redact: scramble settles to it), item}
 top|bottom|both|none, backdrop: stars|dust|plain|none, bg, bg2, curve?, edge_blur?, scroll: true|false,
 coming_up: true|"text"`. Tall screenshots scroll and stop on each mark.
 
+win-43 `theme`: `stars` (default, purple night) | `obsidian` (black + gold dust, premium) | `newsroom` (charcoal desk) |
+`paper_desk` (warm brown) | `cold_case` (blue-grey) | `crimson` (dark red) — backdrop colours, dust and film grain in one word.
+
 V3 extras: `fullbleed: true` (page fills the frame) · `enter: "slide_up_over"` (0.3 s expo-out over the
 previous shot) · `exit: slide_left|slide_right|<animate_out preset>` · `tilt3d: true | {from: [22,0,-2],
 to: [0,0,-1], duration: 0.5, at?}` (settles from a 3D tilt; lives in precomp `<id>_pc` shown by 3D layer

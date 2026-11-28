@@ -4,6 +4,7 @@ part of 'components.dart';
 // backdrop; long screenshots scroll; highlighter sweeps, hand-drawn circles,
 // underlines and redaction bars (scrambling to a word) on given boxes;
 // several screenshots can follow each other; "Coming up next" tag.
+// win-43: theme: stars (default) | obsidian | newsroom | paper_desk | cold_case | crimson.
 //
 // Marks: {box: [x0, y0, x1, y1] (0..1 of the screenshot, top-left origin) or
 // boxes: [[...], ...] (one per line), style: highlight|circle|underline|redact|box,
@@ -36,10 +37,22 @@ List<List<double>> _markBoxes(Map<String, dynamic> m) {
 List<Map<String, dynamic>> _article(_B b, Project p) {
   final items = b.mediaList(p, 'media');
   final cmds = <Map<String, dynamic>>[];
-  final bg = b.str('backdrop', 'stars');
+  // win-43 >>> themes: backdrop colours + atmosphere in one word
+  final theme = b.str('theme', 'stars');
+  final (tBg, tBg2, tAtmos) = switch (theme) {
+    'obsidian' => ('#16171A', '#050506', 'dust'),
+    'newsroom' => ('#23272E', '#0B0D10', 'dust'),
+    'paper_desk' => ('#4A3424', '#1C120B', 'dust'),
+    'cold_case' => ('#1D2A36', '#080D12', 'dust'),
+    'crimson' => ('#3A0D10', '#0E0304', 'dust'),
+    _ => ('#2A0E4F', '#0C0420', 'stars'),
+  };
+  final bg = b.str('backdrop', tAtmos);
   if (bg != 'none') {
-    cmds.add(b.backdrop('bg', b.str('bg', '#2A0E4F'), color2: b.str('bg2', '#0C0420')));
-    cmds.add(b.fx(b.id('bg'), 'vignette', {'amount': 70}));
+    cmds.add(b.backdrop('bg', b.str('bg', tBg), color2: b.str('bg2', tBg2)));
+    cmds.add(b.fx(b.id('bg'), 'vignette', {'amount': theme == 'stars' ? 70 : 78}));
+    if (theme != 'stars') cmds.add(b.fx(b.id('bg'), 'grain', {'amount': 14, 'size': 2}));
+    // <<< win-43
     if (bg == 'stars') cmds.addAll(b.atmos('stars', 'stars', amount: 45, speed: 0.3));
     if (bg == 'dust') cmds.addAll(b.atmos('dust', 'dust', amount: 40, speed: 0.4));
   }
