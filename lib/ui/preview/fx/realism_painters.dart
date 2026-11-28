@@ -283,7 +283,9 @@ class RenderFxSnapshot extends RenderProxyBox {
         final e = (_v(0) / 100).clamp(0.0, 1.0) * 0.012;
         final c = dst.center;
         Rect scaled(double s) => Rect.fromCenter(center: c, width: dst.width * s, height: dst.height * s);
-        canvas.saveLayer(scaled(1 + e).inflate(2), Paint()..colorFilter = const ui.ColorFilter.matrix(_times3));
+        // win-44: each channel at full alpha, added together. (The old "1/3 alpha
+        // then ×3" trick turned black grey on adjustment layers / looks.)
+        canvas.saveLayer(scaled(1 + e).inflate(2), Paint());
         for (int ch = 0; ch < 3; ch++) {
           canvas.drawImageRect(
             img,
@@ -292,7 +294,7 @@ class RenderFxSnapshot extends RenderProxyBox {
             Paint()
               ..filterQuality = base.filterQuality
               ..blendMode = BlendMode.plus
-              ..colorFilter = ui.ColorFilter.matrix(channelMatrix(ch)),
+              ..colorFilter = ui.ColorFilter.matrix(channelMatrixFull(ch)),
           );
         }
         canvas.restore();
@@ -367,7 +369,16 @@ class RenderFxSnapshot extends RenderProxyBox {
   }
 }
 
-const List<double> _times3 = [3, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 1, 0];
+
+/// win-44: one colour channel with the full alpha (chromatic aberration).
+List<double> channelMatrixFull(int ch) => [
+      for (int row = 0; row < 3; row++) ...[
+        for (int col = 0; col < 3; col++) (row == ch && col == ch) ? 1.0 : 0.0,
+        0,
+        0,
+      ],
+      0, 0, 0, 1, 0,
+    ];
 
 /// One colour channel with a third of the alpha (three passes add up to the
 /// full alpha; the layer then multiplies colour by 3).
