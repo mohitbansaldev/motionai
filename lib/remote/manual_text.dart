@@ -1214,6 +1214,11 @@ objects / set pieces (transparent cut-outs) above, overlays on top, then make_3d
    `plate_`. `flow_panel_eval {code}` runs page JavaScript (read titles, rename tiles); `flow_panel_close`
    hides it. Generate in Flow (flow-mcp's `flow_agent_images`, or by hand in the panel), then `flow_pull`.
    First use: the user signs in to Google once in the panel.
+   **win-45 trusted input:** Flow ignores script-made clicks, so the panel has a loopback-only DevTools port
+   and two tools that send *real* input (no screen control): `flow_generate {prompt, agent?, wait? (s)}` types the
+   prompt, sets Agent mode and presses Start — one prompt listing every image ("Make N separate images … 1. …")
+   gives a whole batch — then `flow_pull`; `flow_panel_click {label | text | selector}` clicks anything else
+   (menus, tiles, collections). Needs one MotionAI restart after updating.
 1. **Best for generating: Mohit's flow-mcp** (`C:\Users\1234\flow-mcp`, "Flow Studio"): `flow_agent_images {project,
    scenes: [≤ 50 prompts], aspect_ratio, references?, scene_references?}` hands the whole batch to Flow's
    own Agent mode (parallel, 0 credits, one ZIP back into `~/flow-mcp-out/<project>/`). It must be

@@ -157,7 +157,7 @@ void main() {
         expect(kMcpToolNames, contains(n));
         expect(kMcpInstructions, contains(n));
       }
-      expect(kMcpTools.length, 50); // V3-E: + suggest_patterns; win-30: + get_layers, editor_screenshot, get_logs, list/read/write_file; win-42: + get_manual; win-43: + flow_panel_open, flow_pull, flow_panel_eval, flow_panel_close
+      expect(kMcpTools.length, 52); // V3-E: + suggest_patterns; win-30: + get_layers, editor_screenshot, get_logs, list/read/write_file; win-42: + get_manual; win-43: + flow_panel_open, flow_pull, flow_panel_eval, flow_panel_close; win-45: + flow_generate, flow_panel_click
       expect(kMcpEditTools.contains('batch'), isFalse, reason: 'inner calls are checked one by one');
       for (final t in kMcpTools) {
         expect((t['description'] as String).length, lessThan(800), reason: '${t['name']}');

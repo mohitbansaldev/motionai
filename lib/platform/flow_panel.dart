@@ -180,6 +180,146 @@ class FlowPanel {
 
   bool get ready => _c != null;
 
+  // win-45 >>> trusted input through WebView2's DevTools protocol
+  int? _cdpPort;
+  WebSocket? _ws;
+  int _cdpId = 0;
+  final Map<int, Completer<Map<String, dynamic>>> _cdpWait = {};
+
+  static Future<int> _freePort() async {
+    final s = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final p = s.port;
+    await s.close();
+    return p;
+  }
+
+  Future<WebSocket> _cdp() async {
+    final open = _ws;
+    if (open != null && open.readyState == WebSocket.open) return open;
+    final port = _cdpPort ?? (throw StateError('Trusted input needs the Flow panel opened by this app run (restart MotionAI once after updating).'));
+    final http = HttpClient();
+    try {
+      final req = await http.getUrl(Uri.parse('http://127.0.0.1:$port/json/list'));
+      final res = await req.close();
+      final list = jsonDecode(await res.transform(utf8.decoder).join()) as List;
+      Map? page;
+      for (final t in list) {
+        if (t is Map && t['type'] == 'page' && '${t['url']}'.contains('flow.google.com')) page = t;
+      }
+      page ??= list.whereType<Map>().where((t) => t['type'] == 'page').firstOrNull;
+      final ws = '${page?['webSocketDebuggerUrl'] ?? ''}';
+      if (ws.isEmpty) throw StateError('No Flow page to control (open it with flow_panel_open).');
+      final sock = await WebSocket.connect(ws);
+      sock.listen((m) {
+        try {
+          final j = jsonDecode('$m');
+          if (j is Map && j['id'] is int) _cdpWait.remove(j['id'])?.complete(Map<String, dynamic>.from(j));
+        } catch (_) {}
+      }, onDone: () => _ws = null, onError: (Object _) => _ws = null);
+      _ws = sock;
+      return sock;
+    } finally {
+      http.close(force: true);
+    }
+  }
+
+  Future<Map<String, dynamic>> _send(String method, [Map<String, dynamic> params = const {}]) async {
+    final ws = await _cdp();
+    final id = ++_cdpId;
+    final c = Completer<Map<String, dynamic>>();
+    _cdpWait[id] = c;
+    ws.add(jsonEncode({'id': id, 'method': method, 'params': params}));
+    final r = await c.future.timeout(const Duration(seconds: 15), onTimeout: () {
+      _cdpWait.remove(id);
+      throw TimeoutException('DevTools $method timed out');
+    });
+    if (r['error'] != null) throw StateError('DevTools $method: ${r['error']}');
+    return Map<String, dynamic>.from(r['result'] as Map? ?? const {});
+  }
+
+  Future<Object?> _eval(String expr) async {
+    final r = await _send('Runtime.evaluate', {'expression': expr, 'returnByValue': true, 'awaitPromise': true});
+    final v = r['result'];
+    return v is Map ? v['value'] : null;
+  }
+
+  /// JS that finds one element: by aria-label (exact, then contains), visible text, or CSS selector.
+  static String _finder({String? label, String? text, String? selector}) => '''(() => {
+    const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+    const all = [...document.querySelectorAll(${jsonEncode(selector ?? 'button, [role=button], a, [aria-label], [role=tab], [role=switch]')})].filter(vis);
+    const L = ${jsonEncode(label)}, T = ${jsonEncode(text)};
+    let el = null;
+    if (L) el = all.find(e => (e.getAttribute('aria-label') || '').trim() === L) || all.find(e => (e.getAttribute('aria-label') || '').toLowerCase().includes(L.toLowerCase()));
+    if (!el && T) el = all.find(e => (e.innerText || '').trim() === T) || all.find(e => (e.innerText || '').toLowerCase().includes(T.toLowerCase()));
+    if (!el && !L && !T) el = all[0];
+    if (!el) return null;
+    el.scrollIntoView({block: 'center', inline: 'center'});
+    const r = el.getBoundingClientRect();
+    return {x: r.x + r.width / 2, y: r.y + r.height / 2, label: el.getAttribute('aria-label'), text: (el.innerText || '').trim().slice(0, 40), pressed: el.getAttribute('aria-pressed')};
+  })()''';
+
+  /// A real mouse click (Flow accepts it) on the element found by [label] / [text] / [selector].
+  Future<Map<String, dynamic>> click({String? label, String? text, String? selector}) async {
+    final hit = await _eval(_finder(label: label, text: text, selector: selector));
+    if (hit is! Map) throw StateError('Nothing to click for ${label ?? text ?? selector}.');
+    final x = (hit['x'] as num).toDouble(), y = (hit['y'] as num).toDouble();
+    await _send('Input.dispatchMouseEvent', {'type': 'mouseMoved', 'x': x, 'y': y});
+    await _send('Input.dispatchMouseEvent', {'type': 'mousePressed', 'x': x, 'y': y, 'button': 'left', 'buttons': 1, 'clickCount': 1});
+    await _send('Input.dispatchMouseEvent', {'type': 'mouseReleased', 'x': x, 'y': y, 'button': 'left', 'buttons': 0, 'clickCount': 1});
+    return {'clicked': true, 'label': hit['label'], 'text': hit['text'], 'at': [x.round(), y.round()]};
+  }
+
+  /// A real key press; [commands] are Chromium editing commands run with it (selectAll, deleteBackward…).
+  Future<void> key(String key, {int modifiers = 0, int code = 0, List<String> commands = const []}) async {
+    await _send('Input.dispatchKeyEvent', {
+      'type': 'rawKeyDown',
+      'key': key,
+      'code': key.length == 1 ? 'Key${key.toUpperCase()}' : key,
+      'windowsVirtualKeyCode': code,
+      'modifiers': modifiers,
+      if (commands.isNotEmpty) 'commands': commands,
+    });
+    await _send('Input.dispatchKeyEvent', {
+      'type': 'keyUp',
+      'key': key,
+      'code': key.length == 1 ? 'Key${key.toUpperCase()}' : key,
+      'windowsVirtualKeyCode': code,
+      'modifiers': modifiers,
+    });
+  }
+
+  /// Types [prompt] into Flow's prompt box (replacing it), sets Agent mode, presses Start.
+  /// [wait] seconds: wait until Flow finishes (the Stop button goes away).
+  Future<Map<String, dynamic>> generate(String prompt, {bool? agent, int wait = 0}) async {
+    await controller();
+    if (agent != null) {
+      final st = await _eval(_finder(label: 'Flow Agent'));
+      final on = st is Map && st['pressed'] == 'true';
+      if (on != agent) await click(label: 'Flow Agent');
+    }
+    await click(selector: '.ProseMirror');
+    await key('a', modifiers: 2, code: 65, commands: const ['selectAll']); // Ctrl+A
+    await key('Backspace', code: 8, commands: const ['deleteBackward']);
+    await _send('Input.insertText', {'text': prompt});
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    Map<String, dynamic> pressed;
+    try {
+      pressed = await click(label: 'Start generation');
+    } catch (_) {
+      pressed = await click(text: 'arrow_forward');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    var running = await _eval('[...document.querySelectorAll("button")].some(b => b.getAttribute("aria-label") === "Stop")') == true;
+    final sw = Stopwatch()..start();
+    while (running && sw.elapsed.inSeconds < wait) {
+      await Future<void>.delayed(const Duration(seconds: 4));
+      running = await _eval('[...document.querySelectorAll("button")].some(b => b.getAttribute("aria-label") === "Stop")') == true;
+    }
+    final tail = await _eval('document.body.innerText.slice(-300)');
+    return {'started': true, 'start_button': pressed, 'running': running, 'waited_seconds': sw.elapsed.inSeconds, 'page_tail': tail};
+  }
+  // <<< win-45
+
   /// The panel's WebView2, created on first use with its own persistent
   /// profile (%APPDATA%\…\MotionAI\flow_webview), so one Google sign-in stays.
   Future<WebviewController> controller() {
@@ -199,7 +339,13 @@ class FlowPanel {
       final support = await getApplicationSupportDirectory();
       final data = Directory('${support.path}${Platform.pathSeparator}flow_webview');
       await data.create(recursive: true);
-      await WebviewController.initializeEnvironment(userDataPath: data.path);
+      // win-45: a loopback-only DevTools port so the app can send real (trusted)
+      // clicks and typing to Flow, which ignores script-made events.
+      _cdpPort = await _freePort();
+      await WebviewController.initializeEnvironment(
+        userDataPath: data.path,
+        additionalArguments: '--remote-debugging-address=127.0.0.1 --remote-debugging-port=$_cdpPort',
+      );
     } catch (e) {
       // Already initialised in this run (only allowed once): fine.
       AppLog.add('info', 'flow', 'WebView2 environment: $e');

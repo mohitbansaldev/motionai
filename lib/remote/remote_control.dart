@@ -98,6 +98,14 @@ class RemoteControl extends ChangeNotifier
 
   @override
   Future<bool> flowClose() => FlowPanel.instance.close(navigatorKey.currentState);
+
+  @override
+  Future<Map<String, dynamic>> flowGenerate(String prompt, {bool? agent, int wait = 0}) =>
+      FlowPanel.instance.generate(prompt, agent: agent, wait: wait); // win-45
+
+  @override
+  Future<Map<String, dynamic>> flowClick({String? label, String? text, String? selector}) =>
+      FlowPanel.instance.click(label: label, text: text, selector: selector); // win-45
   // <<< win-43
 
   // win-30: list_files / read_file / write_file work under Documents\MotionAI*.

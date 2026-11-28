@@ -106,6 +106,8 @@ abstract class RemoteFlowPanel {
   Future<Map<String, dynamic>> flowPull(Map<String, dynamic> args, {void Function(String status)? status});
   Future<Object?> flowEval(String code, {Duration timeout});
   Future<bool> flowClose();
+  Future<Map<String, dynamic>> flowGenerate(String prompt, {bool? agent, int wait = 0}); // win-45
+  Future<Map<String, dynamic>> flowClick({String? label, String? text, String? selector}); // win-45
 }
 
 class _Fail implements Exception {
@@ -448,6 +450,8 @@ class RemoteTools implements McpBackend {
       case 'flow_pull':
       case 'flow_panel_eval':
       case 'flow_panel_close':
+      case 'flow_generate': // win-45
+      case 'flow_panel_click':
         return _flowPanel(name, a, progress);
       // <<< win-43
       case 'library_insert':
@@ -1294,6 +1298,12 @@ class RemoteTools implements McpBackend {
           final secs = _num(a, 'timeout') ?? 45;
           final v = await f.flowEval(_need(a, 'code'), timeout: Duration(milliseconds: (secs.clamp(1, 300) * 1000).round()));
           return McpToolResult.json({'result': v});
+        case 'flow_generate': // win-45
+          final w = _num(a, 'wait')?.round() ?? 0;
+          return McpToolResult.json(await f.flowGenerate(_need(a, 'prompt'), agent: _bool(a, 'agent'), wait: w.clamp(0, 40)));
+        case 'flow_panel_click':
+          if (_str(a, 'label') == null && _str(a, 'text') == null && _str(a, 'selector') == null) throw _Fail('Give label, text or selector.');
+          return McpToolResult.json(await f.flowClick(label: _str(a, 'label'), text: _str(a, 'text'), selector: _str(a, 'selector')));
         default:
           return McpToolResult.json({'closed': await f.flowClose()});
       }

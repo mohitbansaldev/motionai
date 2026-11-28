@@ -448,6 +448,22 @@ final List<Map<String, dynamic>> kMcpTools = [
       'Runs JavaScript in the Flow page open in the Flow panel: the body of an async function, "return" a JSON value '
           '(e.g. read tile titles, click a menu). For inspecting and small fixes; prefer flow_pull for images.',
       _obj({'code': _s('JavaScript function body'), 'timeout': _n('Seconds (default 45)')}, required: ['code'])),
+  // win-45 >>> trusted input (real clicks / typing through WebView2 DevTools, no screen control)
+  _tool('flow_generate', 'Generate in Flow (panel)',
+      'Types the prompt into Flow\'s prompt box in the Flow panel (replacing what is there), switches Agent mode on or off '
+          '(agent), and presses Start with a real click (Flow ignores script clicks). wait: seconds to wait for Flow to '
+          'finish (the Stop button goes away). For a batch, write one prompt that lists every image ("Make N separate images'
+          ' … 1. … 2. …") with agent:true; then flow_pull.',
+      _obj({
+        'prompt': _s('The full prompt'),
+        'agent': _b('Agent mode on (true) / off (false); omit to keep it'),
+        'wait': {'type': 'integer', 'minimum': 0, 'maximum': 40, 'description': 'Seconds to wait for Flow to finish (default 0)'},
+      }, required: ['prompt'])),
+  _tool('flow_panel_click', 'Click in the Flow panel',
+      'A real mouse click (trusted, like a person) on an element of the Flow page: by aria-label (label), visible text '
+          '(text) or CSS selector. For buttons Flow ignores script clicks on (Flow Agent, Start, menus, tiles).',
+      _obj({'label': _s('aria-label (exact, then contains)'), 'text': _s('Visible text'), 'selector': _s('CSS selector')})),
+  // <<< win-45
   _tool('flow_panel_close', 'Hide the Flow panel',
       'Closes the Flow panel window (the page stays loaded in the background, so flow_pull keeps working).', _obj({})),
   // <<< win-43
@@ -515,7 +531,7 @@ const Set<String> kMcpEditTools = {
   'run_commands', 'undo', 'redo', 'open_project', 'new_project', 'close_project', 'import_media', 'open_comp',
   'director_run', 'captions_generate', 'apply_template', 'library_insert', 'export_video',
   'library_import_folder', 'library_clean', // V2-lead
-  'flow_pull', // win-43
+  'flow_pull', 'flow_generate', // win-43, win-45
 };
 
 // ---------------------------------------------------------------- resources
