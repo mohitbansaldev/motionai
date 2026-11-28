@@ -680,7 +680,13 @@ Fields on `add_layer` / `update_layer` text layers:
 focus_lock?: true, blur_level?: % (DOF strength), aperture?, focus?, orientation? [pitch, yaw, roll],
 time? (keyframe these at a time)}`.
 
-- `one_node` aims with `orientation`; `two_node` looks at its point of interest.
+- `one_node` aims with `orientation`; `two_node` looks at its point of interest (orientation is applied on top,
+  like AE). Switching between them keeps the current aim.
+- win-43: camera `rotation` [x tilt (+ = look down), y pan (+ = turn right), z roll]° — AE's X/Y/Z Rotation, on top
+  of the aim, for both types: `set_property {target: "camera", prop: "rotation", value: [x, y, z]}` (or
+  `"rotation.y"`); keyframe it like any property. The editor shows it with Position, Point of Interest,
+  Orientation, Zoom / focal length / angle of view and Depth of Field as AE-style scrub fields; Mohit can also
+  drag on-screen gizmos (W move, E rotate, R scale, C camera orbit / pan / dolly, X world/local) in every view.
 - `focus_lock: true` keeps the focus distance on the point of interest (AE "Lock to Zoom" style).
 - `set_view_layout {layout: "1"|"2"|"4"|"1+3", views?: [active|front|left|top|back|right|bottom|custom1|
   custom2|custom3], custom?: {custom1: [yaw, pitch, distance]}}` — editor viewer panes. Working views

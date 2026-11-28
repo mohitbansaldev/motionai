@@ -77,7 +77,7 @@ GEO LAYERS (win-40, GEOlayers-style live maps: the map re-projects every frame, 
   update_geo {layer, ...any add_geo key} · geo_fly {layer, to: country | [lon, lat], zoom?, from?, from_zoom?, start?, duration?: 2.5, ease?, arc?: true (pull back mid-flight on long hops)}
   Animate the map with set_keyframe on geo_center [lon, lat], geo_zoom [x], geo_progress [0..100] (draws routes, reveals highlights / pins / labels in order). India is always drawn with India's official boundary.
 CAMERA & VIEWS (win-40, After Effects style):
-  set_camera {type?: one_node (aims with orientation [x pitch, y yaw, z roll]) | two_node (looks at its point of interest), lens_mm?: 15|20|24|28|35|50|80|135|200 (any 5..1000), focus_lock?: true (focus distance = point of interest), blur_level?: % (DOF strength), aperture?, focus?, orientation?, time? (keyframe)}
+  set_camera {type?: one_node (aims with orientation [x pitch, y yaw, z roll]) | two_node (looks at its point of interest), lens_mm?: 15|20|24|28|35|50|80|135|200 (any 5..1000), focus_lock?: true (focus distance = point of interest), blur_level?: % (DOF strength), aperture?, focus?, orientation?, time? (keyframe)}; camera X/Y/Z Rotation: set_property {target: camera, prop: rotation, value: [x tilt, y pan, z roll]}
   set_view_layout {layout: "1"|"2"|"4"|"1+3", views?: [active|front|left|top|back|right|bottom|custom1|custom2|custom3], custom?: {custom1: [yaw, pitch, distance]}} — editor viewer panes (working views show 3D layers, the camera frustum and point of interest).
   deep_glow effect {amount 0-200, radius, threshold, spread, aspect %, chromatic, tint} — Deep Glow look: tight core + body + wide halo, chromatic fringes.
 3D SCENES & MAPS:
