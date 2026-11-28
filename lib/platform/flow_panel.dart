@@ -133,7 +133,10 @@ const String _collectorJs = r'''
         while (next < items.length) {
           const k = next++, it = items[k];
           try {
-            const r = await fetch(it.src, { credentials: 'include' });
+            // win-44: the grid shows a ~512 px preview ("=s512-rw"); "=s2048" is the original.
+            const full = it.src.replace(/=s\d+(-[a-z]+)*$/i, '=s2048');
+            let r = await fetch(full, { credentials: 'include' });
+            if (!r.ok && full !== it.src) r = await fetch(it.src, { credentials: 'include' });
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const b = await r.blob();
             const bd = await border(b);
