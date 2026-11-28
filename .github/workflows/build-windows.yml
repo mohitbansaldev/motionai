@@ -51,6 +51,19 @@ jobs:
             (Get-Content $rc -Raw) -replace '"motionai"', '"MotionAI"' | Set-Content $rc -NoNewline
           }
 
+      # win-43: webview_windows (Flow panel) uses /await; the newest MSVC refuses
+      # it unless this define is set for every target.
+      - name: Allow webview_windows on new MSVC
+        shell: pwsh
+        run: |
+          $f = 'windows/CMakeLists.txt'
+          $s = Get-Content $f -Raw
+          if ($s -notmatch '_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS') {
+            $s = $s -replace '(project\([^\)]*\))', "`$1`r`nadd_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)"
+            Set-Content $f $s -NoNewline
+          }
+          Select-String -Path $f -Pattern 'project\(|_SILENCE_EXPERIMENTAL'
+
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
