@@ -136,8 +136,15 @@ final List<Map<String, dynamic>> kMcpTools = [
   _tool('get_state', 'Get editor state',
       'Snapshot of the app: screen, open project (id, name, comp size/fps/duration, playhead, selection, undo/redo), precomps, '
           'media ids, every layer top-to-bottom (id, type, start/end, transform values or keyframes, effects, masks) and running jobs. '
-          'With no project open it lists saved projects. Call first, and after edits to get layer ids.',
-      _obj({}),
+          'With no project open it lists saved projects. Call first, and after edits to get layer ids. '
+          'Faster (win-43): brief:true (layers without transforms/effects), layers:[ids] (only these), media:false, and '
+          'since:<revision from the last answer> → just {unchanged:true} when nothing changed.',
+      _obj({
+        'brief': _b('Layers as id/name/type/start/end only'),
+        'layers': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Only these layer ids'},
+        'media': _b('Include the media list (default true)'),
+        'since': _s('The "revision" from an earlier get_state: answers {unchanged: true} if nothing changed'),
+      }),
       readOnly: true),
   _tool('get_command_spec', 'Get edit-command reference',
       'Full reference of the JSON edit commands run_commands accepts (layers, keyframes, effects, masks, camera, components, text '

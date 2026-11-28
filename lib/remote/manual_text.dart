@@ -282,6 +282,10 @@ Answered even when no project is open (and by the stdio bridge while the app is 
 undo / redo availability, `editing_comp`, precomps, media ids, `shots`, every layer top-to-bottom with
 id, type, start / end, transform values or keyframes, effects, masks) and running jobs. With no project
 open it lists saved projects. **Call it first and after edits** to get ids.
+  **Faster (win-43):** `brief: true` (layers as id / name / type / start / end only), `layers: [ids]` (only those),
+  `media: false` (no media list), `since: "<revision>"` (the `revision` of your last answer) → just
+  `{unchanged: true, revision, playhead, selection}` when nothing changed. Use `since` before re-reading a big
+  project and `brief` for overviews; read full layers only for the ones you edit.
 
 **`get_command_spec`** *(ro)* — the full JSON edit-command reference of this build (~72 000 chars).
 Ignore its "answer with one JSON object / reply" section: that is for the in-app assistant; you pass the
