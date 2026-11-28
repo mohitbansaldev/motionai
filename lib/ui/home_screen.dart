@@ -10,6 +10,7 @@ import '../core/model/project.dart';
 import '../core/presets/templates.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../platform/flow_panel.dart'; // win-43
 import '../platform/win_window.dart';
 import '../remote/remote_control.dart'; // MCP (Agent P)
 import '../remote/remote_ui.dart'; // MCP (Agent P)
@@ -352,6 +353,12 @@ class _HomeScreenState extends State<HomeScreen> {
               tooltip: 'Claude control',
               onPressed: () => ClaudeControlSheet.open(context),
               icon: const Icon(Icons.smart_toy_outlined, color: MA.textDim),
+            ),
+          if (FlowPanel.supported) // win-43: Google Flow inside MotionAI
+            IconButton(
+              tooltip: 'Google Flow (images straight into the library)',
+              onPressed: () => FlowPanel.instance.open(Navigator.of(context)),
+              icon: const Icon(Icons.auto_awesome_outlined, color: MA.textDim),
             ),
           IconButton(
             tooltip: 'Check for updates',

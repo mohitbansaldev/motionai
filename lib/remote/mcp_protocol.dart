@@ -21,7 +21,7 @@ const int kMcpDefaultPort = 7820;
 const String kMcpServerName = 'motionai';
 
 /// Version answered by the server (bumped when the tools change).
-const String kMcpServerVersion = '2.1.0'; // win-42: + get_manual, motionai://manual
+const String kMcpServerVersion = '2.2.0'; // win-42: + get_manual, motionai://manual; win-43: + Flow panel tools
 
 /// The version to answer for a client's requested one: the same if we
 /// support it, otherwise our newest (the client then decides).
@@ -411,6 +411,39 @@ final List<Map<String, dynamic>> kMcpTools = [
         'green_screen': _e(['auto', 'true', 'false'], 'Key green/blue-screen images (default auto)'),
         'remove_mark': _b('Remove the AI sparkle watermark (default false)'),
       }, required: ['path'])),
+  // win-43 >>> Flow panel: Google Flow inside MotionAI, images straight into the library
+  _tool('flow_panel_open', 'Open the Flow panel',
+      'Opens Google Flow inside MotionAI (its own WebView2 window with a sign-in that persists). Pass a Flow project url '
+          '(https://flow.google.com/project/…) to open it. Returns the page state (url, in_project, a hint when the user must '
+          'sign in once). Needed before flow_pull / flow_panel_eval.',
+      _obj({
+        'url': _s('Flow url to open (default: keep the current Flow page, or Flow home)'),
+        'show': _b('Show the panel on screen (default true; false loads it in the background)'),
+      })),
+  _tool('flow_pull', 'Pull Flow images into the library',
+      'Takes every finished image in the Flow project open in the Flow panel straight into MotionAI: the signed-in page '
+          'fetches the originals (4 at a time) and hands them to the app, no browser download or ZIP. Files go to '
+          'Documents\\MotionAI_Flow\\<folder>\\ named from Flow titles with a role prefix (a title that already starts with '
+          'char_/prop_/plate_/fx_ keeps it; otherwise green-screen border → char_ for people, prop_ for objects; black border → '
+          'fx_; else plate_), then the folder is imported into the library as one kit (green screens keyed, Flow mark removed). '
+          'Returns the files, timings and the library result.',
+      _obj({
+        'folder': _s('Folder / kit name, e.g. "kgf_s01"'),
+        'kit': _s('Library kit name (default: folder)'),
+        'match': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Only images whose Flow title contains one of these'},
+        'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500, 'description': 'At most this many images'},
+        'import': _b('Import into the library (default true; false only saves the files)'),
+        'remove_mark': _b('Remove the Flow sparkle mark (default true)'),
+        'green_screen': _e(['auto', 'true', 'false'], 'Key green screens (default auto)'),
+        'tags': {'type': 'array', 'items': {'type': 'string'}, 'description': 'Extra tags for every asset'},
+      }, required: ['folder'])),
+  _tool('flow_panel_eval', 'Run script in the Flow panel',
+      'Runs JavaScript in the Flow page open in the Flow panel: the body of an async function, "return" a JSON value '
+          '(e.g. read tile titles, click a menu). For inspecting and small fixes; prefer flow_pull for images.',
+      _obj({'code': _s('JavaScript function body'), 'timeout': _n('Seconds (default 45)')}, required: ['code'])),
+  _tool('flow_panel_close', 'Hide the Flow panel',
+      'Closes the Flow panel window (the page stays loaded in the background, so flow_pull keeps working).', _obj({})),
+  // <<< win-43
   _tool('library_clean', 'Clean library images',
       'Green-screen keying and/or AI sparkle-mark removal on library images (originals are kept; restore:true undoes).',
       _obj({
@@ -475,6 +508,7 @@ const Set<String> kMcpEditTools = {
   'run_commands', 'undo', 'redo', 'open_project', 'new_project', 'close_project', 'import_media', 'open_comp',
   'director_run', 'captions_generate', 'apply_template', 'library_insert', 'export_video',
   'library_import_folder', 'library_clean', // V2-lead
+  'flow_pull', // win-43
 };
 
 // ---------------------------------------------------------------- resources

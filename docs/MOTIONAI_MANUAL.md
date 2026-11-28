@@ -1180,7 +1180,18 @@ objects / set pieces (transparent cut-outs) above, overlays on top, then make_3d
 
 ### 12.3 Google Flow → MotionAI
 
-1. **Best: Mohit's flow-mcp** (`C:\Users\1234\flow-mcp`, "Flow Studio"): `flow_agent_images {project,
+0. **Fastest: the Flow panel** (win-43, Windows): Google Flow inside MotionAI (WebView2, its own sign-in
+   that persists; home screen ✦ button). `flow_panel_open {url?}` opens it (a Flow project url opens that
+   project; `show:false` keeps it off screen); `flow_pull {folder, match?, limit?}` takes **every finished
+   image** of the open project straight into the library in seconds: the signed-in page fetches the
+   originals 4 at a time and hands them to the app over WebView2 (no browser download, no ZIP, no
+   localhost request), saved to `Documents\MotionAI_Flow\<folder>\` and imported as one kit. Names come
+   from Flow titles with a role prefix: a title already starting `char_`/`prop_`/`plate_`/`fx_` keeps it;
+   otherwise a green-screen border → `char_` (person words) or `prop_`, a black border → `fx_`, else
+   `plate_`. `flow_panel_eval {code}` runs page JavaScript (read titles, rename tiles); `flow_panel_close`
+   hides it. Generate in Flow (flow-mcp's `flow_agent_images`, or by hand in the panel), then `flow_pull`.
+   First use: the user signs in to Google once in the panel.
+1. **Best for generating: Mohit's flow-mcp** (`C:\Users\1234\flow-mcp`, "Flow Studio"): `flow_agent_images {project,
    scenes: [≤ 50 prompts], aspect_ratio, references?, scene_references?}` hands the whole batch to Flow's
    own Agent mode (parallel, 0 credits, one ZIP back into `~/flow-mcp-out/<project>/`). It must be
    running (Claude Desktop config entry `flow`, or double-click `Flow Studio.cmd`; local API

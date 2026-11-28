@@ -100,6 +100,14 @@ String? resolveFilesPath(String docs, String path) {
   return [docs, ...parts].join(Platform.pathSeparator);
 }
 
+/// win-43: hosts with the Flow panel (Google Flow inside MotionAI).
+abstract class RemoteFlowPanel {
+  Future<Map<String, dynamic>> flowOpen({String? url, bool show = true});
+  Future<Map<String, dynamic>> flowPull(Map<String, dynamic> args, {void Function(String status)? status});
+  Future<Object?> flowEval(String code, {Duration timeout});
+  Future<bool> flowClose();
+}
+
 class _Fail implements Exception {
   final String message;
   _Fail(this.message);
@@ -430,6 +438,13 @@ class RemoteTools implements McpBackend {
       case 'library_suggest':
         return _libraryOps(name, a);
       // <<< V2-lead
+      // win-43 >>> Flow panel
+      case 'flow_panel_open':
+      case 'flow_pull':
+      case 'flow_panel_eval':
+      case 'flow_panel_close':
+        return _flowPanel(name, a, progress);
+      // <<< win-43
       case 'library_insert':
         return _libraryInsert(a);
       case 'list_effects':
@@ -1208,6 +1223,44 @@ class RemoteTools implements McpBackend {
     }
   }
   // <<< V2-lead
+
+  // win-43 >>> Flow panel
+  Future<McpToolResult> _flowPanel(String name, Map<String, dynamic> a, McpProgress? progress) async {
+    final h = host;
+    if (h is! RemoteFlowPanel) throw _Fail('The Flow panel needs the MotionAI Windows app (build 43 or newer).');
+    final f = h;
+    try {
+      switch (name) {
+        case 'flow_panel_open':
+          return McpToolResult.json(await f.flowOpen(url: _str(a, 'url'), show: _bool(a, 'show') ?? true));
+        case 'flow_pull':
+          final job = jobs.start('flow_pull');
+          var step = 0;
+          try {
+            final r = await f.flowPull(a, status: (s) {
+              job.message = s;
+              progress?.report(++step, message: s);
+            });
+            job.done(null, message: 'Saved ${r['saved']} images');
+            return McpToolResult.json(r);
+          } catch (e) {
+            job.fail(e);
+            rethrow;
+          }
+        case 'flow_panel_eval':
+          final secs = _num(a, 'timeout') ?? 45;
+          final v = await f.flowEval(_need(a, 'code'), timeout: Duration(milliseconds: (secs.clamp(1, 300) * 1000).round()));
+          return McpToolResult.json({'result': v});
+        default:
+          return McpToolResult.json({'closed': await f.flowClose()});
+      }
+    } on StateError catch (e) {
+      throw _Fail(e.message);
+    } on TimeoutException {
+      throw _Fail('The Flow page did not answer in time.');
+    }
+  }
+  // <<< win-43
 
   Future<McpToolResult> _librarySearch(Map<String, dynamic> a) async {
     final lib = await AssetLibrary.shared();
