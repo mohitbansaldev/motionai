@@ -25,6 +25,7 @@ import 'panels/layer_panel.dart';
 import 'preview/multi_view.dart'; // win-40
 import 'preview/preview_quality.dart'; // PERF (Agent O)
 import 'theme.dart';
+import 'preview/gizmo3d.dart' show ViewTools; // win-43
 import 'timeline/timeline_view.dart';
 import 'library/library_sheet.dart';
 import 'library/save_template_dialog.dart';
@@ -337,6 +338,16 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
     } else if (k == LogicalKeyboardKey.escape) {
       if (sel == null && !c.cameraSelected && !c.multiSelectMode) return false;
       c.clearSelection(); // BULK (Agent N): clears the whole selection
+    } else if (k == LogicalKeyboardKey.keyW) { // win-43 >>> viewer tools
+      ViewTools.instance.tool = 'move';
+    } else if (k == LogicalKeyboardKey.keyE) {
+      ViewTools.instance.tool = 'rotate';
+    } else if (k == LogicalKeyboardKey.keyR) {
+      ViewTools.instance.tool = 'scale';
+    } else if (k == LogicalKeyboardKey.keyC) {
+      ViewTools.instance.cycleCamera();
+    } else if (k == LogicalKeyboardKey.keyX) {
+      ViewTools.instance.local = !ViewTools.instance.local; // <<< win-43
     } else if (k == LogicalKeyboardKey.f1 || k == LogicalKeyboardKey.slash) {
       _showShortcuts();
     } else {
@@ -444,6 +455,9 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
       (',  .', 'Previous / next frame'),
       ('Home / End', 'Go to start / end'),
       ('S', 'Split selected layer at the playhead'),
+      ('W / E / R', 'Viewer: move / rotate / scale gizmo'), // win-43
+      ('C', 'Viewer: camera tools (orbit → pan → dolly)'),
+      ('X', 'Gizmo axes: world / local'),
       ('Ctrl+D', 'Duplicate layer'),
       ('Delete', 'Delete layer'),
       ('Ctrl+Z / Ctrl+Y', 'Undo / redo'),

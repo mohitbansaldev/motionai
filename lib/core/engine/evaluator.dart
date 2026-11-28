@@ -628,6 +628,39 @@ class Evaluator {
     if (r.length < 1e-6) r = Vector3(1, 0, 0);
     r.normalize();
     var d = f.cross(r)..normalize();
+    // win-43 >>> AE camera Orientation (two-node) + X/Y/Z Rotation on top of the aim:
+    // X tilts (+ = look down), Y pans (+ = turn right), Z rolls.
+    if (rig.mode == CameraMode.threeD) {
+      double rx = 0, ry = 0;
+      final o = rig.props[CamProps.orientation]?.valueAt(t);
+      if (rig.type != 'one_node' && o != null) {
+        rx += o[0];
+        ry += o.length > 1 ? o[1] : 0;
+        roll += o.length > 2 ? o[2] : 0;
+      }
+      final rot = rig.props[CamProps.rotation]?.valueAt(t);
+      if (rot != null) {
+        rx += rot[0];
+        ry += rot.length > 1 ? rot[1] : 0;
+        roll += rot.length > 2 ? rot[2] : 0;
+      }
+      if (ry != 0) {
+        final c = math.cos(ry * _deg), s = math.sin(ry * _deg);
+        final f2 = f * c + r * s;
+        r = r * c - f * s;
+        f = f2;
+      }
+      if (rx != 0) {
+        final c = math.cos(rx * _deg), s = math.sin(rx * _deg);
+        final f2 = f * c + d * s;
+        d = d * c - f * s;
+        f = f2;
+      }
+      f.normalize();
+      r.normalize();
+      d.normalize();
+    }
+    // <<< win-43
     if (rig.mode == CameraMode.threeD) focus = Realism.focusFollow(comp, t, pos, poi, f) ?? focus; // V2-D: dof follow
     if (roll != 0) {
       final c = math.cos(roll * _deg), s = math.sin(roll * _deg);

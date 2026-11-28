@@ -18,6 +18,7 @@ import '../../core/model/project.dart';
 import '../../state/editor_controller.dart';
 import 'composition_canvas.dart';
 import 'composition_view.dart';
+import 'gizmo3d.dart'; // win-43
 
 class CompositionViews extends StatelessWidget {
   final EditorController controller;
@@ -67,6 +68,7 @@ class CompositionViews extends StatelessWidget {
         return Stack(fit: StackFit.expand, children: [
           layout == '1' ? content : RepaintBoundary(key: viewsKey, child: content),
           Positioned(top: 6, right: 6, child: _LayoutSwitch(controller: controller)),
+          const Positioned(top: 6, left: 6, child: ViewerToolbar()), // win-43
         ]);
       },
     );
@@ -148,6 +150,99 @@ class WorkingView extends StatefulWidget {
 class _WorkingViewState extends State<WorkingView> {
   EditorController get c => widget.controller;
 
+  // win-43 >>> editable working views: gizmos, select by click, camera grab
+  ViewCam? _vc;
+  List<RenderItem> _items = const [];
+  double _scale = 1;
+  Offset _offset = Offset.zero;
+  final List<GizmoGeom> _geoms = [];
+  GizmoView? _gview;
+  GizmoHandle? _hot;
+  GizmoGeom? _hotGeom;
+  GizmoDrag? _drag;
+  bool _orbiting = false;
+
+  Offset _toComp(Offset local) => (local - _offset) / _scale;
+
+  ({GizmoGeom g, GizmoHandle h})? _hitGizmo(Offset p) {
+    for (final g in _geoms) {
+      final h = g.hit(p, 10 / _scale);
+      if (h != null) return (g: g, h: h);
+    }
+    return null;
+  }
+
+  bool _hitCamera(Offset p) {
+    final vc = _vc;
+    if (vc == null || c.comp.camera.mode != CameraMode.threeD) return false;
+    final cam = Evaluator.camera3D(c.comp, c.time);
+    final q = vc.toScreen(cam.position);
+    return q.visible && (Offset(q.x, q.y) - p).distance < 22 / _scale;
+  }
+
+  void _tap(Offset local) {
+    final p = _toComp(local);
+    if (_hitGizmo(p) != null) return;
+    if (_hitCamera(p)) {
+      c.selectCamera();
+      return;
+    }
+    for (final it in _items.reversed) {
+      if (!it.layer.locked && it.containsPoint(p.dx, p.dy)) {
+        c.select(it.layer.id);
+        return;
+      }
+    }
+    c.select(null);
+  }
+
+  void _panStart(Offset local) {
+    final p = _toComp(local);
+    final hit = _hitGizmo(p);
+    final v = _gview;
+    if (hit != null && v != null && !c.playing) {
+      c.beginGesture();
+      _drag = GizmoDrag(c.comp, c.time, hit.g, hit.h, p)..setView(v);
+      setState(() {});
+      return;
+    }
+    _orbiting = widget.kind.startsWith('custom');
+  }
+
+  void _panUpdate(DragUpdateDetails d) {
+    final dr = _drag;
+    if (dr != null) {
+      final cmds = dr.update(_toComp(d.localPosition));
+      if (cmds.isNotEmpty) c.tryRun({'op': 'batch', 'commands': cmds}, record: false);
+      return;
+    }
+    if (!_orbiting) return;
+    final o = _orbit();
+    o[0] = o[0] + d.delta.dx * 0.4;
+    o[1] = (o[1] + d.delta.dy * 0.3).clamp(-85.0, 85.0).toDouble();
+    _setOrbit(o);
+  }
+
+  void _panEnd() {
+    if (_drag != null) {
+      _drag = null;
+      c.endGesture();
+      setState(() {});
+    }
+    _orbiting = false;
+  }
+
+  void _hover(Offset local) {
+    final hit = _hitGizmo(_toComp(local));
+    if (hit?.h != _hot || hit?.g != _hotGeom) {
+      setState(() {
+        _hot = hit?.h;
+        _hotGeom = hit?.g;
+      });
+    }
+  }
+  // <<< win-43
+
   List<double> _orbit() => c.comp.customViews[widget.kind] ?? List.of(ViewCam.customDefaults[widget.kind] ?? ViewCam.customDefaults['custom1']!);
 
   void _setOrbit(List<double> o) =>
@@ -159,8 +254,10 @@ class _WorkingViewState extends State<WorkingView> {
     return LayoutBuilder(builder: (context, box) {
       final comp = c.comp;
       final scale = math.min(box.maxWidth / comp.width, box.maxHeight / comp.height);
+      _scale = scale;
+      _offset = Offset((box.maxWidth - comp.width * scale) / 2, (box.maxHeight - comp.height * scale) / 2);
       Widget view = AnimatedBuilder(
-        animation: Listenable.merge([c, c.timeNotifier]),
+        animation: Listenable.merge([c, c.timeNotifier, ViewTools.instance]),
         builder: (context, _) {
           final t = c.time;
           ViewCam? vc;
@@ -172,6 +269,25 @@ class _WorkingViewState extends State<WorkingView> {
           }
           if (vc == null) return Center(child: Text(error ?? '', style: const TextStyle(color: Colors.white54, fontSize: 11)));
           final items = Evaluator.evaluate(comp, t, velocity: false, view: vc);
+          _vc = vc;
+          _items = items;
+          // win-43: gizmos for the selection (camera: body + point of interest)
+          _geoms.clear();
+          final gv = GizmoView.working(vc);
+          _gview = gv;
+          final tool = ViewTools.instance.tool;
+          final main = gizmoTargetFor(c, working: true);
+          if (main != null) {
+            final g = GizmoGeom.build(main, gv, toolFor(main, tool), 80 / scale);
+            if (g != null) _geoms.add(g);
+          }
+          if (c.cameraSelected) {
+            final poi = gizmoTargetFor(c, working: true, cameraPart: 'poi');
+            if (poi != null) {
+              final g = GizmoGeom.build(poi, gv, 'move', 56 / scale);
+              if (g != null) _geoms.add(g);
+            }
+          }
           return FittedBox(
             fit: BoxFit.contain,
             child: Stack(children: [
@@ -187,28 +303,34 @@ class _WorkingViewState extends State<WorkingView> {
                 nested: true, // transparent: the working view keeps its grey backdrop
                 previewScale: scale * (MediaQuery.maybeDevicePixelRatioOf(context) ?? 1),
               ),
-              SizedBox(width: comp.width, height: comp.height, child: IgnorePointer(child: CustomPaint(painter: _GizmoPainter(vc, comp, t, c.selectedLayerId)))),
+              SizedBox(width: comp.width, height: comp.height, child: IgnorePointer(child: CustomPaint(painter: _GizmoPainter(vc, comp, t, c.selectedLayerId, c.cameraSelected)))),
+              for (final g in _geoms)
+                SizedBox(
+                  width: comp.width,
+                  height: comp.height,
+                  child: IgnorePointer(child: CustomPaint(painter: GizmoPainter(g, identical(g, _drag?.g) ? _drag!.h : (identical(g, _hotGeom) ? _hot : null), 1 / scale))),
+                ),
             ]),
           );
         },
       );
       view = ColoredBox(color: const Color(0xFF2A2D33), child: Center(child: view));
-      if (!custom) return view;
       return Listener(
         onPointerSignal: (e) {
-          if (e is PointerScrollEvent) {
+          if (custom && e is PointerScrollEvent) {
             final o = _orbit();
             o[2] = (o[2] * (e.scrollDelta.dy > 0 ? 1.08 : 0.92)).clamp(0.4, 8.0).toDouble();
             _setOrbit(o);
           }
         },
+        onPointerHover: (e) => _hover(e.localPosition),
         child: GestureDetector(
-          onPanUpdate: (d) {
-            final o = _orbit();
-            o[0] = o[0] + d.delta.dx * 0.4;
-            o[1] = (o[1] + d.delta.dy * 0.3).clamp(-85.0, 85.0).toDouble();
-            _setOrbit(o);
-          },
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (d) => _tap(d.localPosition),
+          onPanStart: (d) => _panStart(d.localPosition),
+          onPanUpdate: _panUpdate,
+          onPanEnd: (_) => _panEnd(),
+          onPanCancel: _panEnd,
           child: view,
         ),
       );
@@ -268,7 +390,8 @@ class _GizmoPainter extends CustomPainter {
   final Composition comp;
   final double t;
   final String? selected;
-  _GizmoPainter(this.vc, this.comp, this.t, this.selected);
+  final bool cameraSelected; // win-43
+  _GizmoPainter(this.vc, this.comp, this.t, this.selected, [this.cameraSelected = false]);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -298,6 +421,9 @@ class _GizmoPainter extends CustomPainter {
         if (cn != null) canvas.drawLine(pos, cn, paint..color = const Color(0x99FFC107));
       }
       canvas.drawRect(Rect.fromCenter(center: pos, width: 26, height: 18), Paint()..color = const Color(0xFFFFC107));
+      if (cameraSelected) { // win-43: selected camera
+        canvas.drawRect(Rect.fromCenter(center: pos, width: 34, height: 26), Paint()..color = const Color(0xFF4FC3F7)..style = PaintingStyle.stroke..strokeWidth = 2.5);
+      }
     }
     for (int i = 0; i < 4; i++) {
       final a = corners[i], b = corners[(i + 1) % 4];
@@ -334,3 +460,69 @@ class _GizmoPainter extends CustomPainter {
   bool shouldRepaint(covariant _GizmoPainter old) => true;
 }
 // <<< win-40
+
+// win-43 >>> viewer toolbar: transform tools, camera tools, world/local axes, gizmos on/off
+class ViewerToolbar extends StatelessWidget {
+  const ViewerToolbar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ViewTools.instance;
+    return ListenableBuilder(
+      listenable: t,
+      builder: (context, _) {
+        Widget btn(String tool) {
+          final on = t.tool == tool;
+          return Tooltip(
+            message: ViewTools.labels[tool] ?? tool,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(5),
+              onTap: () => t.tool = tool,
+              child: Container(
+                width: 28,
+                height: 26,
+                decoration: BoxDecoration(color: on ? const Color(0xFF2D6CDF) : Colors.transparent, borderRadius: BorderRadius.circular(5)),
+                child: Icon(ViewTools.icons[tool], size: 16, color: on ? Colors.white : Colors.white70),
+              ),
+            ),
+          );
+        }
+
+        Widget sep() => Container(width: 1, height: 18, margin: const EdgeInsets.symmetric(horizontal: 4), color: Colors.white24);
+        return Material(
+          color: const Color(0xE615181D),
+          borderRadius: BorderRadius.circular(7),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              for (final x in ViewTools.transformTools) btn(x),
+              sep(),
+              for (final x in ViewTools.cameraTools) btn(x),
+              sep(),
+              Tooltip(
+                message: 'Axes: ${t.local ? 'local (layer)' : 'world'} (X)',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(5),
+                  onTap: () => t.local = !t.local,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                    child: Text(t.local ? 'Local' : 'World', style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ),
+              Tooltip(
+                message: t.gizmos ? 'Hide gizmos' : 'Show gizmos',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(5),
+                  onTap: () => t.gizmos = !t.gizmos,
+                  child: SizedBox(width: 26, height: 26, child: Icon(t.gizmos ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 15, color: Colors.white70)),
+                ),
+              ),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+}
+// <<< win-43

@@ -6,6 +6,10 @@ import '../../core/presets/scene3d.dart';
 import '../../state/editor_controller.dart';
 import '../common.dart';
 import 'prop_row.dart';
+import 'scrub_field.dart'; // win-43
+import 'package:vector_math/vector_math_64.dart' show Vector3; // win-43
+import '../../core/engine/evaluator.dart'; // win-43
+import '../../core/model/layer.dart'; // win-43
 
 /// Camera mode, one-tap camera moves and keyframeable camera properties.
 class CameraPanel extends StatefulWidget {
@@ -29,9 +33,6 @@ class _CameraPanelState extends State<CameraPanel> {
       builder: (context, _) {
         final comp = c.comp;
         final mode = comp.camera.mode;
-        final w = comp.width, h = comp.height;
-        PropRow row(String prop, String label, double min, double max, {int? comp, int decimals = 0}) =>
-            PropRow(c: c, ref: PropRef('camera', prop), component: comp, label: label, min: min, max: max, decimals: decimals);
         final presets = mode == CameraMode.twoD
             ? CameraPresets.twoD
             : mode == CameraMode.threeD
@@ -96,29 +97,17 @@ class _CameraPanelState extends State<CameraPanel> {
                 ),
             ]),
             _ScenePanel(c: c, duration: _duration, direction: _direction),
-            if (mode == CameraMode.threeD) ...[
-              const SectionTitle('3D camera'),
-              row(CamProps.position, 'Pos X', -w, w * 2, comp: 0),
-              row(CamProps.position, 'Pos Y', -h * 2, h * 3, comp: 1),
-              row(CamProps.position, 'Pos Z', -8000, 4000, comp: 2),
-              row(CamProps.poi, 'Target X', -w, w * 2, comp: 0),
-              row(CamProps.poi, 'Target Y', -h, h * 2, comp: 1),
-              row(CamProps.poi, 'Target Z', -4000, 8000, comp: 2),
-              row(CamProps.zoom, 'Zoom', 100, 10000),
-              row(CamProps.roll, 'Roll', -180, 180, decimals: 1),
-              const SectionTitle('Depth of field'),
-              row(CamProps.aperture, 'Aperture', 0, 100),
-              row(CamProps.focus, 'Focus dist', 100, 12000),
-            ],
-            if (mode == CameraMode.twoD) ...[
-              const SectionTitle('2D camera'),
-              row(CamProps.pan, 'Pan X', -w, w * 2, comp: 0),
-              row(CamProps.pan, 'Pan Y', -h, h * 2, comp: 1),
-              row(CamProps.zoom2d, 'Zoom %', 10, 800),
-              row(CamProps.rotation2d, 'Rotation', -180, 180, decimals: 1),
-              row(CamProps.shake, 'Shake', 0, 100),
-              row(CamProps.shakeSpeed, 'Shake speed', 0.1, 10, decimals: 1),
-            ],
+            // win-43 >>> After Effects style camera controls (scrub fields, no limits, every axis)
+            if (mode == CameraMode.threeD) ..._threeD(comp.width),
+            if (mode == CameraMode.twoD)
+              PropGroup(title: '2D Camera', children: [
+                VecPropRow(c: c, ref: const PropRef('camera', CamProps.pan), label: 'Pan', names: const ['X', 'Y']),
+                VecPropRow(c: c, ref: const PropRef('camera', CamProps.zoom2d), label: 'Zoom', suffix: '%', step: 0.5, min: 1),
+                VecPropRow(c: c, ref: const PropRef('camera', CamProps.rotation2d), label: 'Rotation', suffix: '°', step: 0.25),
+                VecPropRow(c: c, ref: const PropRef('camera', CamProps.shake), label: 'Shake', step: 0.25, min: 0),
+                VecPropRow(c: c, ref: const PropRef('camera', CamProps.shakeSpeed), label: 'Shake speed', step: 0.05, min: 0, decimals: 2),
+              ]),
+            // <<< win-43
             if (mode == CameraMode.off)
               const Padding(
                 padding: EdgeInsets.only(top: 16),
@@ -140,6 +129,152 @@ class _CameraPanelState extends State<CameraPanel> {
       },
     );
   }
+
+  // win-43 >>> 3D camera groups
+  List<Widget> _threeD(double w) {
+    final rig = c.comp.camera;
+    final oneNode = rig.type == 'one_node';
+    final zoom = rig.prop(CamProps.zoom).valueAt(c.time)[0];
+    final lens = lensForZoom(w, zoom);
+    final fov = fovForZoom(w, zoom);
+    const cam = 'camera';
+    return [
+      PropGroup(
+        title: 'Camera',
+        trailing: SegmentedButton<String>(
+          style: const ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: 'two_node', label: Text('Two-node', style: TextStyle(fontSize: 11))),
+            ButtonSegment(value: 'one_node', label: Text('One-node', style: TextStyle(fontSize: 11))),
+          ],
+          selected: {rig.type},
+          onSelectionChanged: (v) => c.tryRun({'op': 'set_camera', 'type': v.first}),
+        ),
+        children: [
+          VecPropRow(c: c, ref: const PropRef(cam, CamProps.position), label: 'Position', names: const ['X', 'Y', 'Z']),
+          if (!oneNode) VecPropRow(c: c, ref: const PropRef(cam, CamProps.poi), label: 'Point of Interest', names: const ['X', 'Y', 'Z']),
+          VecPropRow(c: c, ref: const PropRef(cam, CamProps.orientation), label: 'Orientation', names: const ['X', 'Y', 'Z'], suffix: '°', step: 0.25),
+          VecPropRow(c: c, ref: const PropRef(cam, CamProps.rotation), label: 'X Rotation', components: const [0], suffix: '°', step: 0.25),
+          VecPropRow(c: c, ref: const PropRef(cam, CamProps.rotation), label: 'Y Rotation', components: const [1], suffix: '°', step: 0.25),
+          VecPropRow(c: c, ref: const PropRef(cam, CamProps.rotation), label: 'Z Rotation', components: const [2], suffix: '°', step: 0.25),
+          if (c.selectedLayer != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Wrap(spacing: 6, children: [
+                if (!oneNode) _chip(Icons.center_focus_strong_outlined, 'Look at selected', _lookAtSelected),
+                _chip(Icons.filter_center_focus, 'Focus on selected', _focusOnSelected),
+              ]),
+            ),
+        ],
+      ),
+      PropGroup(title: 'Lens', children: [
+        VecPropRow(c: c, ref: const PropRef(cam, CamProps.zoom), label: 'Zoom', step: 2, min: 1, decimals: 0),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+          child: Row(children: [
+            const SizedBox(width: 21),
+            const Expanded(child: Text('Focal length', style: TextStyle(fontSize: 12.5, color: Color(0xFFD5D8DE)))),
+            ScrubNumber(
+              value: lens,
+              suffix: ' mm',
+              decimals: 1,
+              step: 0.2,
+              min: 5,
+              max: 1000,
+              width: 76,
+              onStart: c.beginGesture,
+              onChanged: (v) => c.tryRun({'op': 'set_property', 'target': cam, 'prop': CamProps.zoom, 'value': [zoomForLens(w, v)]}, record: false),
+              onEnd: c.endGesture,
+              onSubmit: (v) => c.tryRun({'op': 'set_property', 'target': cam, 'prop': CamProps.zoom, 'value': [zoomForLens(w, v)]}),
+            ),
+            const SizedBox(width: 50),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
+          child: Row(children: [
+            const SizedBox(width: 21),
+            const Expanded(child: Text('Angle of view', style: TextStyle(fontSize: 12.5, color: Color(0xFFD5D8DE)))),
+            ScrubNumber(
+              value: fov,
+              suffix: '°',
+              decimals: 1,
+              step: 0.1,
+              min: 1,
+              max: 170,
+              width: 76,
+              onStart: c.beginGesture,
+              onChanged: (v) => c.tryRun({'op': 'set_property', 'target': cam, 'prop': CamProps.zoom, 'value': [zoomForFov(w, v)]}, record: false),
+              onEnd: c.endGesture,
+              onSubmit: (v) => c.tryRun({'op': 'set_property', 'target': cam, 'prop': CamProps.zoom, 'value': [zoomForFov(w, v)]}),
+            ),
+            const SizedBox(width: 50),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, left: 4),
+          child: Wrap(spacing: 4, runSpacing: 4, children: [
+            for (final mm in kLensPresetsMm)
+              ChoiceChip(
+                visualDensity: VisualDensity.compact,
+                label: Text('${mm}mm', style: const TextStyle(fontSize: 11)),
+                selected: (lens - mm).abs() < 0.5,
+                onSelected: (_) => c.tryRun({'op': 'set_camera', 'lens_mm': mm}),
+              ),
+          ]),
+        ),
+      ]),
+      PropGroup(title: 'Depth of Field', children: [
+        SwitchListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.only(left: 4),
+          title: const Text('Lock focus to point of interest', style: TextStyle(fontSize: 12.5)),
+          value: rig.focusLock,
+          onChanged: (v) => c.tryRun({'op': 'set_camera', 'focus_lock': v}),
+        ),
+        VecPropRow(c: c, ref: const PropRef(cam, CamProps.focus), label: 'Focus Distance', step: 2, min: 1, decimals: 0),
+        VecPropRow(c: c, ref: const PropRef(cam, CamProps.aperture), label: 'Aperture', step: 0.5, min: 0),
+        VecPropRow(c: c, ref: const PropRef(cam, CamProps.blurLevel), label: 'Blur Level', suffix: '%', step: 1, min: 0, decimals: 0),
+      ]),
+      PropGroup(title: 'Viewer tools', initiallyOpen: false, children: const [
+        Padding(
+          padding: EdgeInsets.all(6),
+          child: Text(
+            'In the viewer: W move · E rotate · R scale · C camera tools (orbit / pan / dolly; press C again to cycle) · '
+            'X toggles world / local axes. Drag the coloured arrows, rings and boxes; the mouse wheel dollies with a camera tool.',
+            style: TextStyle(fontSize: 11.5, color: Colors.white60),
+          ),
+        ),
+      ]),
+    ];
+  }
+
+  Widget _chip(IconData icon, String label, VoidCallback onTap) =>
+      ActionChip(visualDensity: VisualDensity.compact, avatar: Icon(icon, size: 15), label: Text(label, style: const TextStyle(fontSize: 11.5)), onPressed: onTap);
+
+  List<double>? _selectedWorld() {
+    final l = c.selectedLayer;
+    if (l == null) return null;
+    final m = Evaluator.worldMatrix(c.comp, l, c.time, {});
+    final a = l.prop(Props.anchor).valueAt(c.time);
+    final p = m.transform3(Vector3(a[0], a[1], a.length > 2 ? a[2] : 0));
+    return [p.x, p.y, p.z];
+  }
+
+  void _lookAtSelected() {
+    final p = _selectedWorld();
+    if (p != null) c.tryRun({'op': 'set_property', 'target': 'camera', 'prop': CamProps.poi, 'value': p});
+  }
+
+  void _focusOnSelected() {
+    final p = _selectedWorld();
+    if (p == null) return;
+    final cam = Evaluator.camera3D(c.comp, c.time);
+    final d = cam.depthOf(Vector3(p[0], p[1], p[2]));
+    if (d > 1) c.tryRun({'op': 'set_property', 'target': 'camera', 'prop': CamProps.focus, 'value': [d]});
+  }
+  // <<< win-43
 
   void _reset() {
     final d = CameraRig.defaults(c.comp.width, c.comp.height);

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'anim_prop.dart';
 
 /// off  = no camera; 3D layers still use a fixed default perspective.
@@ -32,9 +34,10 @@ class CamProps {
   static const orientation = 'orientation'; // [x°, y°, z°] one-node camera aim (pitch, yaw, roll)
   static const blurLevel = 'blur_level'; // [%] depth of field strength multiplier (AE Blur Level)
   // <<< win-40
+  static const rotation = 'rotation'; // win-43: [x°, y°, z°] AE camera X/Y/Z Rotation (on top of the aim)
 
   static const twoDProps = [pan, zoom2d, rotation2d, shake, shakeSpeed];
-  static const threeDProps = [position, poi, zoom, roll, focus, aperture, orientation, blurLevel];
+  static const threeDProps = [position, poi, zoom, roll, focus, aperture, orientation, blurLevel, rotation];
 }
 
 /// Default AE-like zoom for a comp width (≈ 50mm lens, 39.6° horizontal FOV).
@@ -46,6 +49,9 @@ const kLensPresetsMm = [15, 20, 24, 28, 35, 50, 80, 135, 200];
 double zoomForLens(double compWidth, double mm) => compWidth * mm / kFilmSizeMm;
 double lensForZoom(double compWidth, double zoom) => zoom * kFilmSizeMm / compWidth;
 // <<< win-40
+// win-43: angle of view (horizontal, degrees) for a zoom, and back.
+double fovForZoom(double compWidth, double zoom) => 2 * math.atan(compWidth / 2 / zoom) * 180 / math.pi;
+double zoomForFov(double compWidth, double fovDeg) => compWidth / 2 / math.tan((fovDeg.clamp(1.0, 170.0)) * math.pi / 360);
 
 class CameraRig {
   CameraMode mode;
@@ -82,6 +88,7 @@ class CameraRig {
     props.putIfAbsent(CamProps.aperture, () => AnimProp([0]));
     props.putIfAbsent(CamProps.orientation, () => AnimProp([0, 0, 0])); // win-40
     props.putIfAbsent(CamProps.blurLevel, () => AnimProp([100])); // win-40
+    props.putIfAbsent(CamProps.rotation, () => AnimProp([0, 0, 0])); // win-43
   }
 
   AnimProp prop(String key) {
