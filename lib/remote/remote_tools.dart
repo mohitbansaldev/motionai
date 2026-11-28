@@ -1226,8 +1226,9 @@ class RemoteTools implements McpBackend {
 
   // win-43 >>> Flow panel
   Future<McpToolResult> _flowPanel(String name, Map<String, dynamic> a, McpProgress? progress) async {
-    final f = host;
-    if (f is! RemoteFlowPanel) throw _Fail('The Flow panel needs the MotionAI Windows app (build 43 or newer).');
+    final h = host;
+    if (h is! RemoteFlowPanel) throw _Fail('The Flow panel needs the MotionAI Windows app (build 43 or newer).');
+    final f = h as RemoteFlowPanel;
     try {
       switch (name) {
         case 'flow_panel_open':
