@@ -25,6 +25,7 @@ import 'panels/layer_panel.dart';
 import 'preview/multi_view.dart'; // win-40
 import 'preview/preview_quality.dart'; // PERF (Agent O)
 import 'theme.dart';
+import 'preview/gizmo3d.dart' show ViewTools; // win-43
 import 'timeline/timeline_view.dart';
 import 'library/library_sheet.dart';
 import 'library/save_template_dialog.dart';
@@ -53,6 +54,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
   bool _lastCamera = false;
   final _timelineKey = GlobalKey<TimelineViewState>();
   double _timelineH = 250;
+  bool _leftOpen = true; // win-43: desktop left drawer (Add / media)
   bool _dropHover = false;
   bool _importing = false;
   Timer? _nudgeTimer;
@@ -337,6 +339,16 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
     } else if (k == LogicalKeyboardKey.escape) {
       if (sel == null && !c.cameraSelected && !c.multiSelectMode) return false;
       c.clearSelection(); // BULK (Agent N): clears the whole selection
+    } else if (k == LogicalKeyboardKey.keyW) { // win-43 >>> viewer tools
+      ViewTools.instance.tool = 'move';
+    } else if (k == LogicalKeyboardKey.keyE) {
+      ViewTools.instance.tool = 'rotate';
+    } else if (k == LogicalKeyboardKey.keyR) {
+      ViewTools.instance.tool = 'scale';
+    } else if (k == LogicalKeyboardKey.keyC) {
+      ViewTools.instance.cycleCamera();
+    } else if (k == LogicalKeyboardKey.keyX) {
+      ViewTools.instance.local = !ViewTools.instance.local; // <<< win-43
     } else if (k == LogicalKeyboardKey.f1 || k == LogicalKeyboardKey.slash) {
       _showShortcuts();
     } else {
@@ -444,6 +456,9 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
       (',  .', 'Previous / next frame'),
       ('Home / End', 'Go to start / end'),
       ('S', 'Split selected layer at the playhead'),
+      ('W / E / R', 'Viewer: move / rotate / scale gizmo'), // win-43
+      ('C', 'Viewer: camera tools (orbit → pan → dolly)'),
+      ('X', 'Gizmo axes: world / local'),
       ('Ctrl+D', 'Duplicate layer'),
       ('Delete', 'Delete layer'),
       ('Ctrl+Z / Ctrl+Y', 'Undo / redo'),
@@ -581,38 +596,66 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ExportScreen(project: c.project)));
   }
 
+  // win-43 >>> top bar: brand mark, project + format pill, Claude link status, undo/redo, menu, Export
   PreferredSizeWidget _appBar() => AppBar(
         titleSpacing: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new, size: 20), onPressed: () => Navigator.pop(context)),
-        title: GestureDetector(
-          onTap: _rename,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(c.project.name, overflow: TextOverflow.ellipsis),
-            Text('${c.comp.width.round()}×${c.comp.height.round()} · ${c.comp.fps.round()} fps',
-                style: const TextStyle(fontSize: 11, color: MA.textDim, fontWeight: FontWeight.w400)),
-          ]),
-        ),
+        toolbarHeight: 52,
+        shape: const Border(bottom: BorderSide(color: MA.stroke)),
+        leading: IconButton(tooltip: 'Projects', icon: const Icon(Icons.arrow_back_ios_new, size: 17), onPressed: () => Navigator.pop(context)),
+        title: Row(children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(gradient: MA.gradient, borderRadius: BorderRadius.circular(7)),
+            child: const Icon(Icons.movie_filter_rounded, size: 16, color: MA.onAccent),
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: _rename,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Text(c.project.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          _pill('${c.comp.width.round()}×${c.comp.height.round()} · ${c.comp.fps.round()} fps'),
+        ]),
         actions: [
+          if (RemoteControl.supported)
+            ListenableBuilder(
+              listenable: RemoteControl.instance,
+              builder: (_, _) {
+                final rc = RemoteControl.instance;
+                final live = rc.connected;
+                return Tooltip(
+                  message: live ? 'Claude is connected${rc.client == null ? '' : ' (${rc.client})'}' : (rc.running ? 'Claude control is on — waiting for Claude' : 'Claude control is off'),
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(color: MA.surface2, borderRadius: BorderRadius.circular(20), border: Border.all(color: MA.stroke)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: live ? MA.success : (rc.running ? MA.warning : MA.textFaint))),
+                      const SizedBox(width: 6),
+                      Text(live ? 'Claude live' : 'Claude', style: const TextStyle(fontSize: 11.5, color: MA.textDim, fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                );
+              },
+            ),
           AnimatedBuilder(
             animation: c,
             builder: (_, _) => Row(children: [
-              IconButton(tooltip: 'Undo', icon: const Icon(Icons.undo_rounded), onPressed: c.canUndo ? c.undo : null),
-              IconButton(tooltip: 'Redo', icon: const Icon(Icons.redo_rounded), onPressed: c.canRedo ? c.redo : null),
+              IconButton(tooltip: 'Undo (Ctrl+Z)', icon: const Icon(Icons.undo_rounded, size: 19), onPressed: c.canUndo ? c.undo : null),
+              IconButton(tooltip: 'Redo (Ctrl+Y)', icon: const Icon(Icons.redo_rounded, size: 19), onPressed: c.canRedo ? c.redo : null),
             ]),
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (v) {
-              if (v == 'console') CommandConsole.open(context, c);
-              if (v == 'captions') CaptionsSheet.open(context, c);
-              if (v == 'rename') _rename();
-              if (v == 'keys') _showShortcuts();
-              if (v == 'import') _importDialog();
-              if (v == 'library') LibrarySheet.open(context, c);
-              if (v == 'templates') TemplateGallery.open(context, c);
-              if (v == 'director') DirectorScreen.open(context, c);
-              if (v == 'sound') SoundSheet.open(context, c);
-            },
+            tooltip: 'More',
+            icon: const Icon(Icons.more_horiz_rounded),
+            onSelected: _menu,
             itemBuilder: (_) => [
               if (_desktopOs) const PopupMenuItem(value: 'import', child: Text('Import files…  (Ctrl+I)')),
               const PopupMenuItem(value: 'director', child: Text('Director (AI makes the video)')),
@@ -626,18 +669,124 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
             ],
           ),
           Padding(
-            padding: const EdgeInsets.only(right: 10, left: 4),
+            padding: const EdgeInsets.only(right: 12, left: 6),
             child: GradientButton(label: 'Export', icon: Icons.ios_share_rounded, onTap: _export),
           ),
         ],
       );
 
+  void _menu(String v) {
+    if (v == 'console') CommandConsole.open(context, c);
+    if (v == 'captions') CaptionsSheet.open(context, c);
+    if (v == 'rename') _rename();
+    if (v == 'keys') _showShortcuts();
+    if (v == 'import') _importDialog();
+    if (v == 'library') LibrarySheet.open(context, c);
+    if (v == 'templates') TemplateGallery.open(context, c);
+    if (v == 'director') DirectorScreen.open(context, c);
+    if (v == 'sound') SoundSheet.open(context, c);
+  }
+
+  Widget _pill(String s) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: MA.surface2, borderRadius: BorderRadius.circular(6), border: Border.all(color: MA.stroke)),
+        child: Text(s, style: const TextStyle(fontSize: 11, color: MA.textDim, fontWeight: FontWeight.w600, fontFeatures: [FontFeature.tabularFigures()])),
+      );
+
+  /// Desktop tool rail (left edge).
+  Widget _rail() {
+    Widget item(IconData icon, String tip, VoidCallback onTap, {bool on = false, Color? color}) => Tooltip(
+          message: tip,
+          preferBelow: false,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: onTap,
+            child: Container(
+              width: 40,
+              height: 40,
+              margin: const EdgeInsets.symmetric(vertical: 3),
+              decoration: BoxDecoration(
+                color: on ? MA.accent.withValues(alpha: 0.16) : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: on ? MA.accent.withValues(alpha: 0.5) : Colors.transparent),
+              ),
+              child: Icon(icon, size: 20, color: on ? MA.accentHi : (color ?? MA.textDim)),
+            ),
+          ),
+        );
+    return Container(
+      width: 54,
+      decoration: const BoxDecoration(color: MA.surface, border: Border(right: BorderSide(color: MA.stroke))),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(children: [
+        item(Icons.add_box_outlined, 'Add media, text, shapes', () => setState(() => _leftOpen = !_leftOpen), on: _leftOpen),
+        item(Icons.photo_library_outlined, 'Asset library', () => LibrarySheet.open(context, c)),
+        item(Icons.dashboard_customize_outlined, 'Templates', () => TemplateGallery.open(context, c)),
+        item(Icons.movie_creation_outlined, 'Director (AI makes the video)', () => DirectorScreen.open(context, c)),
+        item(Icons.graphic_eq_rounded, 'Sound FX, beats & mix', () => SoundSheet.open(context, c)),
+        item(Icons.closed_caption_outlined, 'Auto captions', () => CaptionsSheet.open(context, c)),
+        const Spacer(),
+        item(Icons.keyboard_alt_outlined, 'Keyboard shortcuts (F1)', _showShortcuts),
+        item(Icons.terminal_rounded, 'Edit commands', () => CommandConsole.open(context, c)),
+      ]),
+    );
+  }
+
+  /// Desktop status bar (bottom edge).
+  Widget _statusBar() => AnimatedBuilder(
+        animation: Listenable.merge([c, c.timeNotifier]),
+        builder: (_, _) {
+          final t = c.time;
+          final fps = c.comp.fps <= 0 ? 30.0 : c.comp.fps;
+          final frames = (t * fps).round();
+          String tc(double secs) {
+            final f = (secs * fps).round();
+            final s = f ~/ fps.round();
+            return '${(s ~/ 3600).toString().padLeft(2, '0')}:${(s ~/ 60 % 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}:${(f % fps.round()).toString().padLeft(2, '0')}';
+          }
+
+          final sel = c.selectedLayer;
+          const st = TextStyle(fontSize: 11, color: MA.textDim, fontFeatures: [FontFeature.tabularFigures()]);
+          return Container(
+            height: 26,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: const BoxDecoration(color: MA.surface, border: Border(top: BorderSide(color: MA.stroke))),
+            child: Row(children: [
+              Text(tc(t), style: st.copyWith(color: MA.accentHi, fontWeight: FontWeight.w700)),
+              const SizedBox(width: 6),
+              Text('/ ${tc(c.comp.duration)}', style: st),
+              const SizedBox(width: 14),
+              Text('frame $frames', style: st),
+              const SizedBox(width: 14),
+              Text('${c.comp.layers.length} layers', style: st),
+              if (sel != null) ...[
+                const SizedBox(width: 14),
+                Flexible(child: Text('● ${sel.name}', overflow: TextOverflow.ellipsis, style: st.copyWith(color: MA.text))),
+              ],
+              if (c.cameraSelected) ...[const SizedBox(width: 14), Text('● Camera', style: st.copyWith(color: MA.text))],
+              const Spacer(),
+              Text('Camera: ${c.comp.camera.mode.name == 'threeD' ? '3D' : c.comp.camera.mode.name == 'twoD' ? '2D' : 'off'}', style: st),
+              const SizedBox(width: 14),
+              ListenableBuilder(
+                listenable: ViewTools.instance,
+                builder: (_, _) => Text('Tool: ${ViewTools.labels[ViewTools.instance.tool] ?? ViewTools.instance.tool}', style: st),
+              ),
+            ]),
+          );
+        },
+      );
+  // <<< win-43
+
   Widget _preview() => Padding(
-        padding: const EdgeInsets.fromLTRB(10, 4, 10, 0),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           child: Container(
-            color: const Color(0xFF050608),
+            decoration: BoxDecoration(
+              color: const Color(0xFF040506), // win-43
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: MA.stroke),
+            ),
             child: Stack(fit: StackFit.expand, children: [
               Positioned.fill(
                 child: GestureDetector(
@@ -671,14 +820,18 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
       );
 
   Widget _dock() => Container(
-        margin: const EdgeInsets.fromLTRB(10, 6, 10, 0),
+        margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
         padding: const EdgeInsets.all(4),
-        decoration: MA.card(color: MA.surface, radius: 14),
+        decoration: MA.panel(radius: 12), // win-43
         child: TabBar(
           controller: _tabs,
           dividerColor: Colors.transparent,
           indicatorSize: TabBarIndicatorSize.tab,
-          indicator: BoxDecoration(color: MA.surface3, borderRadius: BorderRadius.circular(10)),
+          indicator: BoxDecoration(
+            color: MA.surface3,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: MA.accent.withValues(alpha: 0.45)),
+          ), // win-43
           labelColor: MA.text,
           unselectedLabelColor: MA.textDim,
           labelPadding: EdgeInsets.zero,
@@ -697,7 +850,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
 
   Widget _panels() => Container(
         margin: const EdgeInsets.fromLTRB(10, 6, 10, 8),
-        decoration: MA.card(color: MA.surface, radius: 14),
+        decoration: MA.panel(radius: 12), // win-43
         clipBehavior: Clip.antiAlias,
         child: TabBarView(
           controller: _tabs,
@@ -715,7 +868,7 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
   Widget _timeline(double height) => Container(
         height: height,
         margin: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: MA.card(color: MA.surface, radius: 14),
+        decoration: MA.panel(radius: 12), // win-43
         clipBehavior: Clip.antiAlias,
         child: TimelineView(key: _timelineKey, controller: c, onLayerMenu: _layerMenu, onLayerContextMenu: _layerContextMenu),
       );
@@ -726,9 +879,30 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
     final side = (box.maxWidth * 0.27).clamp(330.0, 440.0).toDouble();
     final maxTl = math.max(160.0, box.maxHeight - 300);
     final tl = _timelineH.clamp(150.0, maxTl).toDouble();
-    return Column(children: [
+    final left = (box.maxWidth * 0.2).clamp(260.0, 340.0).toDouble(); // win-43
+    final showLeft = _leftOpen && box.maxWidth >= 1250;
+    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _rail(), // win-43
+      Expanded(child: Column(children: [
       Expanded(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (showLeft) // win-43: Add / media drawer
+            Container(
+              width: left,
+              margin: const EdgeInsets.fromLTRB(10, 8, 0, 0),
+              decoration: MA.panel(radius: 12),
+              clipBehavior: Clip.antiAlias,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 6, 4),
+                  child: Row(children: [
+                    const Expanded(child: Text('ADD', style: TextStyle(fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800, color: MA.textDim))),
+                    IconButton(tooltip: 'Hide', icon: const Icon(Icons.chevron_left_rounded, size: 18), onPressed: () => setState(() => _leftOpen = false)),
+                  ]),
+                ),
+                Expanded(child: AddPanel(c: c)),
+              ]),
+            ),
           Expanded(
             child: Column(children: [
               Expanded(child: _preview()),
@@ -760,6 +934,8 @@ class _EditorScreenState extends State<EditorScreen> with TickerProviderStateMix
       BulkBar(c: c), // BULK (Agent N): bulk action strip above the timeline
       _timeline(tl),
       const SizedBox(height: 8),
+      _statusBar(), // win-43
+    ])),
     ]);
   }
 

@@ -248,6 +248,21 @@ class GeoCommands {
         }
         rig.type = 'one_node';
       } else if (ty == 'two_node' || ty == '2' || ty == 'twonode') {
+        if (rig.type == 'one_node') {
+          // win-43: keep the aim: point of interest from the orientation (two-node cameras
+          // also apply orientation, so it goes back to 0).
+          final pos = rig.props[CamProps.position]!.valueAt(now);
+          final o = rig.props[CamProps.orientation]!.valueAt(now);
+          final zoom = rig.props[CamProps.zoom]!.valueAt(now)[0];
+          final x = o[0] * math.pi / 180, y = o[1] * math.pi / 180;
+          final dist = math.max(100.0, zoom);
+          rig.props[CamProps.poi]!.staticValue = [
+            pos[0] + math.sin(y) * math.cos(x) * dist,
+            pos[1] + math.sin(x) * dist,
+            pos[2] + math.cos(y) * math.cos(x) * dist,
+          ];
+          rig.props[CamProps.orientation]!.staticValue = [0, 0, o.length > 2 ? o[2] : 0];
+        }
         rig.type = 'two_node';
       } else {
         throw CommandError('Camera type is "one_node" or "two_node"');

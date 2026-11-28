@@ -282,6 +282,10 @@ Answered even when no project is open (and by the stdio bridge while the app is 
 undo / redo availability, `editing_comp`, precomps, media ids, `shots`, every layer top-to-bottom with
 id, type, start / end, transform values or keyframes, effects, masks) and running jobs. With no project
 open it lists saved projects. **Call it first and after edits** to get ids.
+  **Faster (win-43):** `brief: true` (layers as id / name / type / start / end only), `layers: [ids]` (only those),
+  `media: false` (no media list), `since: "<revision>"` (the `revision` of your last answer) → just
+  `{unchanged: true, revision, playhead, selection}` when nothing changed. Use `since` before re-reading a big
+  project and `brief` for overviews; read full layers only for the ones you edit.
 
 **`get_command_spec`** *(ro)* — the full JSON edit-command reference of this build (~72 000 chars).
 Ignore its "answer with one JSON object / reply" section: that is for the in-app assistant; you pass the
@@ -587,8 +591,14 @@ by its id (default id = effect type). Animate params also with `set_keyframe {ta
 Looks in one command: `apply_style {style, layers?}` with `cinematic_doc, shorts_punch, retro_film, noir,
 warm_travel, clean_minimal` (image / video layers) — or put a doc look on an **adjustment layer**:
 `doc_golden_hour, doc_cold_night, doc_archive_sepia, doc_teal_orange, doc_noir_contrast,
-doc_desaturated_war`, plus `film_look` (grain + gate weave + halation + vignette + flicker; combine with a
-doc_* look).
+doc_desaturated_war`, the win-43 cinematic looks `cine_blockbuster, cine_print_film, cine_bleach_bypass,
+cine_moody_green, cine_dreamy_glow, cine_desert_heat, cine_arctic, cine_neon_noir, cine_monochrome_silver,
+cine_vintage_70s`, plus `film_look` (grain + gate weave + halation + vignette + flicker; combine with a
+doc_* or cine_* look).
+- win-43 **depth fog** (aerial perspective, 3D layers): `set_comp {fog: {start: depth px, end: depth px,
+  amount: 0-100, color: "#8FA0B4"}}` · `set_comp {fog: false}` turns it off. Far layers fade toward the
+  colour (smooth ramp from start to end), exactly like distance through air — use it on every deep
+  parallax scene (cool haze outdoors, warm dust in deserts, night blue, smoke). Also in Camera → Atmosphere.
 
 ### 4.6 Masks, track mattes, blend modes, motion paths
 
@@ -680,7 +690,13 @@ Fields on `add_layer` / `update_layer` text layers:
 focus_lock?: true, blur_level?: % (DOF strength), aperture?, focus?, orientation? [pitch, yaw, roll],
 time? (keyframe these at a time)}`.
 
-- `one_node` aims with `orientation`; `two_node` looks at its point of interest.
+- `one_node` aims with `orientation`; `two_node` looks at its point of interest (orientation is applied on top,
+  like AE). Switching between them keeps the current aim.
+- win-43: camera `rotation` [x tilt (+ = look down), y pan (+ = turn right), z roll]° — AE's X/Y/Z Rotation, on top
+  of the aim, for both types: `set_property {target: "camera", prop: "rotation", value: [x, y, z]}` (or
+  `"rotation.y"`); keyframe it like any property. The editor shows it with Position, Point of Interest,
+  Orientation, Zoom / focal length / angle of view and Depth of Field as AE-style scrub fields; Mohit can also
+  drag on-screen gizmos (W move, E rotate, R scale, C camera orbit / pan / dolly, X world/local) in every view.
 - `focus_lock: true` keeps the focus distance on the point of interest (AE "Lock to Zoom" style).
 - `set_view_layout {layout: "1"|"2"|"4"|"1+3", views?: [active|front|left|top|back|right|bottom|custom1|
   custom2|custom3], custom?: {custom1: [yaw, pitch, distance]}}` — editor viewer panes. Working views
@@ -901,6 +917,9 @@ redact|box, delay, duration, color, word (redact: scramble settles to it), item}
 top|bottom|both|none, backdrop: stars|dust|plain|none, bg, bg2, curve?, edge_blur?, scroll: true|false,
 coming_up: true|"text"`. Tall screenshots scroll and stop on each mark.
 
+win-43 `theme`: `stars` (default, purple night) | `obsidian` (black + gold dust, premium) | `newsroom` (charcoal desk) |
+`paper_desk` (warm brown) | `cold_case` (blue-grey) | `crimson` (dark red) — backdrop colours, dust and film grain in one word.
+
 V3 extras: `fullbleed: true` (page fills the frame) · `enter: "slide_up_over"` (0.3 s expo-out over the
 previous shot) · `exit: slide_left|slide_right|<animate_out preset>` · `tilt3d: true | {from: [22,0,-2],
 to: [0,0,-1], duration: 0.5, at?}` (settles from a 3D tilt; lives in precomp `<id>_pc` shown by 3D layer
@@ -979,11 +998,12 @@ highlight?, routes?, pins?, graticule?, borders?, labels?, texture?, font?, labe
 dim_others?, atmosphere?, is3d?, reveal?: {start, duration}, fly?: {to, zoom?, start, duration}, start?,
 duration?}` — a shape layer with a `geo` field.
 
-- **Styles (12):** `dark_political` (Dark Political), `satellite` (Satellite Relief), `paper_vintage`,
+- **Styles (12, see win-43 below for 6 more):** `dark_political` (Dark Political), `satellite` (Satellite Relief), `paper_vintage`,
   `blueprint`, `neon` (Neon Night), `clean_light` (Clean Light — the 2025 reference "light-grey map with
   saturated fills"), `newsprint` (Newsprint Ink), `documentary_gold`, `night_lights` (Night Lights — dark
   north Korea at night), `hologram` (Hologram HUD), `clay` (Clay 3D), `military` (Military Ops). Aliases:
   dark, political, sat, relief, paper, vintage, light, ink, gold, night, hud, ops.
+- **win-43 styles (+6 → 18):** `obsidian_gold` (black + champagne gold glow, premium documentary), `terrain` (natural relief atlas), `war_room` (red tactical scan), `cinematic_teal` (teal sea, orange highlight), `arctic_white` (icy light), `old_atlas` (aged atlas paper). Aliases: atlas, war, teal, arctic, gold_dark.
 - **Projections:** `equirectangular`, `mercator`, `natural_earth`, `globe` (with `atmosphere` rim).
 - **focus:** a country name / ISO code → centre + fitting zoom. `center: [lon, lat]` + `zoom` for exact
   framing (lon first!).
@@ -1183,7 +1203,18 @@ objects / set pieces (transparent cut-outs) above, overlays on top, then make_3d
 
 ### 12.3 Google Flow → MotionAI
 
-1. **Best: Mohit's flow-mcp** (`C:\Users\1234\flow-mcp`, "Flow Studio"): `flow_agent_images {project,
+0. **Fastest: the Flow panel** (win-43, Windows): Google Flow inside MotionAI (WebView2, its own sign-in
+   that persists; home screen ✦ button). `flow_panel_open {url?}` opens it (a Flow project url opens that
+   project; `show:false` keeps it off screen); `flow_pull {folder, match?, limit?}` takes **every finished
+   image** of the open project straight into the library in seconds: the signed-in page fetches the
+   originals 4 at a time and hands them to the app over WebView2 (no browser download, no ZIP, no
+   localhost request), saved to `Documents\MotionAI_Flow\<folder>\` and imported as one kit. Names come
+   from Flow titles with a role prefix: a title already starting `char_`/`prop_`/`plate_`/`fx_` keeps it;
+   otherwise a green-screen border → `char_` (person words) or `prop_`, a black border → `fx_`, else
+   `plate_`. `flow_panel_eval {code}` runs page JavaScript (read titles, rename tiles); `flow_panel_close`
+   hides it. Generate in Flow (flow-mcp's `flow_agent_images`, or by hand in the panel), then `flow_pull`.
+   First use: the user signs in to Google once in the panel.
+1. **Best for generating: Mohit's flow-mcp** (`C:\Users\1234\flow-mcp`, "Flow Studio"): `flow_agent_images {project,
    scenes: [≤ 50 prompts], aspect_ratio, references?, scene_references?}` hands the whole batch to Flow's
    own Agent mode (parallel, 0 credits, one ZIP back into `~/flow-mcp-out/<project>/`). It must be
    running (Claude Desktop config entry `flow`, or double-click `Flow Studio.cmd`; local API

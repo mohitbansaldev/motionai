@@ -1,15 +1,19 @@
+import 'dart:async'; // win-43
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show PointerScrollEvent; // win-43
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector2;
 
 import '../../core/engine/evaluator.dart';
+import '../../core/model/camera.dart'; // win-43
 import '../../core/model/layer.dart';
 import '../../state/editor_controller.dart';
 import '../precomp_bar.dart'; // PRECOMP (Agent L)
 import '../bulk/bulk_preview.dart'; // BULK (Agent N)
 import 'composition_canvas.dart';
 import 'preview_quality.dart'; // PERF (Agent O)
+import 'gizmo3d.dart'; // win-43
 
 /// Live preview of the composition. Tap a layer to select it, drag to move
 /// it, pinch with two fingers to scale and rotate it.
@@ -38,6 +42,15 @@ class _CompositionViewState extends State<CompositionView> {
 
   late final BulkPreview _bulk = BulkPreview(c); // BULK (Agent N)
 
+  // win-43 >>> gizmos + camera tools
+  GizmoGeom? _geom;
+  GizmoView? _gview;
+  GizmoHandle? _hot;
+  GizmoDrag? _gdrag;
+  CameraNav? _nav;
+  int _wheelTick = 0;
+  // <<< win-43
+
   // PRECOMP (Agent L): double-tap a comp layer to open it.
   String? _lastTapId;
   DateTime _lastTapAt = DateTime(0);
@@ -64,7 +77,14 @@ class _CompositionViewState extends State<CompositionView> {
           height: comp.height * _viewScale,
           child: Listener( // BULK (Agent N): pointer kind (rubber band with a mouse), Alt+wheel scale/rotate
             onPointerDown: (e) => _bulk.kind = e.kind,
-            onPointerSignal: _bulk.onSignal,
+            onPointerSignal: (e) { // win-43: wheel dollies with a camera tool
+              if (ViewTools.instance.isCameraTool && e is PointerScrollEvent) {
+                _wheel(e.scrollDelta.dy);
+                return;
+              }
+              _bulk.onSignal(e);
+            },
+            onPointerHover: (e) => _hover(_toComp(e.localPosition)), // win-43
             child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTapUp: _onTap,
@@ -72,7 +92,7 @@ class _CompositionViewState extends State<CompositionView> {
             onScaleUpdate: _onScaleUpdate,
             onScaleEnd: (_) => _onScaleEnd(),
             child: AnimatedBuilder(
-              animation: Listenable.merge([c, c.timeNotifier, c.videos, PreviewQuality.instance]), // PERF (Agent O): + quality
+              animation: Listenable.merge([c, c.timeNotifier, c.videos, PreviewQuality.instance, ViewTools.instance]), // PERF (Agent O): + quality; win-43: + tools
               builder: (context, _) {
                 final t = c.time;
                 _items = Evaluator.evaluate(comp, t, velocity: !c.playing); // PERF (Agent O): motion blur is not drawn while playing
@@ -105,7 +125,21 @@ class _CompositionViewState extends State<CompositionView> {
   // BULK (Agent N) >>>
   Widget? _bulkOverlay(RenderItem? selected) {
     if (!c.hasMultiSelection && _bulk.marquee == null) {
-      return selected == null ? null : CustomPaint(painter: _SelectionPainter(selected, 1 / _viewScale));
+      // win-43 >>> transform gizmo on top of the selection outline
+      _geom = null;
+      final tg = gizmoTargetFor(c, working: false);
+      if (tg != null) {
+        _gview = activeViewFor(c.comp, c.time, tg);
+        _geom = GizmoGeom.build(tg, _gview!, toolFor(tg, ViewTools.instance.tool), 92 / _viewScale);
+      }
+      final outline = selected == null ? null : CustomPaint(painter: _SelectionPainter(selected, 1 / _viewScale));
+      final geom = _geom;
+      if (geom == null) return outline;
+      return Stack(children: [
+        if (outline != null) Positioned.fill(child: outline),
+        Positioned.fill(child: CustomPaint(painter: GizmoPainter(geom, _gdrag?.h ?? _hot, 1 / _viewScale))),
+      ]);
+      // <<< win-43
     }
     final items = [for (final i in _items) if (c.isSelected(i.layer.id)) i];
     return CustomPaint(painter: BulkSelectionPainter(items, c.selectedLayerId, 1 / _viewScale, _bulk.marquee));
@@ -139,9 +173,70 @@ class _CompositionViewState extends State<CompositionView> {
     c.select(hit?.layer.id);
   }
 
+  // win-43 >>> gizmo + camera tool helpers
+  void _hover(Offset p) {
+    final g = _geom;
+    final h = g?.hit(p, 9 / _viewScale);
+    if (h != _hot) setState(() => _hot = h);
+  }
+
+  void _ensure3DCamera() {
+    if (c.comp.camera.mode == CameraMode.off) c.tryRun({'op': 'set_camera_mode', 'mode': '3d'});
+  }
+
+  void _wheel(double dy) {
+    _ensure3DCamera();
+    final nav = CameraNav(c.comp, c.time, 'dolly', Offset.zero);
+    final cmds = nav.update(Offset.zero, wheel: dy * 0.6);
+    // One undo step per burst of wheel ticks.
+    final tick = ++_wheelTick;
+    if (tick == 1 || _wheelTimer == null) c.beginGesture();
+    c.tryRun({'op': 'batch', 'commands': cmds}, record: false);
+    _wheelTimer?.cancel();
+    _wheelTimer = Timer(const Duration(milliseconds: 350), () {
+      _wheelTimer = null;
+      _wheelTick = 0;
+      c.endGesture();
+    });
+  }
+
+  Timer? _wheelTimer;
+
+  @override
+  void dispose() {
+    if (_wheelTimer != null) {
+      _wheelTimer!.cancel();
+      c.endGesture();
+    }
+    super.dispose();
+  }
+
+  bool _startTool(ScaleStartDetails d, Offset compPos) {
+    final tools = ViewTools.instance;
+    if (d.pointerCount != 1 || c.playing) return false;
+    if (tools.isCameraTool) {
+      _ensure3DCamera();
+      c.beginGesture();
+      _nav = CameraNav(c.comp, c.time, tools.tool, d.localFocalPoint / _viewScale);
+      return true;
+    }
+    final g = _geom, v = _gview;
+    final h = g?.hit(compPos, 10 / _viewScale);
+    if (g == null || v == null || h == null) return false;
+    c.beginGesture();
+    _gdrag = GizmoDrag(c.comp, c.time, g, h, compPos)..setView(v);
+    return true;
+  }
+  // <<< win-43
+
   void _onScaleStart(ScaleStartDetails d) {
     final layer = c.selectedLayer;
     final compPos = _toComp(d.localFocalPoint);
+    if (_startTool(d, compPos)) { // win-43: gizmo handle or camera tool
+      _gestureOnLayer = false;
+      setState(() {});
+      return;
+    }
     final hit = _hit(compPos);
     // BULK (Agent N): rubber band, or move/scale/rotate the whole selection.
     if (_bulk.onStart(compPos, hit?.layer.id, d.pointerCount, _items)) {
@@ -163,6 +258,15 @@ class _CompositionViewState extends State<CompositionView> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d) {
+    // win-43 >>> gizmo / camera tool drags
+    final nav = _nav, gd = _gdrag;
+    if (nav != null || gd != null) {
+      final p = _toComp(d.localFocalPoint);
+      final cmds = nav != null ? nav.update(p) : gd!.update(p);
+      if (cmds.isNotEmpty) c.tryRun({'op': 'batch', 'commands': cmds}, record: false);
+      return;
+    }
+    // <<< win-43
     if (_bulk.active) { // BULK (Agent N)
       _bulk.onUpdate(_toComp(d.localFocalPoint), d, _items);
       setState(() {});
@@ -205,6 +309,13 @@ class _CompositionViewState extends State<CompositionView> {
   }
 
   void _onScaleEnd() {
+    if (_nav != null || _gdrag != null) { // win-43
+      _nav = null;
+      _gdrag = null;
+      c.endGesture();
+      setState(() {});
+      return;
+    }
     if (_bulk.active) { // BULK (Agent N)
       _bulk.onEnd();
       setState(() {});

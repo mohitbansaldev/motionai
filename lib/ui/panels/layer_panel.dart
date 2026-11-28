@@ -11,8 +11,12 @@ import '../fonts/font_picker.dart'; // FONTS (Agent I)
 import '../precomp_bar.dart'; // PRECOMP (Agent L)
 import 'chroma_controls.dart'; // CHROMA (Agent M)
 import 'prop_row.dart';
+import 'scrub_field.dart'; // win-43
 
 /// Transform, text and layer options for the selected layer.
+/// win-43: uniform-scale link in the Transform group (shared by every layer).
+final ValueNotifier<bool> kLinkScale = ValueNotifier(true);
+
 class LayerPanel extends StatelessWidget {
   final EditorController c;
   const LayerPanel({super.key, required this.c});
@@ -105,17 +109,49 @@ class LayerPanel extends StatelessWidget {
               row(Props.volume, 'Volume', 0, 100, decimals: 0),
             ],
             if (l.type != LayerType.audio) ...[
-              const SectionTitle('Transform'),
-              row(Props.position, 'Position X', -w, w * 2, comp: 0),
-              row(Props.position, 'Position Y', -h, h * 2, comp: 1),
-              if (l.is3D) row(Props.position, 'Position Z', -4000, 12000, comp: 2),
-              row(Props.scale, 'Scale', 0, 400),
-              if (l.is3D) row(Props.rotation, 'X Rotation', -180, 180, comp: 0),
-              if (l.is3D) row(Props.rotation, 'Y Rotation', -180, 180, comp: 1),
-              row(Props.rotation, l.is3D ? 'Z Rotation' : 'Rotation', -360, 360, comp: 2),
-              row(Props.opacity, 'Opacity', 0, 100, decimals: 0),
-              row(Props.anchor, 'Anchor X', 0, l.width, comp: 0, decimals: 0),
-              row(Props.anchor, 'Anchor Y', 0, l.height, comp: 1, decimals: 0),
+              // win-43 >>> After Effects style Transform: scrub fields, every axis, no limits
+              PropGroup(
+                title: 'Transform',
+                trailing: TextButton(
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6)),
+                  onPressed: () => c.tryRun({'op': 'batch', 'commands': [
+                    {'op': 'set_property', 'target': l.id, 'prop': Props.position, 'value': [w / 2, h / 2, 0]},
+                    {'op': 'set_property', 'target': l.id, 'prop': Props.scale, 'value': [100, 100, 100]},
+                    {'op': 'set_property', 'target': l.id, 'prop': Props.rotation, 'value': [0, 0, 0]},
+                    {'op': 'set_property', 'target': l.id, 'prop': Props.opacity, 'value': [100]},
+                  ]}),
+                  child: const Text('Reset', style: TextStyle(fontSize: 11.5)),
+                ),
+                children: [
+                  VecPropRow(c: c, ref: PropRef(l.id, Props.anchor), label: 'Anchor Point', names: const ['X', 'Y', 'Z'], components: l.is3D ? const [0, 1, 2] : const [0, 1]),
+                  VecPropRow(c: c, ref: PropRef(l.id, Props.position), label: 'Position', names: const ['X', 'Y', 'Z'], components: l.is3D ? const [0, 1, 2] : const [0, 1]),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: kLinkScale,
+                    builder: (context, link, _) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      VecPropRow(c: c, ref: PropRef(l.id, Props.scale), label: 'Scale', names: const ['X', 'Y', 'Z'], components: l.is3D ? const [0, 1, 2] : const [0, 1], suffix: '%', step: 0.5, linked: link),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: InkWell(
+                          onTap: () => kLinkScale.value = !link,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(link ? Icons.link : Icons.link_off, size: 14, color: link ? kScrubBlue : Colors.white38),
+                              const SizedBox(width: 4),
+                              Text(link ? 'Uniform scale' : 'Free scale', style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  if (l.is3D) VecPropRow(c: c, ref: PropRef(l.id, Props.rotation), label: 'X Rotation', components: const [0], suffix: '°', step: 0.25),
+                  if (l.is3D) VecPropRow(c: c, ref: PropRef(l.id, Props.rotation), label: 'Y Rotation', components: const [1], suffix: '°', step: 0.25),
+                  VecPropRow(c: c, ref: PropRef(l.id, Props.rotation), label: l.is3D ? 'Z Rotation' : 'Rotation', components: const [2], suffix: '°', step: 0.25),
+                  VecPropRow(c: c, ref: PropRef(l.id, Props.opacity), label: 'Opacity', suffix: '%', step: 0.5, min: 0, max: 100, decimals: 0),
+                ],
+              ),
+              // <<< win-43
               _PathSection(c: c, layer: l),
               const SectionTitle('Animate in (at layer start)'),
               _transitionChips(context, l, true),

@@ -100,6 +100,14 @@ String? resolveFilesPath(String docs, String path) {
   return [docs, ...parts].join(Platform.pathSeparator);
 }
 
+/// win-43: hosts with the Flow panel (Google Flow inside MotionAI).
+abstract class RemoteFlowPanel {
+  Future<Map<String, dynamic>> flowOpen({String? url, bool show = true});
+  Future<Map<String, dynamic>> flowPull(Map<String, dynamic> args, {void Function(String status)? status});
+  Future<Object?> flowEval(String code, {Duration timeout});
+  Future<bool> flowClose();
+}
+
 class _Fail implements Exception {
   final String message;
   _Fail(this.message);
@@ -243,7 +251,12 @@ class RemoteTools implements McpBackend {
       case 'batch':
         return _batch(a, progress);
       case 'get_state':
-        return McpToolResult.json(await state());
+        return McpToolResult.json(await state(
+          brief: _bool(a, 'brief') == true,
+          only: _strings(a, 'layers'),
+          since: _str(a, 'since'),
+          media: _bool(a, 'media') ?? true,
+        )); // win-43: brief / layers / since / media
       case 'get_manual': // win-42: the complete control manual
         final q = a['section'] is String ? a['section'] as String : null;
         if (q != null && q.trim().toLowerCase() == 'spec') return McpToolResult.text(commandSpec);
@@ -430,6 +443,13 @@ class RemoteTools implements McpBackend {
       case 'library_suggest':
         return _libraryOps(name, a);
       // <<< V2-lead
+      // win-43 >>> Flow panel
+      case 'flow_panel_open':
+      case 'flow_pull':
+      case 'flow_panel_eval':
+      case 'flow_panel_close':
+        return _flowPanel(name, a, progress);
+      // <<< win-43
       case 'library_insert':
         return _libraryInsert(a);
       case 'list_effects':
@@ -488,7 +508,7 @@ class RemoteTools implements McpBackend {
 
   // ------------------------------------------------------------ state
 
-  Future<Map<String, dynamic>> state() async {
+  Future<Map<String, dynamic>> state({bool brief = false, List<String> only = const [], String? since, bool media = true}) async {
     final out = <String, dynamic>{
       'app': 'MotionAI',
       // win-42: every new chat should read the manual before editing.
@@ -511,12 +531,50 @@ class RemoteTools implements McpBackend {
       return out;
     }
     out['project'] = {'id': c.project.id, 'name': c.project.name};
-    out.addAll(EditAgent.projectSummary(c));
+    final summary = EditAgent.projectSummary(c);
+    // win-43 >>> faster link: a revision fingerprint (unchanged → tiny answer), brief layers, layer filter
+    final revision = _revision(c, summary);
+    if (since != null && since == revision) {
+      return {
+        'unchanged': true,
+        'revision': revision,
+        'playhead': _r(c.time),
+        'selection': {'layers': c.selectedLayerIds, 'primary': c.selectedLayerId, 'camera': c.cameraSelected},
+        if (running.isNotEmpty) 'jobs': running,
+      };
+    }
+    final layers = summary['layers_top_to_bottom'];
+    if (layers is List) {
+      var list = layers;
+      if (only.isNotEmpty) list = [for (final l in list) if (l is Map && only.contains(l['id'])) l];
+      if (brief) {
+        list = [
+          for (final l in list)
+            if (l is Map) {for (final k in const ['id', 'name', 'type', 'start', 'end', 'media', 'comp', 'is3d', 'hidden', 'parent', 'text']) if (l.containsKey(k)) k: l[k]},
+        ];
+      }
+      summary['layers_top_to_bottom'] = list;
+    }
+    if (!media) summary.remove('media');
+    out.addAll(summary);
+    out['revision'] = revision;
+    // <<< win-43
     out['selection'] = {'layers': c.selectedLayerIds, 'primary': c.selectedLayerId, 'camera': c.cameraSelected};
     out['playing'] = c.playing;
     out['can_undo'] = c.canUndo;
     out['can_redo'] = c.canRedo;
     return out;
+  }
+
+  /// win-43: short fingerprint of the open project's content (same edits → same value).
+  static String _revision(EditorController c, Map<String, dynamic> summary) {
+    final copy = Map<String, dynamic>.of(summary)..remove('playhead')..remove('selected_layers');
+    final text = jsonEncode(copy, toEncodable: (o) => '$o');
+    var h = 0x811c9dc5;
+    for (final u in text.codeUnits) {
+      h = ((h ^ u) * 0x01000193) & 0xFFFFFFFF;
+    }
+    return '${c.project.id.hashCode.toRadixString(36)}-${h.toRadixString(36)}';
   }
 
   Future<List<Map<String, dynamic>>> _projects() async {
@@ -1208,6 +1266,44 @@ class RemoteTools implements McpBackend {
     }
   }
   // <<< V2-lead
+
+  // win-43 >>> Flow panel
+  Future<McpToolResult> _flowPanel(String name, Map<String, dynamic> a, McpProgress? progress) async {
+    final h = host;
+    if (h is! RemoteFlowPanel) throw _Fail('The Flow panel needs the MotionAI Windows app (build 43 or newer).');
+    final f = h as RemoteFlowPanel;
+    try {
+      switch (name) {
+        case 'flow_panel_open':
+          return McpToolResult.json(await f.flowOpen(url: _str(a, 'url'), show: _bool(a, 'show') ?? true));
+        case 'flow_pull':
+          final job = jobs.start('flow_pull');
+          var step = 0;
+          try {
+            final r = await f.flowPull(a, status: (s) {
+              job.message = s;
+              progress?.report(++step, message: s);
+            });
+            job.done(null, message: 'Saved ${r['saved']} images');
+            return McpToolResult.json(r);
+          } catch (e) {
+            job.fail(e);
+            rethrow;
+          }
+        case 'flow_panel_eval':
+          final secs = _num(a, 'timeout') ?? 45;
+          final v = await f.flowEval(_need(a, 'code'), timeout: Duration(milliseconds: (secs.clamp(1, 300) * 1000).round()));
+          return McpToolResult.json({'result': v});
+        default:
+          return McpToolResult.json({'closed': await f.flowClose()});
+      }
+    } on StateError catch (e) {
+      throw _Fail(e.message);
+    } on TimeoutException {
+      throw _Fail('The Flow page did not answer in time.');
+    }
+  }
+  // <<< win-43
 
   Future<McpToolResult> _librarySearch(Map<String, dynamic> a) async {
     final lib = await AssetLibrary.shared();

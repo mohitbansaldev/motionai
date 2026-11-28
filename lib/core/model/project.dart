@@ -69,6 +69,12 @@ class Composition {
   String? dofFocus;
   // <<< V2-D
 
+  // win-43 >>> atmosphere: depth fog / aerial perspective for 3D layers.
+  /// [start depth px, end depth px, max %] (null = off) and its colour.
+  List<double>? fog;
+  int fogColor = 0xFF8FA0B4;
+  // <<< win-43
+
   // win-40 >>> viewer: After Effects view layout ("1", "2", "4", "1+3") and the
   // 3D view of each pane (see ViewCam.kinds); custom view orbits [yaw, pitch, dist].
   String viewLayout = '1';
@@ -128,6 +134,8 @@ class Composition {
         motionBlur: motionBlur,
       )
         ..dofFocus = dofFocus // V2-D
+        ..fog = fog == null ? null : List.of(fog!) // win-43
+        ..fogColor = fogColor // win-43
         ..viewLayout = viewLayout // win-40
         ..views = List.of(views) // win-40
         ..customViews = customViews.map((k, v) => MapEntry(k, List.of(v))); // win-40
@@ -144,6 +152,8 @@ class Composition {
         'camera': camera.toJson(),
         if (motionBlur) 'motionBlur': true,
         if (dofFocus != null) 'dofFocus': dofFocus, // V2-D
+        if (fog != null) 'fog': fog, // win-43
+        if (fog != null) 'fogColor': fogColor, // win-43
         if (viewLayout != '1') 'viewLayout': viewLayout, // win-40
         if (viewLayout != '1' || views.join() != 'activetopfrontright') 'views': views, // win-40
         if (customViews.isNotEmpty) 'customViews': customViews, // win-40
@@ -162,6 +172,8 @@ class Composition {
         motionBlur: j['motionBlur'] as bool? ?? false,
       )
         ..dofFocus = j['dofFocus'] as String? // V2-D
+        ..fog = j['fog'] is List && (j['fog'] as List).length >= 3 ? [for (final x in (j['fog'] as List).take(3)) (x as num).toDouble()] : null // win-43
+        ..fogColor = j['fogColor'] as int? ?? 0xFF8FA0B4 // win-43
         ..viewLayout = viewLayouts.contains(j['viewLayout']) ? j['viewLayout'] as String : '1' // win-40
         ..views = j['views'] is List ? [for (final v in j['views'] as List) '$v'] : ['active', 'top', 'front', 'right'] // win-40
         ..customViews = j['customViews'] is Map

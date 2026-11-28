@@ -24,6 +24,8 @@ dependencies:
   desktop_drop: '>=0.6.0 <0.9.0' # 0.9 needs cross_file 0.4 (conflicts with file_picker 13)
   ffi: ^2.1.0
   image: ^4.2.0
+  # win-43: Flow panel (Google Flow inside the app, WebView2)
+  webview_windows: ^0.4.0
 
 dev_dependencies:
   flutter_test:

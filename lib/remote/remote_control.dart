@@ -15,6 +15,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/model/project.dart';
+import '../platform/flow_panel.dart'; // win-43
 import '../platform/win_window.dart';
 import '../services/media_bridge.dart';
 import '../services/media_importer.dart';
@@ -40,7 +41,8 @@ class RemoteLogEntry {
   RemoteLogEntry(this.tool, this.summary, this.ok);
 }
 
-class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHost, RemoteEditorView, RemoteFiles {
+class RemoteControl extends ChangeNotifier
+    implements RemoteHost, RemoteFrameHost, RemoteEditorView, RemoteFiles, RemoteFlowPanel {
   RemoteControl._();
   static final RemoteControl instance = RemoteControl._();
 
@@ -65,6 +67,39 @@ class RemoteControl extends ChangeNotifier implements RemoteHost, RemoteFrameHos
     await f.writeAsBytes(bytes, flush: true);
     return f.path;
   }
+  // win-43 >>> Flow panel (Google Flow inside MotionAI)
+  @override
+  Future<Map<String, dynamic>> flowOpen({String? url, bool show = true}) async {
+    if (!FlowPanel.supported) throw StateError('The Flow panel needs the Windows app.');
+    return FlowPanel.instance.open(navigatorKey.currentState, target: url, show: show);
+  }
+
+  @override
+  Future<Map<String, dynamic>> flowPull(Map<String, dynamic> a, {void Function(String status)? status}) {
+    List<String> strs(Object? v) => v is List ? [for (final e in v) if ('$e'.trim().isNotEmpty) '$e'.trim()] : const [];
+    final folder = '${a['folder'] ?? ''}'.trim();
+    if (folder.isEmpty) throw StateError('flow_pull needs "folder".');
+    return FlowPanel.instance.pull(
+      folder: folder,
+      kit: a['kit'] == null ? null : '${a['kit']}',
+      match: strs(a['match']),
+      limit: (a['limit'] is num) ? (a['limit'] as num).toInt() : int.tryParse('${a['limit'] ?? ''}') ?? 0,
+      import: a['import'] != false,
+      removeMark: a['remove_mark'] != false,
+      greenScreen: '${a['green_screen'] ?? 'auto'}',
+      tags: strs(a['tags']),
+      status: status,
+    );
+  }
+
+  @override
+  Future<Object?> flowEval(String code, {Duration timeout = const Duration(seconds: 45)}) =>
+      FlowPanel.instance.eval(code, timeout: timeout);
+
+  @override
+  Future<bool> flowClose() => FlowPanel.instance.close(navigatorKey.currentState);
+  // <<< win-43
+
   // win-30: list_files / read_file / write_file work under Documents\MotionAI*.
   @override
   Future<String> documentsPath() async {
