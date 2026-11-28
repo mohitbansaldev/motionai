@@ -591,8 +591,14 @@ by its id (default id = effect type). Animate params also with `set_keyframe {ta
 Looks in one command: `apply_style {style, layers?}` with `cinematic_doc, shorts_punch, retro_film, noir,
 warm_travel, clean_minimal` (image / video layers) — or put a doc look on an **adjustment layer**:
 `doc_golden_hour, doc_cold_night, doc_archive_sepia, doc_teal_orange, doc_noir_contrast,
-doc_desaturated_war`, plus `film_look` (grain + gate weave + halation + vignette + flicker; combine with a
-doc_* look).
+doc_desaturated_war`, the win-43 cinematic looks `cine_blockbuster, cine_print_film, cine_bleach_bypass,
+cine_moody_green, cine_dreamy_glow, cine_desert_heat, cine_arctic, cine_neon_noir, cine_monochrome_silver,
+cine_vintage_70s`, plus `film_look` (grain + gate weave + halation + vignette + flicker; combine with a
+doc_* or cine_* look).
+- win-43 **depth fog** (aerial perspective, 3D layers): `set_comp {fog: {start: depth px, end: depth px,
+  amount: 0-100, color: "#8FA0B4"}}` · `set_comp {fog: false}` turns it off. Far layers fade toward the
+  colour (smooth ramp from start to end), exactly like distance through air — use it on every deep
+  parallax scene (cool haze outdoors, warm dust in deserts, night blue, smoke). Also in Camera → Atmosphere.
 
 ### 4.6 Masks, track mattes, blend modes, motion paths
 
@@ -989,11 +995,12 @@ highlight?, routes?, pins?, graticule?, borders?, labels?, texture?, font?, labe
 dim_others?, atmosphere?, is3d?, reveal?: {start, duration}, fly?: {to, zoom?, start, duration}, start?,
 duration?}` — a shape layer with a `geo` field.
 
-- **Styles (12):** `dark_political` (Dark Political), `satellite` (Satellite Relief), `paper_vintage`,
+- **Styles (12, see win-43 below for 6 more):** `dark_political` (Dark Political), `satellite` (Satellite Relief), `paper_vintage`,
   `blueprint`, `neon` (Neon Night), `clean_light` (Clean Light — the 2025 reference "light-grey map with
   saturated fills"), `newsprint` (Newsprint Ink), `documentary_gold`, `night_lights` (Night Lights — dark
   north Korea at night), `hologram` (Hologram HUD), `clay` (Clay 3D), `military` (Military Ops). Aliases:
   dark, political, sat, relief, paper, vintage, light, ink, gold, night, hud, ops.
+- **win-43 styles (+6 → 18):** `obsidian_gold` (black + champagne gold glow, premium documentary), `terrain` (natural relief atlas), `war_room` (red tactical scan), `cinematic_teal` (teal sea, orange highlight), `arctic_white` (icy light), `old_atlas` (aged atlas paper). Aliases: atlas, war, teal, arctic, gold_dark.
 - **Projections:** `equirectangular`, `mercator`, `natural_earth`, `globe` (with `atmosphere` rim).
 - **focus:** a country name / ISO code → centre + fitting zoom. `center: [lon, lat]` + `zoom` for exact
   framing (lon first!).

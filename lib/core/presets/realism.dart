@@ -345,6 +345,9 @@ class Realism {
 
   static const looks = [
     'doc_golden_hour', 'doc_cold_night', 'doc_archive_sepia', 'doc_teal_orange', 'doc_noir_contrast', 'doc_desaturated_war',
+    // win-43: cinematic looks
+    'cine_blockbuster', 'cine_print_film', 'cine_bleach_bypass', 'cine_moody_green', 'cine_dreamy_glow', 'cine_desert_heat',
+    'cine_arctic', 'cine_neon_noir', 'cine_monochrome_silver', 'cine_vintage_70s',
   ];
   static const filmLook = 'film_look';
 
@@ -355,6 +358,16 @@ class Realism {
         'doc_teal_orange': 'Teal & orange',
         'doc_noir_contrast': 'Noir contrast',
         'doc_desaturated_war': 'Desaturated war',
+        'cine_blockbuster': 'Blockbuster',
+        'cine_print_film': 'Print film',
+        'cine_bleach_bypass': 'Bleach bypass',
+        'cine_moody_green': 'Moody green',
+        'cine_dreamy_glow': 'Dreamy glow',
+        'cine_desert_heat': 'Desert heat',
+        'cine_arctic': 'Arctic',
+        'cine_neon_noir': 'Neon noir',
+        'cine_monochrome_silver': 'Silver monochrome',
+        'cine_vintage_70s': 'Vintage 70s',
         'film_look': 'Film look',
       }[s] ??
       s;
@@ -393,6 +406,67 @@ class Realism {
             ('grain', {'amount': [30], 'size': [2]}),
             ('vignette', {'amount': [55], 'size': [60]}),
           ],
+        // win-43 >>> cinematic looks
+        'cine_blockbuster' => [
+            ('grade', {'lift': [-6, 1, 7], 'gain': [116, 102, 86], 'saturation': [14], 'contrast': [24]}),
+            ('bloom', {'threshold': [74], 'amount': [28], 'radius': [36]}),
+            ('chromatic_aberration', {'amount': [8]}),
+            ('vignette', {'amount': [45], 'size': [62]}),
+            ('letterbox', {'amount': [11]}),
+          ],
+        'cine_print_film' => [
+            ('grade', {'lift': [3, 1, -1], 'gain': [106, 100, 90], 'saturation': [-6], 'contrast': [14]}),
+            ('halation', {'amount': [30], 'radius': [16], 'threshold': [74]}),
+            ('grain', {'amount': [16], 'size': [2]}),
+            ('vignette', {'amount': [38], 'size': [64]}),
+          ],
+        'cine_bleach_bypass' => [
+            ('grade', {'lift': [-2, -2, -1], 'gain': [104, 104, 102], 'saturation': [-62], 'contrast': [42]}),
+            ('grain', {'amount': [22], 'size': [2]}),
+            ('vignette', {'amount': [52], 'size': [58]}),
+          ],
+        'cine_moody_green' => [
+            ('grade', {'lift': [-3, 1, -1], 'gain': [94, 104, 92], 'saturation': [-22], 'contrast': [20]}),
+            ('vignette', {'amount': [58], 'size': [56]}),
+            ('grain', {'amount': [14], 'size': [2]}),
+          ],
+        'cine_dreamy_glow' => [
+            ('grade', {'lift': [6, 5, 7], 'gain': [104, 100, 102], 'saturation': [-8], 'contrast': [-10]}),
+            ('bloom', {'threshold': [55], 'amount': [55], 'radius': [60]}),
+            ('halation', {'amount': [25], 'radius': [24], 'threshold': [65]}),
+            ('vignette', {'amount': [30], 'size': [70]}),
+          ],
+        'cine_desert_heat' => [
+            ('grade', {'lift': [4, 2, -4], 'gain': [120, 104, 80], 'saturation': [6], 'contrast': [16]}),
+            ('haze', {'amount': [18], 'color': [232, 200, 150]}),
+            ('bloom', {'threshold': [70], 'amount': [26], 'radius': [40]}),
+            ('vignette', {'amount': [42], 'size': [62]}),
+          ],
+        'cine_arctic' => [
+            ('grade', {'lift': [0, 2, 8], 'gain': [90, 100, 116], 'saturation': [-30], 'contrast': [10]}),
+            ('haze', {'amount': [14], 'color': [214, 228, 242]}),
+            ('vignette', {'amount': [36], 'size': [66]}),
+          ],
+        'cine_neon_noir' => [
+            ('grade', {'lift': [-4, -6, 4], 'gain': [110, 92, 118], 'saturation': [26], 'contrast': [30]}),
+            ('bloom', {'threshold': [62], 'amount': [45], 'radius': [44]}),
+            ('chromatic_aberration', {'amount': [14]}),
+            ('vignette', {'amount': [62], 'size': [56]}),
+          ],
+        'cine_monochrome_silver' => [
+            ('grade', {'lift': [1, 1, 2], 'gain': [104, 104, 106], 'saturation': [-100], 'contrast': [26]}),
+            ('halation', {'amount': [18], 'radius': [14], 'threshold': [80]}),
+            ('grain', {'amount': [26], 'size': [2]}),
+            ('vignette', {'amount': [50], 'size': [60]}),
+          ],
+        'cine_vintage_70s' => [
+            ('grade', {'lift': [8, 4, 0], 'gain': [108, 98, 82], 'saturation': [-14], 'contrast': [-6]}),
+            ('light_leak', {'amount': [22], 'speed': [0.6]}),
+            ('grain', {'amount': [34], 'size': [3]}),
+            ('gate_weave', {'amount': [20], 'flicker': [18]}),
+            ('vignette', {'amount': [48], 'size': [58]}),
+          ],
+        // <<< win-43
         'film_look' => [
             ('halation', {'amount': [35], 'radius': [18], 'threshold': [72]}),
             ('grain', {'amount': [22], 'size': [2]}),

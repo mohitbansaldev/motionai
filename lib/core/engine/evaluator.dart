@@ -41,6 +41,10 @@ class RenderItem {
   /// camera's distance to that plane — orders stacked parallel layers.
   final double nx, ny, nz, planeDist;
 
+  /// win-43: depth fog over the layer's pixels (0..1) and its colour.
+  final double fog;
+  final int fogColor;
+
   RenderItem({
     required this.layer,
     required this.matrix,
@@ -56,6 +60,8 @@ class RenderItem {
     this.ny = 0,
     this.nz = 0,
     this.planeDist = 0,
+    this.fog = 0, // win-43
+    this.fogColor = 0,
   });
 
   RenderItem withExtras({double? vx, double? vy, RenderItem? matte, bool? matteInverse}) => RenderItem(
@@ -69,6 +75,8 @@ class RenderItem {
         ny: ny,
         nz: nz,
         planeDist: planeDist,
+        fog: fog, // win-43
+        fogColor: fogColor,
         vx: vx ?? this.vx,
         vy: vy ?? this.vy,
         matte: matte ?? this.matte,
@@ -464,6 +472,14 @@ class Evaluator {
           pd = -pd;
         }
       }
+      // win-43: depth fog (aerial perspective): 0 before start, ramps to max at end.
+      var fogAmt = 0.0;
+      final fg = f.comp.fog;
+      if (fg != null && fg.length >= 3 && fg[2] > 0) {
+        final span = math.max(1.0, fg[1] - fg[0]);
+        final k = ((depth - fg[0]) / span).clamp(0.0, 1.0);
+        fogAmt = (k * k * (3 - 2 * k)) * (fg[2] / 100).clamp(0.0, 1.0);
+      }
       return RenderItem(
         layer: layer,
         matrix: mat,
@@ -475,6 +491,8 @@ class Evaluator {
         ny: n.y,
         nz: n.z,
         planeDist: pd,
+        fog: fogAmt,
+        fogColor: f.comp.fogColor,
       );
     }
     return RenderItem(

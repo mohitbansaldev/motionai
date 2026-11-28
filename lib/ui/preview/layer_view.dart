@@ -133,6 +133,10 @@ class LayerView extends StatefulWidget {
       final s = dofSigma;
       child = ImageFiltered(imageFilter: ui.ImageFilter.blur(sigmaX: s, sigmaY: s, tileMode: TileMode.decal), child: child);
     }
+    // win-43: depth fog tints the layer's own pixels toward the fog colour.
+    if (item.fog > 0.004) {
+      child = ColorFiltered(colorFilter: ColorFilter.mode(Color(item.fogColor).withValues(alpha: item.fog), BlendMode.srcATop), child: child);
+    }
     if (item.opacity < 0.999) child = Opacity(opacity: item.opacity, child: child);
     // win-30: camera-facing 3D layers vanish from the Windows preview unless
     // the matrix has a (sub-pixel) perspective term.

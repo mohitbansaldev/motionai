@@ -93,6 +93,33 @@ class GeoStyles {
         id: 'military', label: 'Military Ops', ocean: 0xFF161A14, ocean2: 0xFF0A0C09, land: 0xFF3A4130, land2: 0xFF2C3224,
         border: 0x99B8C79A, coast: 0x55B8C79A, coastGlow: 4, graticule: 0x26B8C79A, highlight: 0xCCB23A2E, highlightStroke: 0xFFF0D9A0,
         glow: 0xFFFF5A3C, labelColor: 0xFFE9E2C6, dimmed: 0xFF262B20, texture: 'grid', vignette: 0.6, atmosphere: 0xFFB8C79A),
+    // win-43 >>> cinematic map styles
+    GeoStyle(
+        id: 'obsidian_gold', label: 'Obsidian Gold', ocean: 0xFF0B0D10, ocean2: 0xFF030405, land: 0xFF1F2022, land2: 0xFF151618,
+        border: 0x88E2B65D, coast: 0xAAE2B65D, coastGlow: 12, graticule: 0x0CE2B65D, highlight: 0xFFE2B65D, highlightStroke: 0xFFFFF0C8,
+        glow: 0xFFF4D592, labelColor: 0xFFF6EBD2, dimmed: 0xFF141517, atmosphere: 0xFFE2B65D, vignette: 0.72, landStroke: true),
+    GeoStyle(
+        id: 'terrain', label: 'Terrain Atlas', ocean: 0xFF2D5670, ocean2: 0xFF14324A, land: 0xFF6E7B52, land2: 0xFF4F5A3A,
+        border: 0xB3F3EAD5, coast: 0x8CD7EEF7, coastGlow: 5, graticule: 0x14FFFFFF, highlight: 0xCCC8452E, highlightStroke: 0xFFFFF3DF,
+        glow: 0xFFFF6A45, labelColor: 0xFFFFFCF2, dimmed: 0xFF55603F, texture: 'satellite', textureOpacity: 0.8, atmosphere: 0xFF9AD1FF, vignette: 0.45),
+    GeoStyle(
+        id: 'war_room', label: 'War Room', ocean: 0xFF0A0606, ocean2: 0xFF020101, land: 0xFF241A18, land2: 0xFF160F0E,
+        border: 0x99FF5A47, coast: 0xCCFF3B2B, coastGlow: 10, graticule: 0x1AFF5A47, highlight: 0xCCFF2A1C, highlightStroke: 0xFFFFD2C8,
+        glow: 0xFFFF2A1C, labelColor: 0xFFFFE6DF, dimmed: 0xFF120B0A, texture: 'scan', textureOpacity: 0.6, atmosphere: 0xFFFF4A3A, vignette: 0.75, landStroke: true),
+    GeoStyle(
+        id: 'cinematic_teal', label: 'Cinematic Teal', ocean: 0xFF06222A, ocean2: 0xFF010B0E, land: 0xFF2E3A36, land2: 0xFF1F2825,
+        border: 0x99F2C49B, coast: 0xAA3FC1C9, coastGlow: 12, graticule: 0x0F3FC1C9, highlight: 0xFFF28C38, highlightStroke: 0xFFFFE3C9,
+        glow: 0xFFFFA14F, labelColor: 0xFFFFF4EA, dimmed: 0xFF19211F, texture: 'satellite', textureOpacity: 0.45, atmosphere: 0xFF3FC1C9, vignette: 0.65),
+    GeoStyle(
+        id: 'arctic_white', label: 'Arctic White', ocean: 0xFFBFD3E1, ocean2: 0xFF93AFC4, land: 0xFFF7FAFC, land2: 0xFFE3EBF1,
+        border: 0xFF9DB2C3, coast: 0x6693AFC4, coastGlow: 6, graticule: 0x1A2B4A66, highlight: 0xFF1F5FAF, highlightStroke: 0xFF0D2E57,
+        glow: 0xFF5C9BEB, labelColor: 0xFF0F2236, labelShadow: 0x22FFFFFF, dimmed: 0xFFE9EFF4, vignette: 0.25, atmosphere: 0xFFFFFFFF),
+    GeoStyle(
+        id: 'old_atlas', label: 'Old Atlas', ocean: 0xFF9FB2A4, ocean2: 0xFF7D9183, land: 0xFFE6D3AA, land2: 0xFFCDB585,
+        border: 0xCC7A4E2B, coast: 0x887A4E2B, coastGlow: 4, graticule: 0x447A4E2B, highlight: 0xFFA3331F, highlightStroke: 0xFF3B1D0E,
+        glow: 0xFFA3331F, labelColor: 0xFF2A170A, labelShadow: 0x22FFF4D8, dimmed: 0xFFD8C69E, texture: 'paper', vignette: 0.65, landStroke: true,
+        atmosphere: 0xFFEBD9AE),
+    // <<< win-43
   ];
 
   static List<String> get ids => [for (final s in all) s.id];
@@ -100,7 +127,7 @@ class GeoStyles {
   static GeoStyle byId(String id) {
     final n = id.toLowerCase().replaceAll('-', '_').replaceAll(' ', '_');
     const alias = {'dark': 'dark_political', 'political': 'dark_political', 'sat': 'satellite', 'relief': 'satellite', 'paper': 'paper_vintage',
-      'vintage': 'paper_vintage', 'light': 'clean_light', 'ink': 'newsprint', 'gold': 'documentary_gold', 'night': 'night_lights', 'hud': 'hologram', 'ops': 'military'};
+      'vintage': 'paper_vintage', 'light': 'clean_light', 'ink': 'newsprint', 'gold': 'documentary_gold', 'night': 'night_lights', 'hud': 'hologram', 'ops': 'military', 'gold_dark': 'obsidian_gold', 'atlas': 'old_atlas', 'war': 'war_room', 'teal': 'cinematic_teal', 'arctic': 'arctic_white'};
     final key = alias[n] ?? n;
     for (final s in all) {
       if (s.id == key) return s;

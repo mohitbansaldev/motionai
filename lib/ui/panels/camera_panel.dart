@@ -237,6 +237,7 @@ class _CameraPanelState extends State<CameraPanel> {
         VecPropRow(c: c, ref: const PropRef(cam, CamProps.aperture), label: 'Aperture', step: 0.5, min: 0),
         VecPropRow(c: c, ref: const PropRef(cam, CamProps.blurLevel), label: 'Blur Level', suffix: '%', step: 1, min: 0, decimals: 0),
       ]),
+      _atmosphere(),
       PropGroup(title: 'Viewer tools', initiallyOpen: false, children: const [
         Padding(
           padding: EdgeInsets.all(6),
@@ -248,6 +249,75 @@ class _CameraPanelState extends State<CameraPanel> {
         ),
       ]),
     ];
+  }
+
+  // win-43: depth fog / aerial perspective (comp setting, set_comp fog)
+  Widget _atmosphere() {
+    final comp = c.comp;
+    final fog = comp.fog;
+    void setFog(Map<String, dynamic>? f, {bool record = true}) => c.tryRun({'op': 'set_comp', 'fog': f ?? false}, record: record);
+    Widget field(String label, int i, {String suffix = '', double step = 5, double? max}) => Padding(
+          padding: const EdgeInsets.fromLTRB(4, 1, 4, 1),
+          child: Row(children: [
+            const SizedBox(width: 21),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 12.5, color: Color(0xFFD5D8DE)))),
+            ScrubNumber(
+              value: fog![i],
+              step: step,
+              min: 0,
+              max: max,
+              decimals: 0,
+              suffix: suffix,
+              width: 76,
+              onStart: c.beginGesture,
+              onChanged: (v) => setFog({['start', 'end', 'amount'][i]: v}, record: false),
+              onEnd: c.endGesture,
+              onSubmit: (v) => setFog({['start', 'end', 'amount'][i]: v}),
+            ),
+            const SizedBox(width: 50),
+          ]),
+        );
+    const presets = {
+      'Cool haze': 0xFF8FA0B4,
+      'Warm dust': 0xFFC9A578,
+      'Night blue': 0xFF1C2A44,
+      'Smoke': 0xFF3A3A3D,
+      'Snow white': 0xFFE6ECF2,
+    };
+    return PropGroup(
+      title: 'Atmosphere (depth fog)',
+      initiallyOpen: fog != null,
+      trailing: Switch(
+        value: fog != null,
+        onChanged: (v) => setFog(v ? {'start': comp.width * 0.8, 'end': comp.width * 4, 'amount': 55} : null),
+      ),
+      children: [
+        if (fog == null)
+          const Padding(
+            padding: EdgeInsets.all(6),
+            child: Text('Far 3D layers fade into haze, the way distance looks through air. Turn it on for depth in parallax shots.',
+                style: TextStyle(fontSize: 11.5, color: Colors.white60)),
+          )
+        else ...[
+          field('Starts at depth', 0, suffix: ' px', step: 10),
+          field('Full at depth', 1, suffix: ' px', step: 10),
+          field('Amount', 2, suffix: ' %', step: 0.5, max: 100),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, top: 4),
+            child: Wrap(spacing: 4, runSpacing: 4, children: [
+              for (final e in presets.entries)
+                ChoiceChip(
+                  visualDensity: VisualDensity.compact,
+                  avatar: CircleAvatar(backgroundColor: Color(e.value), radius: 6),
+                  label: Text(e.key, style: const TextStyle(fontSize: 11)),
+                  selected: (comp.fogColor & 0xFFFFFF) == (e.value & 0xFFFFFF),
+                  onSelected: (_) => setFog({'color': '#${(e.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}'}),
+                ),
+            ]),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _chip(IconData icon, String label, VoidCallback onTap) =>

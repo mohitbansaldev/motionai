@@ -505,6 +505,24 @@ class EditCommands {
         FxCommands.applyComp(comp, c); // FX (Agent B): motion_blur
         PrecompCommands.afterSetComp(project, comp); // PRECOMP (Agent L): comp layers follow the size
         RealismCommands.applyComp(comp, c); // V2-D: dof
+        // win-43 >>> fog: false | {start, end, amount (0-100), color}
+        if (c.containsKey('fog')) {
+          final fg = c['fog'];
+          if (fg == false || fg == null) {
+            comp.fog = null;
+          } else if (fg is Map) {
+            final cur = comp.fog ?? [1500, 6000, 55];
+            double n(String k, double d) => fg[k] is num ? (fg[k] as num).toDouble() : d;
+            final start = math.max(0.0, n('start', cur[0]));
+            final end = math.max(start + 1, n('end', cur[1]));
+            comp.fog = [start, end, n('amount', cur[2]).clamp(0, 100).toDouble()];
+            if (fg['color'] != null) comp.fogColor = _color(fg['color']);
+            r.log.add('Fog ${start.round()}→${end.round()} px, ${comp.fog![2].round()} %');
+          } else {
+            throw CommandError('"fog" is false or {start, end, amount 0-100, color}');
+          }
+        }
+        // <<< win-43
         break;
 
       // V2-D >>>
